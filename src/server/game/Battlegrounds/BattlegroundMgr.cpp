@@ -22,7 +22,7 @@
 #include "BattlegroundAV.h"
 #include "BattlegroundBE.h"
 #include "BattlegroundDS.h"
-#include "BattlegroundEY.h"
+#include "BattlegroundMOBA.h"
 #include "BattlegroundIC.h"
 #include "BattlegroundNA.h"
 #include "BattlegroundQueue.h"
@@ -1018,7 +1018,7 @@ std::unordered_map<int, Battleground*> BattlegroundMgr::bgtypeToBattleground =
     { BATTLEGROUND_AB, new BattlegroundAB },
     { BATTLEGROUND_NA, new BattlegroundNA },
     { BATTLEGROUND_BE, new BattlegroundBE },
-    { BATTLEGROUND_EY, new BattlegroundEY },
+    { BATTLEGROUND_EY, new BattlegroundMOBA },
     { BATTLEGROUND_RL, new BattlegroundRL },
     { BATTLEGROUND_SA, new BattlegroundSA },
     { BATTLEGROUND_DS, new BattlegroundDS },
@@ -1035,7 +1035,7 @@ std::unordered_map<int, bgRef> BattlegroundMgr::bgTypeToTemplate =
     { BATTLEGROUND_AB, [](Battleground * bg_t) -> Battleground* { return new BattlegroundAB(*(BattlegroundAB*)bg_t); } },
     { BATTLEGROUND_NA, [](Battleground * bg_t) -> Battleground* { return new BattlegroundNA(*(BattlegroundNA*)bg_t); } },
     { BATTLEGROUND_BE, [](Battleground * bg_t) -> Battleground* { return new BattlegroundBE(*(BattlegroundBE*)bg_t); } },
-    { BATTLEGROUND_EY, [](Battleground * bg_t) -> Battleground* { return new BattlegroundEY(*(BattlegroundEY*)bg_t); } },
+    { BATTLEGROUND_EY, [](Battleground * bg_t) -> Battleground* { return new BattlegroundMOBA(*(BattlegroundMOBA*)bg_t); } },
     { BATTLEGROUND_RL, [](Battleground * bg_t) -> Battleground* { return new BattlegroundRL(*(BattlegroundRL*)bg_t); } },
     { BATTLEGROUND_SA, [](Battleground * bg_t) -> Battleground* { return new BattlegroundSA(*(BattlegroundSA*)bg_t); } },
     { BATTLEGROUND_DS, [](Battleground * bg_t) -> Battleground* { return new BattlegroundDS(*(BattlegroundDS*)bg_t); } },
