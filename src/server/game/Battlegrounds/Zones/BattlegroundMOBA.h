@@ -26,13 +26,9 @@
 enum BG_MOBA_Events
 {
     BG_MOBA_EVENT_ADD_POINTS          = 1,
-    BG_MOBA_EVENT_FLAG_ON_GROUND      = 2,
-    BG_MOBA_EVENT_RESPAWN_FLAG        = 3,
     BG_MOBA_EVENT_CHECK_CPOINTS       = 4
 };
 
-constexpr Milliseconds BG_MOBA_FLAG_RESPAWN_TIME         = 10s;
-constexpr Milliseconds BG_MOBA_FLAG_ON_GROUND_TIME       = 10s;
 constexpr Milliseconds BG_MOBA_FPOINTS_CHECK_TIME        = 2s;
 constexpr Milliseconds BG_MOBA_FPOINTS_TICK_TIME         = 2s;
 
@@ -50,28 +46,10 @@ enum BG_MOBA_ProgressBarConsts
     BG_MOBA_PROGRESS_BAR_ALI_CONTROLLED   = 100
 };
 
-enum BG_MOBA_Sounds
-{
-    BG_MOBA_SOUND_FLAG_PICKED_UP_ALLIANCE = 8212,
-    BG_MOBA_SOUND_FLAG_CAPTURED_HORDE     = 8213,
-    BG_MOBA_SOUND_FLAG_PICKED_UP_HORDE    = 8174,
-    BG_MOBA_SOUND_FLAG_CAPTURED_ALLIANCE  = 8173,
-    BG_MOBA_SOUND_FLAG_RESET              = 8192
-};
-
-enum BG_MOBA_Spells
-{
-    BG_MOBA_NETHERSTORM_FLAG_SPELL        = 34976,
-    BG_MOBA_PLAYER_DROPPED_FLAG_SPELL     = 34991
-};
-
 enum BG_MOBA_ObjectEntry
 {
     BG_OBJECT_A_DOOR_EY_ENTRY           = 184719,           //Alliance door
     BG_OBJECT_H_DOOR_EY_ENTRY           = 184720,           //Horde door
-    BG_OBJECT_FLAG1_EY_ENTRY            = 184493,           //Netherstorm flag (generic)
-    BG_OBJECT_FLAG2_EY_ENTRY            = 184141,           //Netherstorm flag (flagstand)
-    BG_OBJECT_FLAG3_EY_ENTRY            = 184142,           //Netherstorm flag (flagdrop)
     BG_OBJECT_A_BANNER_EY_ENTRY         = 184381,           //Visual Banner (Alliance)
     BG_OBJECT_H_BANNER_EY_ENTRY         = 184380,           //Visual Banner (Horde)
     BG_OBJECT_N_BANNER_EY_ENTRY         = 184382,           //Visual Banner (Neutral)
@@ -173,25 +151,20 @@ enum BG_MOBA_ObjectTypes
     BG_MOBA_OBJECT_TOWER_CAP_BLOOD_ELF            = 39,
     BG_MOBA_OBJECT_TOWER_CAP_DRAENEI_RUINS        = 40,
     BG_MOBA_OBJECT_TOWER_CAP_MAGE_TOWER           = 41,
-    BG_MOBA_OBJECT_FLAG_NETHERSTORM               = 42,
-    BG_MOBA_OBJECT_FLAG_FEL_REAVER                = 43,
-    BG_MOBA_OBJECT_FLAG_BLOOD_ELF                 = 44,
-    BG_MOBA_OBJECT_FLAG_DRAENEI_RUINS             = 45,
-    BG_MOBA_OBJECT_FLAG_MAGE_TOWER                = 46,
     //buffs
-    BG_MOBA_OBJECT_SPEEDBUFF_FEL_REAVER           = 47,
-    BG_MOBA_OBJECT_REGENBUFF_FEL_REAVER           = 48,
-    BG_MOBA_OBJECT_BERSERKBUFF_FEL_REAVER         = 49,
-    BG_MOBA_OBJECT_SPEEDBUFF_BLOOD_ELF            = 50,
-    BG_MOBA_OBJECT_REGENBUFF_BLOOD_ELF            = 51,
-    BG_MOBA_OBJECT_BERSERKBUFF_BLOOD_ELF          = 52,
-    BG_MOBA_OBJECT_SPEEDBUFF_DRAENEI_RUINS        = 53,
-    BG_MOBA_OBJECT_REGENBUFF_DRAENEI_RUINS        = 54,
-    BG_MOBA_OBJECT_BERSERKBUFF_DRAENEI_RUINS      = 55,
-    BG_MOBA_OBJECT_SPEEDBUFF_MAGE_TOWER           = 56,
-    BG_MOBA_OBJECT_REGENBUFF_MAGE_TOWER           = 57,
-    BG_MOBA_OBJECT_BERSERKBUFF_MAGE_TOWER         = 58,
-    BG_MOBA_OBJECT_MAX                            = 59
+    BG_MOBA_OBJECT_SPEEDBUFF_FEL_REAVER           = 42,
+    BG_MOBA_OBJECT_REGENBUFF_FEL_REAVER           = 43,
+    BG_MOBA_OBJECT_BERSERKBUFF_FEL_REAVER         = 44,
+    BG_MOBA_OBJECT_SPEEDBUFF_BLOOD_ELF            = 45,
+    BG_MOBA_OBJECT_REGENBUFF_BLOOD_ELF            = 46,
+    BG_MOBA_OBJECT_BERSERKBUFF_BLOOD_ELF          = 47,
+    BG_MOBA_OBJECT_SPEEDBUFF_DRAENEI_RUINS        = 48,
+    BG_MOBA_OBJECT_REGENBUFF_DRAENEI_RUINS        = 49,
+    BG_MOBA_OBJECT_BERSERKBUFF_DRAENEI_RUINS      = 50,
+    BG_MOBA_OBJECT_SPEEDBUFF_MAGE_TOWER           = 51,
+    BG_MOBA_OBJECT_REGENBUFF_MAGE_TOWER           = 52,
+    BG_MOBA_OBJECT_BERSERKBUFF_MAGE_TOWER         = 53,
+    BG_MOBA_OBJECT_MAX                            = 54
 };
 
 enum BG_MOBA_Score
@@ -203,14 +176,6 @@ enum BG_MOBA_Score
     BG_MOBA_HONOR_TICK_NORMAL             = 260,
 
     BG_MOBA_EVENT_START_BATTLE            = 13180, // Achievement: Flurry
-    BG_MOBA_OBJECTIVE_CAPTURE_FLAG        = 183
-};
-
-enum BG_MOBA_FlagState
-{
-    BG_MOBA_FLAG_STATE_ON_BASE      = 1,
-    BG_MOBA_FLAG_STATE_ON_PLAYER    = 2,
-    BG_MOBA_FLAG_STATE_ON_GROUND    = 3
 };
 
 enum BG_MOBA_BroadcastTexts
@@ -234,12 +199,6 @@ enum BG_MOBA_BroadcastTexts
     BG_MOBA_TEXT_HORDE_TAKEN_MAGE_TOWER           = 17825,
     BG_MOBA_TEXT_ALLIANCE_LOST_MAGE_TOWER         = 17837,
     BG_MOBA_TEXT_HORDE_LOST_MAGE_TOWER            = 17838,
-
-    BG_MOBA_TEXT_TAKEN_FLAG                       = 18359,
-    BG_MOBA_TEXT_FLAG_DROPPED                     = 18361,
-    BG_MOBA_TEXT_FLAG_RESET                       = 18364,
-    BG_MOBA_TEXT_ALLIANCE_CAPTURED_FLAG           = 18375,
-    BG_MOBA_TEXT_HORDE_CAPTURED_FLAG              = 18384,
 };
 
 struct BattlegroundMOBAPointIconsStruct
@@ -292,7 +251,6 @@ struct BattlegroundMOBACapturingPointStruct
 };
 
 const uint32 BG_MOBA_TickPoints[EY_POINTS_MAX] = {1, 2, 5, 10};
-const uint32 BG_MOBA_FlagPoints[EY_POINTS_MAX] = {75, 85, 100, 500};
 
 //constant arrays:
 const BattlegroundMOBAPointIconsStruct m_PointsIconStruct[EY_POINTS_MAX] =
@@ -330,9 +288,6 @@ protected:
     {
         switch (type)
         {
-        case SCORE_FLAG_CAPTURES:   // Flags captured
-            FlagCaptures += value;
-            break;
         default:
             BattlegroundScore::UpdateScore(type, value);
             break;
@@ -340,10 +295,6 @@ protected:
     }
 
     void BuildObjectivesBlock(WorldPacket& data) final;
-
-    uint32 GetAttr1() const override { return FlagCaptures; }
-
-    uint32 FlagCaptures = 0;
 };
 
 class AC_GAME_API BattlegroundMOBA : public Battleground
@@ -357,13 +308,6 @@ public:
     void StartingEventCloseDoors() override;
     void StartingEventOpenDoors() override;
 
-    /* BG Flags */
-    ObjectGuid GetFlagPickerGUID(TeamId /*teamId*/ = TEAM_NEUTRAL) const override    { return _flagKeeperGUID; }
-    void SetFlagPicker(ObjectGuid guid)     { _flagKeeperGUID = guid; }
-    uint8 GetFlagState() const          { return _flagState; }
-    void RespawnFlag();
-    void RespawnFlagAfterDrop();
-
     void RemovePlayer(Player* player) override;
     void HandleBuffUse(ObjectGuid buff_guid);
     void HandleAreaTrigger(Player* player, uint32 trigger) override;
@@ -374,12 +318,6 @@ public:
     void EndBattleground(TeamId winnerTeamId) override;
     bool UpdatePlayerScore(Player* player, uint32 type, uint32 value, bool doAddHonor = true) override;
     void FillInitialWorldStates(WorldPackets::WorldState::InitWorldStates& packet) override;
-    void SetDroppedFlagGUID(ObjectGuid guid, TeamId /*teamId*/ = TEAM_NEUTRAL) override  { _droppedFlagGUID = guid; }
-    ObjectGuid GetDroppedFlagGUID() const { return _droppedFlagGUID; }
-
-    /* Battleground Events */
-    void EventPlayerClickedOnFlag(Player* player, GameObject* gameObject) override;
-    void EventPlayerDroppedFlag(Player* player) override;
 
     /* achievement req. */
     bool AllNodesConrolledByTeam(TeamId teamId) const override;
@@ -388,7 +326,6 @@ public:
 private:
     void PostUpdateImpl(uint32 diff) override;
 
-    void EventPlayerCapturedFlag(Player* Source, uint32 BgObjectType);
     void EventTeamLostPoint(Player* player, uint32 point);
     void EventTeamCapturedPoint(Player* player, TeamId teamId, uint32 point);
     void UpdatePointsCount();
@@ -423,10 +360,6 @@ private:
     EventMap _bgEvents;
     uint32 _honorTics;
     uint8 _ownedPointsCount[PVP_TEAMS_COUNT];
-    ObjectGuid _flagKeeperGUID;
-    ObjectGuid _droppedFlagGUID;
-    uint8 _flagState;
-    uint32 _flagCapturedObject;
     uint32 _configurableMaxTeamScore;
 };
 #endif
