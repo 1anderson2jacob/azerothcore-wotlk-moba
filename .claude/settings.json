@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(git pull *)",
+      "Bash(git fetch *)",
+      "Bash(git checkout *)",
+      "Bash(git switch *)",
+      "Bash(git restore *)",
+      "Bash(git reset *)",
+      "Bash(git stash *)",
+      "Bash(git tag *)",
+      "Bash(git branch *)",
+      "Bash(git merge *)",
+      "Bash(git rebase *)",
+      "Bash(git cherry-pick *)",
+      "Bash(git revert *)",
+      "Bash(git clean *)",
+      "Bash(git remote *)",
+      "Bash(./acore.sh *)",
+      "Bash(bash acore.sh *)",
+      "Bash(sh acore.sh *)",
+      "Bash(mysql *)",
+      "Bash(mysqladmin *)",
+      "Bash(brew *)",
+      "Bash(make install)",
+      "Bash(make install *)",
+      "Bash(sudo *)",
+      "Bash(rm *)",
+      "Edit(env/**)",
+      "Write(env/**)"
+    ]
+  }
+}

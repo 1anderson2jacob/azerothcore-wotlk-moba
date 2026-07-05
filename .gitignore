@@ -114,3 +114,7 @@ local.properties
 #  !modules/yourmodule
 #
 # ==================
+
+# fork: track custom scripts and SQL (override upstream ignores on lines 24-25)
+!/src/server/scripts/Custom/*
+!/data/sql/custom/*
