@@ -2,8 +2,6 @@
 
 A fork of [AzerothCore](https://github.com/azerothcore/azerothcore-wotlk) (WotLK 3.3.5a) that replaces Eye of the Storm with a custom MOBA-style battleground — lanes, attackable towers, and a destroy-the-base win condition, played on the existing Eye of the Storm map.
 
-> **Status: early development.** The custom battleground class is in place and the stock EotS flag system has been removed. Towers and MOBA win conditions are in progress.
-
 ## How it works
 
 Rather than patching client DBC files, this project **hijacks the Eye of the Storm battleground slot**: the client queues for EotS as normal, but the server runs a custom `BattlegroundMOBA` class instead of `BattlegroundEY`. No client modification is required to play.
@@ -14,7 +12,7 @@ A separate battleground ID (with a distributable client MPQ patch) is planned on
 
 - [x] Clone `BattlegroundEY` → `BattlegroundMOBA`, wire into `BattlegroundMgr` on the EotS slot
 - [x] Strip the netherstorm flag system
-- [ ] Strip the capture-point scoring system
+- [x] Strip the capture-point scoring system
 - [ ] Attackable towers (custom creatures with turret AI)
 - [ ] Win condition: destroy the enemy base tower
 - [ ] Lane creep waves
