@@ -34,7 +34,7 @@ struct npc_moba_tower : public ScriptedAI
                 DoCastVictim(SPELL_MOBA_TOWER_SHOOT, true);
             }
             else
-                me->AttackStop();
+                me->CombatStop();
 
             context.Repeat(1500ms);
         });
