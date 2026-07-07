@@ -13,7 +13,7 @@ A separate battleground ID (with a distributable client MPQ patch) is planned on
 - [x] Clone `BattlegroundEY` → `BattlegroundMOBA`, wire into `BattlegroundMgr` on the EotS slot
 - [x] Strip the netherstorm flag system
 - [x] Strip the capture-point scoring system
-- [ ] Attackable towers (custom creatures with turret AI)
+- [x] Attackable towers (custom creatures with turret AI)
 - [ ] Win condition: destroy the enemy base tower
 - [ ] Lane creep waves
 - [ ] Gold / itemization mid-match

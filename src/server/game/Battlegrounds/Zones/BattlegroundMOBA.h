@@ -39,8 +39,15 @@ enum BG_MOBA_CreatureTypes
 {
     BG_MOBA_SPIRIT_MAIN_ALLIANCE    = 0,
     BG_MOBA_SPIRIT_MAIN_HORDE       = 1,
+    BG_MOBA_TOWER_ALLIANCE          = 2,
+    BG_MOBA_TOWER_HORDE             = 3,
+    BG_MOBA_CREATURES_MAX           = 4
+};
 
-    BG_MOBA_CREATURES_MAX           = 2
+enum BG_MOBA_CreatureEntries
+{
+    BG_MOBA_ENTRY_TOWER_ALLIANCE    = 900000,
+    BG_MOBA_ENTRY_TOWER_HORDE       = 900001
 };
 
 enum BG_MOBA_ObjectTypes

@@ -106,6 +106,10 @@ bool BattlegroundMOBA::SetupBattleground()
     sg = sGraveyard->GetGraveyard(BG_MOBA_GRAVEYARD_MAIN_HORDE);
     AddSpiritGuide(BG_MOBA_SPIRIT_MAIN_HORDE, sg->x, sg->y, sg->z, 3.193953f, TEAM_HORDE);
 
+    // towers (placeholder positions: old Fel Reaver / Mage Tower plateaus)
+    AddCreature(BG_MOBA_ENTRY_TOWER_ALLIANCE, BG_MOBA_TOWER_ALLIANCE, 2284.48f, 1731.23f, 1189.99f, 2.89725f);
+    AddCreature(BG_MOBA_ENTRY_TOWER_HORDE,    BG_MOBA_TOWER_HORDE,    2044.28f, 1729.68f, 1189.96f, 0.017453f);
+
     for (uint32 i = BG_MOBA_OBJECT_DOOR_A; i < BG_MOBA_OBJECT_MAX; ++i)
         if (!BgObjects[i])
         {
@@ -113,10 +117,10 @@ bool BattlegroundMOBA::SetupBattleground()
             return false;
         }
 
-    for (uint32 i = BG_MOBA_SPIRIT_MAIN_ALLIANCE; i <= BG_MOBA_SPIRIT_MAIN_HORDE; ++i)
+    for (uint32 i = BG_MOBA_SPIRIT_MAIN_ALLIANCE; i < BG_MOBA_CREATURES_MAX; ++i)
         if (!BgCreatures[i])
         {
-            LOG_ERROR("sql.sql", "BattlegroundMOBA: Failed to spawn spirit guides Battleground not created!");
+            LOG_ERROR("sql.sql", "BattlegroundMOBA: creature slot {} failed to spawn, battleground not created!", i);
             return false;
         }
 
@@ -138,7 +142,6 @@ void BattlegroundMOBA::HandleKillPlayer(Player* player, Player* killer)
 
     Battleground::HandleKillPlayer(player, killer);
 }
-
 
 bool BattlegroundMOBA::UpdatePlayerScore(Player* player, uint32 type, uint32 value, bool doAddHonor)
 {
