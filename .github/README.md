@@ -14,9 +14,10 @@ A separate battleground ID (with a distributable client MPQ patch) is planned on
 - [x] Strip the netherstorm flag system
 - [x] Strip the capture-point scoring system
 - [x] Attackable towers (custom creatures with turret AI)
-- [ ] Win condition: destroy the enemy base tower
+- [x] Win condition: destroy the enemy base tower
 - [ ] Lane creep waves
 - [ ] Gold / itemization mid-match
+- [ ] Custom map/terrain
 - [ ] Standalone battleground ID via `BattlemasterList.dbc` patch (client MPQ distributed to players)
 
 ## Key changed files

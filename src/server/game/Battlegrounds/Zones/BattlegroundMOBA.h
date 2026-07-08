@@ -22,6 +22,7 @@
 #include "BattlegroundScore.h"
 #include "EventMap.h"
 #include "WorldStateDefines.h"
+#include <vector>
 
 enum BG_MOBA_ObjectEntry
 {
@@ -39,15 +40,7 @@ enum BG_MOBA_CreatureTypes
 {
     BG_MOBA_SPIRIT_MAIN_ALLIANCE    = 0,
     BG_MOBA_SPIRIT_MAIN_HORDE       = 1,
-    BG_MOBA_TOWER_ALLIANCE          = 2,
-    BG_MOBA_TOWER_HORDE             = 3,
-    BG_MOBA_CREATURES_MAX           = 4
-};
-
-enum BG_MOBA_CreatureEntries
-{
-    BG_MOBA_ENTRY_TOWER_ALLIANCE    = 900000,
-    BG_MOBA_ENTRY_TOWER_HORDE       = 900001
+    BG_MOBA_CREATURE_FIXED_MAX      = 2 // towers occupy dynamic slots starting here; see SetupBattleground()
 };
 
 enum BG_MOBA_ObjectTypes
@@ -60,6 +53,19 @@ enum BG_MOBA_ObjectTypes
 enum BG_MOBA_Score
 {
     BG_MOBA_EVENT_START_BATTLE            = 13180, // Achievement: Flurry
+};
+
+// Tracks a spawned tower's registry data: which team it belongs to, its
+// tier/guard dependency, and whether it's been destroyed. Populated from
+// `mod_moba_tower_data` (see MobaTowerData.h) in SetupBattleground().
+struct MobaTowerState
+{
+    ObjectGuid guid;
+    uint32 entry = 0;
+    TeamId team = TEAM_ALLIANCE;
+    uint8 tier = 0;
+    uint32 guardedByEntry = 0;
+    bool destroyed = false;
 };
 
 struct BattlegroundMOBAScore final : public BattlegroundScore
@@ -86,6 +92,7 @@ public:
     void RemovePlayer(Player* player) override;
     void HandleAreaTrigger(Player* player, uint32 trigger) override;
     void HandleKillPlayer(Player* player, Player* killer) override;
+    void HandleKillUnit(Creature* creature, Player* killer) override;
     GraveyardStruct const* GetClosestGraveyard(Player* player) override;
     bool SetupBattleground() override;
     void Init() override;
@@ -93,9 +100,12 @@ public:
     bool UpdatePlayerScore(Player* player, uint32 type, uint32 value, bool doAddHonor = true) override;
     void FillInitialWorldStates(WorldPackets::WorldState::InitWorldStates& packet) override;
 
+    std::vector<MobaTowerState>& GetTowers() { return _towers; }
+
 private:
     void PostUpdateImpl(uint32 diff) override;
 
     EventMap _bgEvents;
+    std::vector<MobaTowerState> _towers;
 };
 #endif

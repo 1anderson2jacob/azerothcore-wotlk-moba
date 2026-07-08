@@ -18,10 +18,12 @@
 // This is where scripts' loading functions should be declared:
 // void MyExampleScript()
 void AddSC_npc_moba_tower();
+void AddSC_moba_tower_aggro();
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
 void AddCustomScripts()
 {
     AddSC_npc_moba_tower();
+    AddSC_moba_tower_aggro();
 }
