@@ -22,3 +22,7 @@ INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`,
 VALUES
 (900000, 0, 27101, 3.0, 1, 0),
 (900001, 0, 18505, 2.0, 1, 0);
+
+UPDATE battleground_template SET AllianceStartLoc = 1103, HordeStartLoc = 1104 WHERE ID = 7;
+UPDATE game_graveyard SET x = 2387.529, y = 1587.426, z = 1174.763 WHERE ID = 1103;
+UPDATE game_graveyard SET x = 1942.9327, y = 1547.6229, z = 1176.458 WHERE ID = 1104;

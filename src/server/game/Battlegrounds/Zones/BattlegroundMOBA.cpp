@@ -96,19 +96,19 @@ void BattlegroundMOBA::HandleAreaTrigger(Player* player, uint32 trigger)
 bool BattlegroundMOBA::SetupBattleground()
 {
     // doors
-    AddObject(BG_MOBA_OBJECT_DOOR_A, BG_OBJECT_A_DOOR_EY_ENTRY, 2527.6f, 1596.91f, 1262.13f, -3.12414f, -0.173642f, -0.001515f, 0.98477f, -0.008594f, RESPAWN_IMMEDIATELY);
-    AddObject(BG_MOBA_OBJECT_DOOR_H, BG_OBJECT_H_DOOR_EY_ENTRY, 1803.21f, 1539.49f, 1261.09f, 3.14159f, 0.173648f, 0, 0.984808f, 0, RESPAWN_IMMEDIATELY);
+    AddObject(BG_MOBA_OBJECT_DOOR_A, BG_OBJECT_A_DOOR_EY_ENTRY, 2387.529f, 1587.426f, 1174.763f, 3.0222116f, 0.0f, 0.0f, 0.998219f, 0.059655f, RESPAWN_IMMEDIATELY);
+    AddObject(BG_MOBA_OBJECT_DOOR_H, BG_OBJECT_H_DOOR_EY_ENTRY, 1942.9327f, 1547.6229f, 1176.458f, 0.32122585f, 0.0f, 0.0f, 0.159923f, 0.987129f, RESPAWN_IMMEDIATELY);
 
     GraveyardStruct const* sg = nullptr;
     sg = sGraveyard->GetGraveyard(BG_MOBA_GRAVEYARD_MAIN_ALLIANCE);
-    AddSpiritGuide(BG_MOBA_SPIRIT_MAIN_ALLIANCE, sg->x, sg->y, sg->z, 3.124139f, TEAM_ALLIANCE);
+    AddSpiritGuide(BG_MOBA_SPIRIT_MAIN_ALLIANCE, sg->x, sg->y, sg->z, 3.0222116f, TEAM_ALLIANCE);
 
     sg = sGraveyard->GetGraveyard(BG_MOBA_GRAVEYARD_MAIN_HORDE);
-    AddSpiritGuide(BG_MOBA_SPIRIT_MAIN_HORDE, sg->x, sg->y, sg->z, 3.193953f, TEAM_HORDE);
+    AddSpiritGuide(BG_MOBA_SPIRIT_MAIN_HORDE, sg->x, sg->y, sg->z, 0.32122585f, TEAM_HORDE);
 
-    // towers (placeholder positions: old Fel Reaver / Mage Tower plateaus)
-    AddCreature(BG_MOBA_ENTRY_TOWER_ALLIANCE, BG_MOBA_TOWER_ALLIANCE, 2284.48f, 1731.23f, 1189.99f, 2.89725f);
-    AddCreature(BG_MOBA_ENTRY_TOWER_HORDE,    BG_MOBA_TOWER_HORDE,    2044.28f, 1729.68f, 1189.96f, 0.017453f);
+    // towers (mid-lane positions)
+    AddCreature(BG_MOBA_ENTRY_TOWER_ALLIANCE, BG_MOBA_TOWER_ALLIANCE, 2285.5596f, 1587.9965f, 1165.4397f, 3.2774656f);
+    AddCreature(BG_MOBA_ENTRY_TOWER_HORDE,    BG_MOBA_TOWER_HORDE,    2056.0195f, 1547.1702f, 1162.6882f, 0.21284086f);
 
     for (uint32 i = BG_MOBA_OBJECT_DOOR_A; i < BG_MOBA_OBJECT_MAX; ++i)
         if (!BgObjects[i])
