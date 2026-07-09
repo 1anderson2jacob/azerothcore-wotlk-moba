@@ -22,6 +22,7 @@
 #include "BattlegroundScore.h"
 #include "EventMap.h"
 #include "WorldStateDefines.h"
+#include "ObjectGuid.h"
 #include <vector>
 
 enum BG_MOBA_ObjectEntry
@@ -55,6 +56,12 @@ enum BG_MOBA_Score
     BG_MOBA_EVENT_START_BATTLE            = 13180, // Achievement: Flurry
 };
 
+// _bgEvents event IDs.
+enum BG_MOBA_Events
+{
+    EVENT_MOBA_SPAWN_WAVE = 1
+};
+
 // Tracks a spawned tower's registry data: which team it belongs to, its
 // tier/guard dependency, and whether it's been destroyed. Populated from
 // `mod_moba_tower_data` (see MobaTowerData.h) in SetupBattleground().
@@ -66,6 +73,16 @@ struct MobaTowerState
     uint8 tier = 0;
     uint32 guardedByEntry = 0;
     bool destroyed = false;
+};
+
+// Cached once in SetupBattleground() from mod_moba_creep_data: which entry
+// to spawn for each role, per team, so wave-spawn doesn't need to re-query.
+struct MobaWaveComposition
+{
+    uint32 meleeEntry = 0;
+    uint32 meleeEntry2 = 0;
+    uint32 casterEntry = 0;
+    uint32 siegeEntry = 0; // 0 = not configured, skip even on siege waves
 };
 
 struct BattlegroundMOBAScore final : public BattlegroundScore
@@ -102,10 +119,21 @@ public:
 
     std::vector<MobaTowerState>& GetTowers() { return _towers; }
 
+    // Shared by HandleKillUnit (player-attributed tower kills) and
+    // npc_moba_tower::JustDied (creature/creep-attributed tower kills) --
+    // see .github/MOBA_CREEP_ARCHITECTURE_PLAN.md for why both exist.
+    void OnTowerDestroyed(Creature* tower, TeamId winnerTeamId);
+
 private:
     void PostUpdateImpl(uint32 diff) override;
+    void SpawnWave(TeamId team, bool includeSiege);
+    void SpawnCreep(uint32 entry);
+    void FreezeAllCreeps();
 
     EventMap _bgEvents;
     std::vector<MobaTowerState> _towers;
+    MobaWaveComposition _waveComposition[2];
+    std::vector<ObjectGuid> _spawnedCreeps;
+    uint32 _waveCount = 0;
 };
 #endif

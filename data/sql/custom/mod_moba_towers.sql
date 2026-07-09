@@ -53,3 +53,8 @@ INSERT INTO `mod_moba_tower_data`
 VALUES
 (900000, 0, 0, 0, 2285.5596, 1587.9965, 1165.4397, 3.2774656, 40, 1500, 9053),
 (900001, 1, 0, 0, 2056.0195, 1547.1702, 1162.6882, 0.21284086, 40, 1500, 9053);
+
+
+-- Tower health: was 100x level-80 baseline (absurd). First-pass tuning to 8x --
+-- still a real objective, not a 2-second delete. Adjust after testing.
+UPDATE creature_template SET HealthModifier = 8 WHERE entry IN (900000, 900001);

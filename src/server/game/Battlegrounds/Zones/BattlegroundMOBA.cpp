@@ -28,7 +28,11 @@
 #include "WorldSession.h"
 #include "WorldStatePackets.h"
 #include "MobaTowerData.h"
+#include "MobaCreepData.h"
 #include "ObjectAccessor.h"
+#include "TemporarySummon.h"
+#include "WaypointMgr.h"
+#include "MotionMaster.h"
 #include <algorithm>
 
 void BattlegroundMOBAScore::BuildObjectivesBlock(WorldPacket& data)
@@ -55,6 +59,15 @@ void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
         while (uint32 eventId = _bgEvents.ExecuteEvent())
             switch (eventId)
             {
+                case EVENT_MOBA_SPAWN_WAVE:
+                {
+                    ++_waveCount;
+                    bool includeSiege = (_waveCount % 3 == 0);
+                    SpawnWave(TEAM_ALLIANCE, includeSiege);
+                    SpawnWave(TEAM_HORDE, includeSiege);
+                    _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(30000));
+                    break;
+                }
             }
     }
 }
@@ -72,6 +85,8 @@ void BattlegroundMOBA::StartingEventOpenDoors()
 
     // Achievement: Flurry
     StartTimedAchievement(ACHIEVEMENT_TIMED_TYPE_EVENT, BG_MOBA_EVENT_START_BATTLE);
+
+    _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(30000));
 }
 
 void BattlegroundMOBA::EndBattleground(TeamId winnerTeamId)
@@ -167,9 +182,38 @@ bool BattlegroundMOBA::SetupBattleground()
             return false;
         }
 
+    // creep wave composition (data-driven; see mod_moba_creep_data / MobaCreepData.h)
+    sMobaCreepDataStore->LoadIfNeeded();
+    for (MobaCreepConfig const& cfg : sMobaCreepDataStore->GetAll())
+    {
+        MobaWaveComposition& comp = _waveComposition[cfg.team];
+        switch (cfg.role)
+        {
+            case MOBA_CREEP_ROLE_MELEE:
+                if (!comp.meleeEntry)
+                    comp.meleeEntry = cfg.entry;
+                else
+                    comp.meleeEntry2 = cfg.entry;
+                break;
+            case MOBA_CREEP_ROLE_CASTER: comp.casterEntry = cfg.entry; break;
+            case MOBA_CREEP_ROLE_SIEGE:  comp.siegeEntry  = cfg.entry; break;
+        }
+    }
+
+    for (uint32 team = 0; team < 2; ++team)
+    {
+        if (!_waveComposition[team].meleeEntry || !_waveComposition[team].meleeEntry2 || !_waveComposition[team].casterEntry)
+        {
+            LOG_ERROR("sql.sql", "BattlegroundMOBA: team {} is missing a melee or caster entry in `mod_moba_creep_data`, battleground not created!", team);
+            return false;
+        }
+
+        if (!_waveComposition[team].siegeEntry)
+            LOG_WARN("sql.sql", "BattlegroundMOBA: team {} has no siege entry in `mod_moba_creep_data` -- siege waves will be skipped for that team.", team);
+    }
+
     return true;
 }
-
 
 void BattlegroundMOBA::Init()
 {
@@ -177,6 +221,7 @@ void BattlegroundMOBA::Init()
     Battleground::Init();
 
     _bgEvents.Reset();
+    _waveCount = 0;
 }
 
 void BattlegroundMOBA::HandleKillPlayer(Player* player, Player* killer)
@@ -192,43 +237,97 @@ void BattlegroundMOBA::HandleKillUnit(Creature* creature, Player* killer)
     if (GetStatus() != STATUS_IN_PROGRESS)
         return;
 
-    auto itr = std::find_if(_towers.begin(), _towers.end(), [&creature](MobaTowerState const& tower)
+    OnTowerDestroyed(creature, killer->GetTeamId());
+}
+
+void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId)
+{
+    if (GetStatus() != STATUS_IN_PROGRESS)
+        return;
+
+    auto itr = std::find_if(_towers.begin(), _towers.end(), [&tower](MobaTowerState const& t)
     {
-        return tower.guid == creature->GetGUID();
+        return t.guid == tower->GetGUID();
     });
 
-    if (itr == _towers.end())
+    if (itr == _towers.end() || itr->destroyed)
         return;
 
     itr->destroyed = true;
 
     // Unlock any towers this one was guarding.
-    for (MobaTowerState& tower : _towers)
+    for (MobaTowerState& other : _towers)
     {
-        if (tower.guardedByEntry != itr->entry || tower.destroyed)
+        if (other.guardedByEntry != itr->entry || other.destroyed)
             continue;
 
-        if (Creature* guarded = ObjectAccessor::GetCreature(*creature, tower.guid))
+        if (Creature* guarded = ObjectAccessor::GetCreature(*tower, other.guid))
             guarded->RemoveUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE));
     }
 
-    TeamId winnerTeamId = killer->GetTeamId();
     m_TeamScores[winnerTeamId]++;
     UpdateWorldState(winnerTeamId == TEAM_ALLIANCE ? WORLD_STATE_BATTLEGROUND_EY_ALLIANCE_RESOURCES : WORLD_STATE_BATTLEGROUND_EY_HORDE_RESOURCES,
         static_cast<uint32>(m_TeamScores[winnerTeamId]));
 
-    // Known limitation: only fires on player-attributed kills; once lane
-    // creeps exist and might land the killing blow, this won't fire for them.
     TeamId loserTeamId = itr->team;
-    bool anyTowersRemaining = std::any_of(_towers.begin(), _towers.end(), [loserTeamId](MobaTowerState const& tower)
+    bool anyTowersRemaining = std::any_of(_towers.begin(), _towers.end(), [loserTeamId](MobaTowerState const& t)
     {
-        return tower.team == loserTeamId && !tower.destroyed;
+        return t.team == loserTeamId && !t.destroyed;
     });
 
     if (!anyTowersRemaining)
+    {
+        FreezeAllCreeps();
         EndBattleground(winnerTeamId);
+    }
 }
 
+void BattlegroundMOBA::SpawnWave(TeamId team, bool includeSiege)
+{
+    MobaWaveComposition const& comp = _waveComposition[team];
+
+    SpawnCreep(comp.meleeEntry);
+    SpawnCreep(comp.meleeEntry2);
+    SpawnCreep(comp.casterEntry);
+
+    if (includeSiege && comp.siegeEntry)
+        SpawnCreep(comp.siegeEntry);
+}
+
+
+void BattlegroundMOBA::SpawnCreep(uint32 entry)
+{
+    MobaCreepConfig const* cfg = sMobaCreepDataStore->GetConfig(entry);
+    if (!cfg)
+        return;
+
+    WaypointPath const* path = sWaypointMgr->GetPath(cfg->pathId);
+    if (!path || path->Nodes.empty())
+        return;
+
+    WaypointNode const& start = path->Nodes.front();
+    Position pos(start.X, start.Y, start.Z);
+
+    if (TempSummon* summon = GetBgMap()->SummonCreature(entry, pos, nullptr, cfg->despawnMs))
+    {
+        summon->SetTempSummonType(TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT);
+        _spawnedCreeps.push_back(summon->GetGUID());
+    }
+}
+
+void BattlegroundMOBA::FreezeAllCreeps()
+{
+    for (ObjectGuid const& guid : _spawnedCreeps)
+    {
+        Creature* creep = GetBgMap()->GetCreature(guid);
+        if (!creep || !creep->IsAlive())
+            continue;
+
+        creep->CombatStop();
+        creep->SetReactState(REACT_PASSIVE);
+        creep->GetMotionMaster()->MoveIdle();
+    }
+}
 
 bool BattlegroundMOBA::UpdatePlayerScore(Player* player, uint32 type, uint32 value, bool doAddHonor)
 {

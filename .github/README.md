@@ -16,6 +16,7 @@ A separate battleground ID (with a distributable client MPQ patch) is planned on
 - [x] Attackable towers (custom creatures with turret AI)
 - [x] Win condition: destroy the enemy base tower
 - [ ] Lane creep waves
+- [ ] LoL-style individual, game-length-scaling resurrection timers (replaces shared-interval graveyard resurrection)
 - [ ] Gold / itemization mid-match
 - [ ] Custom map/terrain
 - [ ] Standalone battleground ID via `BattlemasterList.dbc` patch (client MPQ distributed to players)

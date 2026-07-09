@@ -7,6 +7,9 @@
 #include "npc_moba_tower.h"
 #include "ObjectAccessor.h"
 #include "UnitAI.h"
+#include "MobaCreepData.h"
+#include "BattlegroundMOBA.h"
+#include "Map.h"
 
 struct npc_moba_tower : public ScriptedAI
 {
@@ -52,6 +55,27 @@ struct npc_moba_tower : public ScriptedAI
 
         _lockedTarget = offender->GetGUID();
         _isAggroLocked = true;
+    }
+
+    // Handles the case HandleKillUnit can't: a lane creep (not a player or
+    // their pet) landing the killing blow. Player-attributed kills are
+    // already handled by BattlegroundMOBA::HandleKillUnit -- this only
+    // fires for the remaining case, never both.
+    void JustDied(Unit* killer) override
+    {
+        if (!killer || killer->GetCharmerOrOwnerPlayerOrPlayerItself())
+            return;
+
+        MobaCreepConfig const* creepCfg = sMobaCreepDataStore->GetConfig(killer->GetEntry());
+        if (!creepCfg)
+            return;
+
+        BattlegroundMap* bgMap = me->GetMap()->ToBattlegroundMap();
+        if (!bgMap)
+            return;
+
+        if (auto* moba = dynamic_cast<BattlegroundMOBA*>(bgMap->GetBG()))
+            moba->OnTowerDestroyed(me, creepCfg->team);
     }
 
 private:
