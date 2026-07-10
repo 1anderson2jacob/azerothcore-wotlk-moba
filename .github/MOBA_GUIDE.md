@@ -259,14 +259,20 @@ assuming a SQL-only change takes effect on the next queue.**
      creature_template` schema.
 3. Add a `creature_template_model` row (display ID from wherever you're
    borrowing the visual — doesn't have to be the same source as the stats).
-4. Add a `mod_moba_creep_data` row: `CreatureEntry`, `Team`, `Role`
+4. If the source creature has `creature_equip_template` rows, copy those
+   too (keep `ID` = 1 — summons auto-load equipment ID 1). Weapons are
+   NOT part of the `creature_template` full copy, and without them melee
+   swing unarmed — barely visible on some models.
+5. Add a `mod_moba_creep_data` row: `CreatureEntry`, `Team`, `Role`
    (0=melee/1=caster/2=siege), `AttackRange`/`AttackIntervalMs`/`AttackSpellId`
    (caster only), `WaypointPathId`, `DespawnMs`.
-5. If this is a second unit for an existing role/team (like the melee-right
+6. If this is a second unit for an existing role/team (like the melee-right
    duplicate), it needs its **own** `WaypointPathId` — one creature entry
    can't have two different default paths, since `mod_moba_creep_data` is
-   keyed one-row-per-entry.
-6. Apply the SQL, restart worldserver, `.debug bg`, queue, confirm.
+   keyed one-row-per-entry. Path IDs come from the generator's lockfile
+   (`apps/moba/lane_config.lock.json`): add a slot to the lane config, run
+   the generator, and wire the newly assigned IDs it prints.
+7. Apply the SQL, restart worldserver, `.debug bg`, queue, confirm.
 
 ## How to change wave cadence or composition
 
