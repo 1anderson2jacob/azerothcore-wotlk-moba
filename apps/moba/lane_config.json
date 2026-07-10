@@ -1,0 +1,28 @@
+{
+  "id_range": [900100, 900499],
+  "max_spacing": 5.0,
+  "output": "data/sql/custom/mod_moba_creep_paths.sql",
+  "scan_sql_dirs": ["data/sql/custom"],
+  "slots": [
+    { "name": "melee_left",  "lateral_offset": 3.0,  "longitudinal_offset": 6.0 },
+    { "name": "melee_right", "lateral_offset": -3.0, "longitudinal_offset": 6.0 },
+    { "name": "caster",      "lateral_offset": 0.0,  "longitudinal_offset": 0.0 },
+    { "name": "siege",       "lateral_offset": 0.0,  "longitudinal_offset": -6.0 }
+  ],
+  "lanes": [
+    {
+      "name": "mid",
+      "points": [
+        [2284.1414, 1587.9543, 1165.2423],
+        [2261.1958, 1584.4493, 1163.3425],
+        [2222.7446, 1574.2345, 1158.2905],
+        [2204.7146, 1575.0002, 1158.7102],
+        [2174.586, 1570.7351, 1159.9272],
+        [2148.8135, 1555.8337, 1158.4066],
+        [2104.891, 1557.5983, 1155.9646],
+        [2070.4463, 1547.5792, 1161.2843],
+        [2063.4924, 1546.4669, 1162.0603]
+      ]
+    }
+  ]
+}
