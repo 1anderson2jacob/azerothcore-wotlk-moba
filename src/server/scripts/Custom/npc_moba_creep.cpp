@@ -1,5 +1,7 @@
 #include "ScriptedCreature.h"
 #include "ScriptMgr.h"
+#include "Battleground.h"
+#include "Map.h"
 #include "MobaCreepData.h"
 #include "MotionMaster.h"
 
@@ -15,6 +17,15 @@ struct npc_moba_creep : public ScriptedAI
             LOG_ERROR("scripts.ai", "npc_moba_creep: no mod_moba_creep_data row for entry {}.", me->GetEntry());
             return;
         }
+
+        // Once the match is over the creep must stay frozen where
+        // FreezeAllCreeps() left it. Reset() re-fires on every evade (see
+        // below), and the re-arm guard beneath would otherwise restart the
+        // lane path -- FreezeAllCreeps() replaced the idle-slot waypoint
+        // generator with MoveIdle, so the slot-type check no longer holds
+        // after the freeze.
+        if (MatchEnded())
+            return;
 
         // Reset() also re-fires on every evade (CreatureAI::EnterEvadeMode calls
         // it immediately, synchronously, right after queuing the home-return
@@ -39,6 +50,9 @@ struct npc_moba_creep : public ScriptedAI
 
     void UpdateAI(uint32 diff) override
     {
+        if (MatchEnded())
+            return;
+
         if (_cfg && _cfg->role == MOBA_CREEP_ROLE_CASTER)
         {
             scheduler.Update(diff);
@@ -57,7 +71,31 @@ struct npc_moba_creep : public ScriptedAI
             ScriptedAI::AttackStart(victim);
     }
 
+    void EnterEvadeMode(EvadeReason why) override
+    {
+        // Post-match evade (e.g. a player poking a frozen creep, or combat
+        // unwinding right after EndBattleground): stay put. The default
+        // would MoveTargetedHome() to the stale last-reached waypoint node
+        // and then re-run Reset() -- both wrong once the match is over.
+        if (MatchEnded())
+        {
+            me->CombatStop(true);
+            me->GetMotionMaster()->MoveIdle();
+            return;
+        }
+
+        ScriptedAI::EnterEvadeMode(why);
+    }
+
 private:
+    bool MatchEnded() const
+    {
+        if (BattlegroundMap* bgMap = me->GetMap()->ToBattlegroundMap())
+            if (Battleground* bg = bgMap->GetBG())
+                return bg->GetStatus() != STATUS_IN_PROGRESS;
+        return false;
+    }
+
     void CastAtVictim(TaskContext context)
     {
         if (Unit* victim = me->GetVictim())

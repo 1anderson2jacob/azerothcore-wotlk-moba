@@ -114,7 +114,7 @@ assuming a SQL-only change takes effect on the next queue.**
   instant the match ends. New wave spawning already stops on its own
   (`PostUpdateImpl`'s event loop is gated on `STATUS_IN_PROGRESS`, which
   `EndBattleground` clears immediately), so this only had to handle
-  *existing* creeps.
+  *existing* creeps. The creep AI also suppresses `Reset()`/evade behavior once the match is over (`MatchEnded()`), because a post-freeze evade would otherwise re-arm the lane path — see the evade gotcha below.
 - **Creature stats — full-copy philosophy**: all 8 creep entries (melee ×2
   per team, caster, siege) are **full copies of every `creature_template`
   column** from a real reference creature (Battleguard for melee, Dalaran
@@ -440,3 +440,13 @@ table.
 - If behavior contradicts what the code says it should do, `grep` to
   confirm what's actually on disk before going deeper — bitten once by an
   unsaved editor buffer.
+- **Evade undoes "stop this creature" logic.** `CreatureAI::EnterEvadeMode`
+  synchronously calls `MoveTargetedHome()` (run back to the stale
+  last-reached waypoint node) and then `Reset()` — so freezing a creature
+  (e.g. `FreezeAllCreeps()` at match end) does not survive a later evade
+  unless the AI itself knows to stay down: a creep still in combat at the
+  freeze (or attacked afterward) will evade and un-freeze itself. This
+  shipped as a real bug once. `npc_moba_creep` guards `Reset()`,
+  `UpdateAI()`, and `EnterEvadeMode` behind a `MatchEnded()` check (BG
+  status no longer `STATUS_IN_PROGRESS`) — reuse that pattern for any
+  future "stop everything" behavior.
