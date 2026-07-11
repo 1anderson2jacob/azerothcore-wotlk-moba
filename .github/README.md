@@ -27,6 +27,7 @@ A separate battleground ID (with a distributable client MPQ patch) is planned on
 |---|---|
 | `src/server/game/Battlegrounds/Zones/BattlegroundMOBA.{h,cpp}` | New battleground class (cloned from EotS, being reshaped) |
 | `src/server/game/Battlegrounds/BattlegroundMgr.cpp` | `BATTLEGROUND_EY` factory entries point to `BattlegroundMOBA` |
+| `src/server/game/Movement/MotionMaster.{h,cpp}` | Added public `MoveWaypoint(WaypointPath&, bool)` overload (mid-route path resume for lane creeps) |
 
 ## Building (macOS, Apple Silicon)
 

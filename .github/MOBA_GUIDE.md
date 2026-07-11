@@ -101,6 +101,19 @@ assuming a SQL-only change takes effect on the next queue.**
   `AttackStartCaster(victim, range)` instead of the default (which would
   otherwise close to melee range like a normal mob) — holds at their
   configured cast range instead.
+- **Leashing — lane corridor, no run-back (LoL-style)**: a creep only
+  attacks players within 40 yd of its own lane (`MOBA_CREEP_LANE_CORRIDOR`
+  in `npc_moba_creep.cpp`, measured to the nearest node of its waypoint
+  path — deliberately NOT to home position, see gotchas). Post-combat
+  there is no WoW-style run-back: the creep resumes its lane from the
+  node nearest to where combat ended, and never behind the furthest node
+  it already reached (waves can't be walked backwards for free;
+  re-dragging by actively attacking still works, as in LoL). Damage
+  persists between fights (`RegenHealth = 0`), and lane paths are
+  non-repeating — a creep that reaches the enemy end stands and fights
+  there instead of walking the lane home. Mid-route resume uses a
+  fork-added engine API, `MotionMaster::MoveWaypoint(WaypointPath&, bool)`
+  (the id-based overload can only start at node 1).
 - **Win condition tie-in**: `npc_moba_tower::JustDied` checks whether the
   killer is a non-player creature (`killer->GetCharmerOrOwnerPlayerOrPlayerItself()`
   is null) and, if the killer is a registered creep, calls the same
@@ -304,6 +317,14 @@ Full config/lockfile reference: `apps/moba/README.md`.
    `creature_template` directly.
 3. Apply the SQL, restart worldserver, `.debug bg`, queue, confirm.
 
+## How to change the lane-corridor width (creep anti-kite leash)
+
+1. Edit `MOBA_CREEP_LANE_CORRIDOR` at the top of
+   `src/server/scripts/Custom/npc_moba_creep.cpp` (yards from the lane;
+   the self-evade safety check adds +15 headroom on top of it, and the
+   rule gates player targets only — creeps/towers are always attackable).
+2. Build, install & test (see above) — this is a C++ change.
+
 ## How to make a creep's attack instant/free vs. a real cast
 
 1. In `npc_moba_creep.cpp`'s `CastAtVictim`, the call is
@@ -386,6 +407,8 @@ table.
 | Custom creep entry range | 900010-900017 (melee ×2/team, caster, siege) |
 | Custom waypoint path ID range | 900100-900122 (base lanes + per-formation-slot paths) |
 | Wave cadence | Every 30s; every 3rd wave adds a siege unit |
+| Creep lane corridor | 40 yd from lane, players only; +15 yd self-evade headroom |
+| Creep health regen | RegenHealth = 0 — damage persists between fights |
 
 ## Known gotchas (not tied to one recipe)
 
@@ -406,17 +429,36 @@ table.
   them to hold formation; they'll all walk to that first node and collide.
   Use separate paths per formation slot instead (see the creep formation
   note above).
-- **Leash radius vs. waypoint node spacing**: a creature's leash check
-  (`Creature::CanCreatureAttack`) compares current position against its
-  *home position*, which only updates when a waypoint-following creature
-  reaches a node — not continuously while walking between them. With nodes
-  spaced too far apart (we originally used ~19 yards, that was too much),
-  a creature mid-fight or mid-chase can silently drift more than
-  `CONFIG_CREATURE_LEASH_RADIUS` (30 yards, global server default) from its
-  stale last-node home position, causing it to **silently refuse to
-  re-engage anything** even when a hostile is right next to it — no error,
-  no log, it just walks away. Keep waypoint nodes close (~5 yards) to avoid
-  this.
+- **Don't anchor logic to a waypoint-walker's home position.** On this
+  revision `WaypointMovementGenerator::DoUpdate` stamps home = the
+  creature's *current position* on every moving tick (plus on node
+  arrivals) — "home" is wherever the creature last walked, not a stable
+  lane anchor. A corridor/leash check measured from home follows the
+  creature wherever a player drags it (shipped as a real bug: the check
+  re-passed after every ~30 yd hop, all the way to the map edge). Measure
+  against the path geometry instead (`DistanceFromLane2d` in
+  `npc_moba_creep.cpp`). Dense (~5 yd) waypoint nodes still matter: the
+  engine's own leash checks anchor to waypoint-generator positions, and
+  sparse nodes leave those anchors far from the creature.
+- **The engine's 30 yd leash check is skipped while combat stays
+  "fresh".** `Creature::CanCreatureAttack` deliberately allows kiting:
+  taking/dealing damage, being within melee range, and failing to reach
+  the target all refresh a ~17 s extension window during which the
+  home-distance check never runs — a fleeing player at run speed keeps it
+  refreshed indefinitely. That's why creeps enforce their own corridor in
+  `CanAIAttack`, which `CanCreatureAttack` consults *before* the
+  extension window.
+- **A chase does not end just because the target became invalid.**
+  `Creature::SelectVictim` can return null *without* evading or stopping
+  the attack (e.g. while anything still has the creature on its threat
+  list), leaving the chase running with a stale victim. Never assume
+  "target unattackable ⇒ evade fires."
+- **`LOG_INFO` in a custom log category is silently dropped.**
+  `Logger.root` in worldserver.conf is ERROR-level; only categories with
+  explicit `Logger.<name>` lines (like `server.*`) pass INFO. When adding
+  debug logging, also add e.g. `Logger.bg.battleground=4,Console Server`
+  to worldserver.conf — nothing appears otherwise (cost us a build cycle
+  to discover).
 - `BgObjects` (doors) and the 2 fixed spirit-guide slots are still sized
   by a contiguous enum — towers/creeps are not part of that (towers are a
   runtime-sized range from `mod_moba_tower_data`'s row count; creeps are

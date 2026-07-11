@@ -31,32 +31,32 @@ VALUES
 -- Melee, from 2279/2280 'Battleguard'
 (900010,0,0,0,0,0,'Alliance Footman','MOBA Minion',NULL,0,80,80,0,84,0,
  1.2,1.14286,1,1,20,0,0,1,2000,2000,1,1,1,0,2048,0,0,7,0,0,0,0,0,
- 0,0,0,'',0,1,0.15,1,0.25,1,0,0,1,0,0,'npc_moba_creep',0),
+ 0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,0,'npc_moba_creep',0),
 (900016,0,0,0,0,0,'Alliance Footman','MOBA Minion',NULL,0,80,80,0,84,0,
  1.2,1.14286,1,1,20,0,0,1,2000,2000,1,1,1,0,2048,0,0,7,0,0,0,0,0,
- 0,0,0,'',0,1,0.15,1,0.25,1,0,0,1,0,0,'npc_moba_creep',0),
+ 0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,0,'npc_moba_creep',0),
 (900011,0,0,0,0,0,'Horde Grunt','MOBA Minion',NULL,0,80,80,0,83,0,
  1.2,1.14286,1,1,20,0,0,1,2000,2000,1,1,1,0,2048,0,0,7,0,0,0,0,0,
- 0,0,0,'',0,1,0.15,1,0.25,1,0,0,1,0,0,'npc_moba_creep',0),
+ 0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,0,'npc_moba_creep',0),
 (900017,0,0,0,0,0,'Horde Grunt','MOBA Minion',NULL,0,80,80,0,83,0,
  1.2,1.14286,1,1,20,0,0,1,2000,2000,1,1,1,0,2048,0,0,7,0,0,0,0,0,
- 0,0,0,'',0,1,0.15,1,0.25,1,0,0,1,0,0,'npc_moba_creep',0),
+ 0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,0,'npc_moba_creep',0),
 -- Caster, from 1914 'Dalaran Mage' / 11683 'Warsong Shaman'
 (900012,0,0,0,0,0,'Alliance Mage','MOBA Minion',NULL,0,80,80,0,84,0,
  1,1.14286,1,1,18,0,0,1,2000,2000,1,1,8,0,2048,0,0,7,0,0,0,0,0,
- 0,12,38,'',1,1,0.15,1,0.25,1,0,0,1,0,0,'npc_moba_creep',0),
+ 0,12,38,'',1,1,0.15,1,0.25,1,0,0,0,0,0,'npc_moba_creep',0),
 (900013,0,0,0,0,0,'Horde Shaman','MOBA Minion',NULL,0,80,80,0,83,0,
  1,1.14286,1,1,20,0,0,1,2000,2000,1,1,8,32768,2048,0,0,7,0,0,0,0,0,
- 0,37,53,'',0,1,0.15,1,0.25,1,0,0,1,0,0,'npc_moba_creep',0),
+ 0,37,53,'',0,1,0.15,1,0.25,1,0,0,0,0,0,'npc_moba_creep',0),
 -- Siege, from 34775 'Demolisher' (npcflag/VehicleId zeroed -- mount/vehicle baggage;
--- movementId/CreatureImmunitiesId zeroed -- Demolisher-specific, not confirmed vehicle-safe;
--- RegenHealth set to 1 for consistency, overriding the vehicle default of 0)
+-- movementId/CreatureImmunitiesId zeroed -- Demolisher-specific, not confirmed vehicle-safe)
+-- RegenHealth 0 on all creeps: LoL-style, damage persists between fights
 (900014,0,0,0,0,0,'Alliance Demolisher','MOBA Minion',NULL,0,80,80,0,84,0,
  1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16384,2048,0,0,9,131080,0,0,0,0,
- 0,0,0,'',0,1,0.3,1,0.25,1,0,0,1,0,0,'npc_moba_creep',0),
+ 0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,0,'npc_moba_creep',0),
 (900015,0,0,0,0,0,'Horde Demolisher','MOBA Minion',NULL,0,80,80,0,83,0,
  1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16384,2048,0,0,9,131080,0,0,0,0,
- 0,0,0,'',0,1,0.3,1,0.25,1,0,0,1,0,0,'npc_moba_creep',0);
+ 0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,0,'npc_moba_creep',0);
 
 DELETE FROM `creature_template_model` WHERE `CreatureID` IN (900010, 900011, 900012, 900013, 900014, 900015, 900016, 900017);
 INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)

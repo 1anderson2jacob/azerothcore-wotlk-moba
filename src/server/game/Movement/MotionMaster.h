@@ -29,6 +29,7 @@
 
 class MovementGenerator;
 class Unit;
+struct WaypointPath;
 
 // Creature Entry ID used for waypoints show, visible only for GMs
 #define VISUAL_WAYPOINT 1
@@ -263,6 +264,7 @@ public:
     void MoveTaxiFlight(uint32 path, uint32 pathnode);
     void MoveDistract(uint32 time);
     void MoveWaypoint(uint32 path_id, bool repeatable, PathSource pathSource = PathSource::WAYPOINT_MGR);
+    void MoveWaypoint(WaypointPath& path, bool repeatable);
     void MoveRotate(uint32 time, RotateDirection direction);
 
     [[nodiscard]] MovementGeneratorType GetCurrentMovementGeneratorType() const;

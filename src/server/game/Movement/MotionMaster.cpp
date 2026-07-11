@@ -925,6 +925,24 @@ void MotionMaster::MoveWaypoint(uint32 path_id, bool repeatable, PathSource path
 }
 
 /**
+ * @brief Move over a caller-supplied waypoint path instead of one loaded
+ * from the DB by id. The path must outlive the movement -- the generator
+ * stores a reference, not a copy. Lets scripts resume a path mid-route,
+ * which the id-based overload cannot do (it always starts at node 1).
+ */
+void MotionMaster::MoveWaypoint(WaypointPath& path, bool repeatable)
+{
+    if (_owner->HasUnitFlag(UNIT_FLAG_DISABLE_MOVE))
+        return;
+
+    Mutate(new WaypointMovementGenerator<Creature>(path, repeatable), MOTION_SLOT_IDLE);
+
+    LOG_DEBUG("movement.motionmaster", "{} ({}) start moving over supplied path (Id:{}, repeatable: {})",
+        _owner->IsPlayer() ? "Player" : "Creature", _owner->GetGUID().ToString(), path.Id, repeatable ? "YES" : "NO");
+}
+
+
+/**
  * @brief Rotate the unit. You can specify the time of the rotation.
  */
 void MotionMaster::MoveRotate(uint32 time, RotateDirection direction)
