@@ -1,9 +1,16 @@
 # MOBA lane tooling
 
-Generators for the MOBA battleground's data-driven content. Currently one
-tool: `gen_creep_paths.py`, which turns a small set of walked lane points
-into the full densified, formation-offset `waypoint_data` SQL that lane
-creeps follow. (A creep-roster generator is planned next.)
+Generators for the MOBA battleground's data-driven content. Both follow
+the same pattern: a human-owned `*_config.json` you edit freely, a
+machine-owned `*.lock.json` that pins auto-assigned IDs forever (never
+hand-edit, always commit), and a generated SQL file nothing should
+hand-edit.
+
+- `gen_creep_paths.py` — walked lane points → densified,
+  formation-offset `waypoint_data` SQL (`mod_moba_creep_paths.sql`).
+- `gen_creep_roster.py` — per-creep choices + source-creature stat dumps
+  → the full creep SQL (`mod_moba_creeps.sql`: `creature_template`,
+  models, equipment, and the `mod_moba_creep_data` config table).
 
 ## Workflow: (re)defining a lane
 
@@ -63,3 +70,43 @@ Copy `gen_creep_paths.py` + `lane_config.example.json`, rename the example
 to `lane_config.json`, adjust `id_range`/`scan_sql_dirs`/`output` to the
 project's conventions, and fill in real lanes. The lockfile is created on
 first run.
+
+## Workflow: re-tuning an existing creep (`gen_creep_roster.py`)
+
+1. Edit its entry in `creep_config.json` (modifiers, level, spell,
+   equipment, display, rank, ...).
+2. From the repo root: `python3 apps/moba/gen_creep_roster.py`
+3. Apply the SQL to `acore_world`, fully restart worldserver.
+
+Ad-hoc `UPDATE`s against the DB are fine for live experimentation, but
+record the final values in `creep_config.json` — the generated file is
+the source of truth, and the next apply reverts anything not in it.
+
+## Workflow: adding a new creep type
+
+1. Dump the source creature whose stats you're basing it on:
+   `mysql -E -u acore -pacore acore_world -e "SELECT * FROM creature_template WHERE entry=<id>" > apps/moba/sources/creature_template_<id>.txt`
+   (`apps/moba/sources/` holds these verbatim dumps as committed,
+   immutable reference data.)
+2. Add a block to `creep_config.json`'s `creeps` list (copy a similar
+   role's). `lane`/`slot` must exist in the lane lockfile — for a
+   brand-new formation slot, add it to `lane_config.json` and run
+   `gen_creep_paths.py` first. Team 0 uses the slot's `forward` path,
+   team 1 `reverse`.
+3. Run the generator — it auto-assigns and locks a `creature_template`
+   entry, and warns if the wave composition deviates from what
+   `BattlegroundMOBA` expects (exactly 2 melee + 1 caster per team,
+   siege optional).
+4. Apply the SQL, fully restart worldserver.
+
+The generator enforces the override checklist from
+`.github/MOBA_GUIDE.md` in code so it can't be forgotten:
+`AIName`/`ScriptName`, loot columns, `npcflag`, `VehicleId`,
+difficulty-entry references and `IconName` cleared, `RegenHealth = 0`
+(damage persists, LoL-style), faction from team,
+`minlevel = maxlevel = level`. An optional per-creep `"rank"` overrides
+the source creature's rank (siege ships with 1 = elite).
+
+`creep_config.lock.json` follows the same rules as the lane lockfile:
+machine-owned, committed, never hand-edited — deleting it makes the next
+run assign fresh entries and orphans everything already in the DB.

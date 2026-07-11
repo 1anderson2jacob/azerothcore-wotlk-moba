@@ -223,6 +223,11 @@ def sql_rows(path_id, points):
 
 
 def emit_sql(config_path, generated):
+    try:
+        config_path = config_path.resolve().relative_to(Path.cwd())
+    except ValueError:
+        pass  # config outside the repo -- keep the path as given
+
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE — do not hand-edit.",

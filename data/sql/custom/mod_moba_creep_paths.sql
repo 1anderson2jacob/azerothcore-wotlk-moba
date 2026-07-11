@@ -1,6 +1,6 @@
 -- ============================================================
 -- GENERATED FILE — do not hand-edit.
--- Produced by apps/moba/gen_creep_paths.py from /Users/jacobanderson/code/azerothcore-wotlk/apps/moba/lane_config.json.
+-- Produced by apps/moba/gen_creep_paths.py from apps/moba/lane_config.json.
 -- Re-running the generator recreates this file with the same path
 -- IDs (persisted in the lockfile next to the config).
 -- ============================================================
