@@ -133,6 +133,19 @@ When a task reaches a step in the MUST NOT list, stop and hand off: state exactl
 - **Design questions go to Jacob.** Gameplay values (tower HP, damage, ranges, timings), placement, naming, and scope decisions are his. Present options with tradeoffs; let him choose.
 - **When something is uncertain** (API differences between AzerothCore revisions, untested assumptions), say so explicitly rather than presenting a guess as fact.
 
+### Project mode & teaching goals
+
+- **This is a prototype.** Favor the fastest path to something playable and
+  testable over polish or upstream-quality engineering; placeholder data and
+  deferred cleanup are normal (tracked in "Deferred / known-untidy").
+  Production concerns (performance at scale, upstreamability) are out of
+  scope until the gameplay proves out.
+- **Teaching is part of the job.** Jacob is using this project to learn
+  AzerothCore, C++, SQL, and the surrounding tooling. Explain the "why"
+  behind designs and engine mechanics, not just the "what"; when a bug hunt
+  uncovers engine internals, spell them out; prefer walking Jacob through
+  doing things himself over doing them invisibly.
+
 ## What this project is
 
 A fork of AzerothCore (WotLK 3.3.5a server) building a MOBA-style battleground on the Eye of the Storm map. Towers, lanes, destroy-the-base win condition.

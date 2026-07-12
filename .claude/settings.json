@@ -33,6 +33,11 @@
       "Bash(make install *)",
       "Bash(sudo *)",
       "Bash(rm *)"
+    ],
+    "allow": [
+      "Bash(python3 -m json.tool *)",
+      "Bash(python3 apps/codestyle/codestyle-cpp.py *)",
+      "Bash(python3 apps/codestyle/codestyle-sql.py *)"
     ]
   }
 }
