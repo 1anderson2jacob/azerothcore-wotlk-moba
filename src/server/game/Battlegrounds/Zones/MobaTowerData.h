@@ -26,6 +26,7 @@
 struct MobaTowerConfig
 {
     uint32 entry = 0;
+    uint32 map = 0;
     TeamId team = TEAM_ALLIANCE;
     uint8 tier = 0;
     uint32 guardedByEntry = 0;
@@ -48,7 +49,7 @@ public:
 
     void LoadIfNeeded();
     MobaTowerConfig const* GetConfig(uint32 entry) const;
-    std::vector<MobaTowerConfig> const& GetAll() const { return _configs; }
+    std::vector<MobaTowerConfig> GetForMap(uint32 mapId) const;
 
 private:
     MobaTowerDataStore() = default;

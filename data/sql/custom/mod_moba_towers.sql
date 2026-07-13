@@ -35,6 +35,7 @@ UPDATE game_graveyard SET x = 1942.9327, y = 1547.6229, z = 1176.458 WHERE ID = 
 DROP TABLE IF EXISTS `mod_moba_tower_data`;
 CREATE TABLE `mod_moba_tower_data` (
     `CreatureEntry`    INT UNSIGNED NOT NULL PRIMARY KEY,
+    `Map`              INT UNSIGNED NOT NULL,               -- BG map id (566 = hijacked EotS)
     `Team`             TINYINT UNSIGNED NOT NULL,           -- TeamId: 0 = Alliance, 1 = Horde
     `Tier`             TINYINT UNSIGNED NOT NULL DEFAULT 0,
     `GuardedByEntry`   INT UNSIGNED NOT NULL DEFAULT 0,      -- 0 = none / always vulnerable
@@ -49,10 +50,10 @@ CREATE TABLE `mod_moba_tower_data` (
 
 DELETE FROM `mod_moba_tower_data` WHERE `CreatureEntry` IN (900000, 900001);
 INSERT INTO `mod_moba_tower_data`
-(`CreatureEntry`, `Team`, `Tier`, `GuardedByEntry`, `PosX`, `PosY`, `PosZ`, `Orientation`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`)
+(`CreatureEntry`, `Map`, `Team`, `Tier`, `GuardedByEntry`, `PosX`, `PosY`, `PosZ`, `Orientation`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`)
 VALUES
-(900000, 0, 0, 0, 2285.5596, 1587.9965, 1165.4397, 3.2774656, 40, 1500, 9053),
-(900001, 1, 0, 0, 2056.0195, 1547.1702, 1162.6882, 0.21284086, 40, 1500, 9053);
+(900000, 566, 0, 0, 0, 2285.5596, 1587.9965, 1165.4397, 3.2774656, 40, 1500, 9053),
+(900001, 566, 1, 0, 0, 2056.0195, 1547.1702, 1162.6882, 0.21284086, 40, 1500, 9053);
 
 
 -- Tower health: was 100x level-80 baseline (absurd). First-pass tuning to 8x --

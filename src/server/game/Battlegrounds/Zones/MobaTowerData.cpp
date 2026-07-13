@@ -36,7 +36,7 @@ void MobaTowerDataStore::LoadIfNeeded()
 
     QueryResult result = WorldDatabase.Query(
         "SELECT CreatureEntry, Team, Tier, GuardedByEntry, PosX, PosY, PosZ, Orientation, "
-        "AttackRange, AttackIntervalMs, AttackSpellId FROM mod_moba_tower_data ORDER BY Team, Tier, CreatureEntry");
+        "AttackRange, AttackIntervalMs, AttackSpellId, Map FROM mod_moba_tower_data ORDER BY Team, Tier, CreatureEntry");
 
     if (!result)
     {
@@ -62,6 +62,7 @@ void MobaTowerDataStore::LoadIfNeeded()
         cfg.range          = fields[8].Get<float>();
         cfg.intervalMs     = fields[9].Get<uint32>();
         cfg.spellId        = fields[10].Get<uint32>();
+        cfg.map            = fields[11].Get<uint32>();
 
         _configs.push_back(cfg);
     } while (result->NextRow());
@@ -77,4 +78,13 @@ MobaTowerConfig const* MobaTowerDataStore::GetConfig(uint32 entry) const
 {
     auto itr = _byEntry.find(entry);
     return itr != _byEntry.end() ? itr->second : nullptr;
+}
+
+std::vector<MobaTowerConfig> MobaTowerDataStore::GetForMap(uint32 mapId) const
+{
+    std::vector<MobaTowerConfig> result;
+    for (MobaTowerConfig const& cfg : _configs)
+        if (cfg.map == mapId)
+            result.push_back(cfg);
+    return result;
 }

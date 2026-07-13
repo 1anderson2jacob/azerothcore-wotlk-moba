@@ -18,7 +18,7 @@ void MobaCreepDataStore::LoadIfNeeded()
     _loaded = true;
 
     QueryResult result = WorldDatabase.Query(
-        "SELECT CreatureEntry, Team, Role, AttackRange, AttackIntervalMs, AttackSpellId, WaypointPathId, DespawnMs "
+        "SELECT CreatureEntry, Team, Role, AttackRange, AttackIntervalMs, AttackSpellId, WaypointPathId, DespawnMs, Map "
         "FROM mod_moba_creep_data ORDER BY Team, Role, CreatureEntry");
 
     if (!result)
@@ -42,6 +42,7 @@ void MobaCreepDataStore::LoadIfNeeded()
         cfg.spellId    = fields[5].Get<uint32>();
         cfg.pathId     = fields[6].Get<uint32>();
         cfg.despawnMs  = fields[7].Get<uint32>();
+        cfg.map        = fields[8].Get<uint32>();
 
         _configs.push_back(cfg);
     } while (result->NextRow());
@@ -57,4 +58,13 @@ MobaCreepConfig const* MobaCreepDataStore::GetConfig(uint32 entry) const
 {
     auto itr = _byEntry.find(entry);
     return itr != _byEntry.end() ? itr->second : nullptr;
+}
+
+std::vector<MobaCreepConfig> MobaCreepDataStore::GetForMap(uint32 mapId) const
+{
+    std::vector<MobaCreepConfig> result;
+    for (MobaCreepConfig const& cfg : _configs)
+        if (cfg.map == mapId)
+            result.push_back(cfg);
+    return result;
 }

@@ -121,10 +121,10 @@ bool BattlegroundMOBA::SetupBattleground()
 {
     sMobaTowerDataStore->LoadIfNeeded();
     sMobaResurrectionDataStore->LoadIfNeeded();
-    std::vector<MobaTowerConfig> const& towerConfigs = sMobaTowerDataStore->GetAll();
+    std::vector<MobaTowerConfig> towerConfigs = sMobaTowerDataStore->GetForMap(GetMapId());
     if (towerConfigs.empty())
     {
-        LOG_ERROR("sql.sql", "BattlegroundMOBA: `mod_moba_tower_data` has no rows, battleground not created!");
+        LOG_ERROR("sql.sql", "BattlegroundMOBA: `mod_moba_tower_data` has no rows for map {}, battleground not created!", GetMapId());
         return false;
     }
 
@@ -178,7 +178,7 @@ bool BattlegroundMOBA::SetupBattleground()
 
     // creep wave composition (data-driven; see mod_moba_creep_data / MobaCreepData.h)
     sMobaCreepDataStore->LoadIfNeeded();
-    for (MobaCreepConfig const& cfg : sMobaCreepDataStore->GetAll())
+    for (MobaCreepConfig const& cfg : sMobaCreepDataStore->GetForMap(GetMapId()))
     {
         MobaWaveComposition& comp = _waveComposition[cfg.team];
         switch (cfg.role)
@@ -198,12 +198,12 @@ bool BattlegroundMOBA::SetupBattleground()
     {
         if (!_waveComposition[team].meleeEntry || !_waveComposition[team].meleeEntry2 || !_waveComposition[team].casterEntry)
         {
-            LOG_ERROR("sql.sql", "BattlegroundMOBA: team {} is missing a melee or caster entry in `mod_moba_creep_data`, battleground not created!", team);
+            LOG_ERROR("sql.sql", "BattlegroundMOBA: map {} team {} is missing a melee or caster entry in `mod_moba_creep_data`, battleground not created!", GetMapId(), team);
             return false;
         }
 
         if (!_waveComposition[team].siegeEntry)
-            LOG_WARN("sql.sql", "BattlegroundMOBA: team {} has no siege entry in `mod_moba_creep_data` -- siege waves will be skipped for that team.", team);
+            LOG_WARN("sql.sql", "BattlegroundMOBA: map {} team {} has no siege entry in `mod_moba_creep_data` -- siege waves will be skipped for that team.", GetMapId(), team);
     }
 
     return true;

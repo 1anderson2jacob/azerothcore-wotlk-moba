@@ -34,6 +34,8 @@ tier/guard dependency, attack range/interval/spell all live in
 `MobaTowerDataStore`/`MobaCreepDataStore`. This means most tuning is a pure
 SQL change, no rebuild needed — **but see the caching gotcha below before
 assuming a SQL-only change takes effect on the next queue.**
+Both tables now carry a `Map` column, and `SetupBattleground` loads only the
+rows for the match's map (`GetForMap(GetMapId())`), so multiple maps can coexist.
 
 ---
 
@@ -165,7 +167,8 @@ assuming a SQL-only change takes effect on the next queue.**
      row's columns: faction, `HealthModifier`, `unit_flags`, etc.,
      `ScriptName = 'npc_moba_tower'`).
    - A `creature_template_model` row (display ID + `DisplayScale`).
-   - A `mod_moba_tower_data` row: `CreatureEntry`, `Team`, `Tier` (0 unless
+   - A `mod_moba_tower_data` row: `CreatureEntry`, `Map` (the BG's map id;
+     `566` for the current hijacked-EotS map), `Team`, `Tier` (0 unless
      it's guarded by another tower), `GuardedByEntry` (0 unless gated),
      your `.gps` position, and attack range/interval/spell (or leave the
      column defaults).
@@ -257,6 +260,7 @@ override checklist that used to live in this recipe (AIName/ScriptName,
 loot/npcflag/VehicleId/difficulty-entry references and IconName cleared,
 RegenHealth=0, faction from team, level pinning), so none of it can be
 forgotten by hand.
+All creeps in a config file inherit its top-level `map` and spawn only on that map.
 
 1. Dump the source creature:
    `mysql -E -u acore -pacore acore_world -e "SELECT * FROM creature_template WHERE entry=<id>" > apps/moba/sources/creature_template_<id>.txt`
@@ -394,6 +398,7 @@ table.
 | Wave cadence | Every 30s; every 3rd wave adds a siege unit |
 | Creep lane corridor | 40 yd from lane, players only; +15 yd self-evade headroom |
 | Creep health regen | RegenHealth = 0 — damage persists between fights |
+| BG map id (tower/creep rows are tagged with it) | 566 (hijacked EotS) |
 
 ## Known gotchas (not tied to one recipe)
 

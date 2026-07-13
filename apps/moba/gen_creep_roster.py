@@ -85,6 +85,8 @@ def validate_config(cfg):
         fail('config "output" must be a file path string')
     if not isinstance(cfg.get("lane_config"), str) or not cfg["lane_config"]:
         fail('config "lane_config" must point at the lane generator config')
+    if not isinstance(cfg.get("map"), int):
+        fail('config "map" must be an integer map id (e.g. 566)')
 
     creeps = cfg.get("creeps")
     if not isinstance(creeps, list) or not creeps:
@@ -297,6 +299,7 @@ def emit_sql(cfg, config_path, roster, column_order):
         "DROP TABLE IF EXISTS `mod_moba_creep_data`;",
         "CREATE TABLE `mod_moba_creep_data` (",
         "    `CreatureEntry`    INT UNSIGNED NOT NULL PRIMARY KEY,",
+        "    `Map`              INT UNSIGNED NOT NULL,",
         "    `Team`             TINYINT UNSIGNED NOT NULL,",
         "    `Role`             TINYINT UNSIGNED NOT NULL,",
         "    `AttackRange`      FLOAT NOT NULL DEFAULT 20,",
@@ -307,14 +310,14 @@ def emit_sql(cfg, config_path, roster, column_order):
         ");",
         "",
         "INSERT INTO `mod_moba_creep_data`",
-        "(`CreatureEntry`, `Team`, `Role`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `WaypointPathId`, `DespawnMs`)",
+        "(`CreatureEntry`, `Map`, `Team`, `Role`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `WaypointPathId`, `DespawnMs`)",
         "VALUES",
     ]
     data_rows = []
     for creep, entry, _ in roster:
         data_rows.append(
             f"-- {creep['key']} ({creep['lane']}/{creep['slot']})\n"
-            f"({entry}, {creep['team']}, {ROLE_IDS[creep['role']]}, "
+            f"({entry}, {cfg['map']}, {creep['team']}, {ROLE_IDS[creep['role']]}, "
             f"{creep.get('attack_range', 20)}, {creep.get('attack_interval_ms', 2000)}, "
             f"{creep.get('attack_spell_id', 0)}, {creep['_path_id']}, {creep['despawn_ms']})")
     lines.append(",\n".join(data_rows) + ";")

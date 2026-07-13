@@ -16,6 +16,7 @@ enum MobaCreepRole : uint8
 struct MobaCreepConfig
 {
     uint32 entry = 0;
+    uint32 map = 0;
     TeamId team = TEAM_ALLIANCE;
     MobaCreepRole role = MOBA_CREEP_ROLE_MELEE;
     float range = 20.0f;
@@ -35,7 +36,7 @@ public:
 
     void LoadIfNeeded();
     MobaCreepConfig const* GetConfig(uint32 entry) const;
-    std::vector<MobaCreepConfig> const& GetAll() const { return _configs; }
+    std::vector<MobaCreepConfig> GetForMap(uint32 mapId) const;
 
 private:
     MobaCreepDataStore() = default;

@@ -58,6 +58,7 @@ VALUES
 DROP TABLE IF EXISTS `mod_moba_creep_data`;
 CREATE TABLE `mod_moba_creep_data` (
     `CreatureEntry`    INT UNSIGNED NOT NULL PRIMARY KEY,
+    `Map`              INT UNSIGNED NOT NULL,
     `Team`             TINYINT UNSIGNED NOT NULL,
     `Role`             TINYINT UNSIGNED NOT NULL,
     `AttackRange`      FLOAT NOT NULL DEFAULT 20,
@@ -68,21 +69,21 @@ CREATE TABLE `mod_moba_creep_data` (
 );
 
 INSERT INTO `mod_moba_creep_data`
-(`CreatureEntry`, `Team`, `Role`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `WaypointPathId`, `DespawnMs`)
+(`CreatureEntry`, `Map`, `Team`, `Role`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `WaypointPathId`, `DespawnMs`)
 VALUES
 -- alliance_melee_right (mid/melee_right)
-(900010, 0, 0, 20, 2000, 0, 900110, 60000),
+(900010, 566, 0, 0, 20, 2000, 0, 900110, 60000),
 -- alliance_melee_left (mid/melee_left)
-(900016, 0, 0, 20, 2000, 0, 900111, 60000),
+(900016, 566, 0, 0, 20, 2000, 0, 900111, 60000),
 -- horde_melee_right (mid/melee_right)
-(900011, 1, 0, 20, 2000, 0, 900120, 60000),
+(900011, 566, 1, 0, 20, 2000, 0, 900120, 60000),
 -- horde_melee_left (mid/melee_left)
-(900017, 1, 0, 20, 2000, 0, 900121, 60000),
+(900017, 566, 1, 0, 20, 2000, 0, 900121, 60000),
 -- alliance_caster (mid/caster)
-(900012, 0, 1, 20, 2000, 20793, 900100, 60000),
+(900012, 566, 0, 1, 20, 2000, 20793, 900100, 60000),
 -- horde_caster (mid/caster)
-(900013, 1, 1, 20, 2000, 20805, 900101, 60000),
+(900013, 566, 1, 1, 20, 2000, 20805, 900101, 60000),
 -- alliance_siege (mid/siege)
-(900014, 0, 2, 20, 2000, 0, 900112, 60000),
+(900014, 566, 0, 2, 20, 2000, 0, 900112, 60000),
 -- horde_siege (mid/siege)
-(900015, 1, 2, 20, 2000, 0, 900122, 60000);
+(900015, 566, 1, 2, 20, 2000, 0, 900122, 60000);
