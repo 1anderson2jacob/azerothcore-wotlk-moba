@@ -147,6 +147,32 @@ rows for the match's map (`GetForMap(GetMapId())`), so multiple maps can coexist
   `apps/moba/gen_creep_roster.py`, which owns `mod_moba_creeps.sql` — see
   `apps/moba/README.md`.
 
+## How resurrection works (read this before changing behavior)
+
+LoL-style individual respawn, replacing the stock shared-pulse graveyard
+resurrection. Fully self-contained in `BattlegroundMOBA` — no core engine edits.
+
+- **Timer starts on Release Spirit, not death.** A `PlayerScript`
+  (`src/server/scripts/Custom/moba_resurrection.cpp`, `OnPlayerReleasedGhost`
+  hook) forwards a MOBA release into `BattlegroundMOBA::StartRespawnTimer`. A
+  player who never clicks Release just stays dead (WoW behavior, intended — no
+  force-revive).
+- **Wait scales with match time**: `min(CapMs, BaseMs + PerMinMs × match-minutes)`,
+  measured from doors-open (`_matchElapsedMs`, accumulated in `PostUpdateImpl`
+  only while `STATUS_IN_PROGRESS`, so the prep phase is excluded).
+- **Countdown + revive in `PostUpdateImpl`**: the per-player timer ticks down
+  (chat countdown at 5/3/2/1s); on expiry the player is teleported to the team
+  start position (`GetTeamStartPosition`, so a ghost that wandered still
+  respawns at base), resurrected, and full-restored (health spell 6962 + mana
+  44535), corpse cleared.
+- **Config is map-keyed**: `mod_moba_resurrection` (`Map` PK, `BaseMs`,
+  `PerMinMs`, `CapMs`), loaded by `MobaResurrectionDataStore`
+  (`MobaResurrectionData.h`/`.cpp`). See "How to change resurrection timings".
+- **No spirit healers**: the spirit-guide NPCs were removed so the stock revive
+  queue never populates (empty queue ⇒ base `_ProcessResurrect` is a no-op and
+  can't race our timer). The `game_graveyard` 1103/1104 rows are *kept* —
+  they're the start-loc / spawn bubble that spawn-in, the release-repop
+  (`GetClosestGraveyard`), and the respawn all reuse.
 
 ---
 
@@ -331,13 +357,15 @@ optional) — the generator warns when the composition differs.
 4. Build, install & test (see above) — this is a C++ change, applies to
    *all* casters (not data-driven per-entry currently).
 
-## How to move the graveyard / player spawn-in point
+## How to move the graveyard / player spawn-in / respawn point
 
-The graveyard location is *also* where players first teleport in when they
-queue into the battleground — one DB row drives both.
+`game_graveyard` 1103/1104 now drive three things at once: the initial
+teleport-in (via `battleground_template.AllianceStartLoc`/`HordeStartLoc`,
+resolved through `sGraveyard->GetGraveyard`), where a released ghost lands
+(`GetClosestGraveyard`), and the LoL-style resurrection respawn
+(`GetTeamStartPosition`). One row moves all three.
 
-1. In-game, `.gps` at the new ground-level spawn spot for
-   `X, Y, Z, Orientation`.
+1. In-game, `.gps` at the new ground-level spot for `X, Y, Z, Orientation`.
 2. Run against `acore_world`:
    ```sql
    UPDATE game_graveyard SET x = <X>, y = <Y>, z = <Z> WHERE ID = 1103; -- Alliance
@@ -346,11 +374,31 @@ queue into the battleground — one DB row drives both.
    (1103/1104 are our reused vanilla-EotS graveyard IDs — no need to touch
    `battleground_template.AllianceStartLoc`/`HordeStartLoc`, they already
    point at 1103/1104 and don't need to change.)
-3. Open `BattlegroundMOBA.cpp`'s `SetupBattleground()` and update the
-   orientation literal in the matching `AddSpiritGuide(...)` call (it's a
-   separate hardcoded float, not read from `game_graveyard`).
-4. Build, install & test (see above) — confirm both the spirit guide and
-   your initial teleport-in land at the new spot.
+3. Orientation isn't stored in `game_graveyard`. The spawn-in and respawn
+   facing come from `battleground_template.AllianceStartO`/`HordeStartO`
+   (row ID 7), which `GetTeamStartPosition` uses for the respawn teleport:
+   ```sql
+   UPDATE battleground_template SET AllianceStartO = <o>, HordeStartO = <o> WHERE ID = 7;
+   ```
+4. Apply the SQL, **fully restart worldserver** (start positions load once at
+   startup), `.debug bg`, queue, and confirm both your initial teleport-in and
+   a post-death respawn land at the new spot. This is now SQL-only — no C++ edit
+   (the spirit guides that used to need a hardcoded orientation are gone).
+
+## How to change resurrection timings
+
+Respawn wait = `min(CapMs, BaseMs + PerMinMs × whole match-minutes elapsed)`,
+per map, measured from doors-open.
+
+1. `UPDATE mod_moba_resurrection SET BaseMs = .., PerMinMs = .., CapMs = .. WHERE Map = 566;`
+   - `BaseMs` — floor wait (early-game deaths).
+   - `PerMinMs` — added per elapsed match-minute (late-game scaling).
+   - `CapMs` — ceiling the wait never exceeds.
+2. Apply the SQL, then **fully restart worldserver** — `MobaResurrectionDataStore`
+   caches once per process like the tower/creep stores (see the caching gotcha),
+   so `.debug bg` + requeue alone won't pick it up.
+3. `.debug bg`, queue, die, click Release, and confirm the countdown length —
+   try an early death vs. a few minutes in to see the scaling.
 
 **Gotcha**: `battleground_template.AllianceStartLoc`/`HordeStartLoc`
 (row ID 7 = EotS) looks like it should reference `WorldSafeLocs.dbc`
@@ -398,12 +446,13 @@ table.
 | Wave cadence | Every 30s; every 3rd wave adds a siege unit |
 | Creep lane corridor | 40 yd from lane, players only; +15 yd self-evade headroom |
 | Creep health regen | RegenHealth = 0 — damage persists between fights |
+| Respawn timing | BaseMs 10000 + PerMinMs 1500 × match-min, capped at CapMs 60000 (mod_moba_resurrection) |
 | BG map id (tower/creep rows are tagged with it) | 566 (hijacked EotS) |
 
 ## Known gotchas (not tied to one recipe)
 
 - **Data stores cache once per *worldserver process*, not per battleground
-  instance.** `MobaTowerDataStore`/`MobaCreepDataStore` both guard their
+  instance.** `MobaTowerDataStore`/`MobaCreepDataStore`/`MobaResurrectionDataStore` all guard their
   load with `if (_loaded) return;` on a singleton that lives for the whole
   process lifetime — so re-applying SQL and just `.debug bg` + requeuing on
   an already-running worldserver does **nothing**; the in-memory data is
@@ -449,12 +498,13 @@ table.
   debug logging, also add e.g. `Logger.bg.battleground=4,Console Server`
   to worldserver.conf — nothing appears otherwise (cost us a build cycle
   to discover).
-- `BgObjects` (doors) and the 2 fixed spirit-guide slots are still sized
-  by a contiguous enum — towers/creeps are not part of that (towers are a
-  runtime-sized range from `mod_moba_tower_data`'s row count; creeps are
-  ephemeral `TempSummon`s, not registered in `BgCreatures` at all).
+- `BgObjects` (doors) is sized by a contiguous enum. There are **no** fixed
+  `BgCreatures` slots anymore — the two spirit guides that occupied slots 0-1
+  were removed in the resurrection rework and `BG_MOBA_CREATURE_FIXED_MAX` is
+  now 0, so towers occupy a runtime-sized range starting at slot 0, and creeps
+  are ephemeral `TempSummon`s not registered in `BgCreatures` at all.
 - If you ever touch `SetupBattleground()` again: `BgCreatures.resize(...)`
-  must happen *before* the first `AddCreature`/`AddSpiritGuide` call
+  must happen *before* the first `AddCreature` call
   (`AddCreature` asserts the slot already exists) — it's the first thing
   the function does now, don't move it below the door/graveyard calls.
 - `creature_template` on this DB revision has no `scale` column; scale
