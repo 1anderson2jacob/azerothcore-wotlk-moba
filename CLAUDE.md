@@ -164,20 +164,18 @@ Upstream gitignores `src/server/scripts/Custom/` (except the loader) and `data/s
 !data/sql/custom/*
 ```
 
-## Current state (as of this file's creation)
+## Current state
 
-Done:
-- `BattlegroundMOBA.{h,cpp}` cloned from `BattlegroundEY`, wired into `BattlegroundMgr.cpp` (the `BATTLEGROUND_EY` factory entries construct `BattlegroundMOBA`)
-- Flag system fully removed (Chunk 1)
-- Capture-point system fully removed (Chunk 2) — file is now a minimal skeleton: doors, two main graveyards/spirit guides, empty `PostUpdateImpl` event switch
-- Two tower creatures in DB: entries **900000** (Alliance Tower, displayID 27101 Keep Cannon) and **900001** (Horde Tower, displayID 18505 Fel Cannon), `DisplayScale` 5.0 (known too big, tuning deferred), faction 84/83, HealthModifier 100, no regen
-- Towers spawned in `SetupBattleground()` at the old Fel Reaver / Mage Tower plateau coordinates
+Done (see git history + the `.github/MOBA_*_PLAN.md` docs for detail):
+- `BattlegroundMOBA.{h,cpp}` cloned from `BattlegroundEY`, wired into `BattlegroundMgr.cpp` (the `BATTLEGROUND_EY` factory constructs `BattlegroundMOBA`). Flag and capture-point systems fully removed.
+- **Towers** — data-driven registry (`src/server/game/Battlegrounds/Zones/MobaTowerData.{h,cpp}`); creature rows **900000** (Alliance, displayID 27101 Keep Cannon) / **900001** (Horde, displayID 18505 Fel Cannon), faction 84/83, no regen. AI in `src/server/scripts/Custom/npc_moba_tower.cpp` (+ `moba_tower_aggro.cpp`): stationary, "lock target until invalid". Win condition fires on both player and minion kills (`HandleKillUnit` + `npc_moba_tower::JustDied`). Positions moved to map center.
+- **Lane creeps** — waves walk generated waypoint paths with LoL-style leashing (attack only players within 40yd of the lane; resume from where combat ended; never regress past furthest progress; keep damage between fights; stop at lane end). `npc_moba_creep.cpp` + `MobaCreepData.{h,cpp}`; `data/sql/custom/mod_moba_creeps.sql` is **generated** by `apps/moba/gen_creep_roster.py`, not hand-edited.
+- **Custom map (Twisted Treeline) blockout** — pixel-traced in Blender to WoW scale (`var/blender/twisted_treeline_blockout.blend`); layout exported to `var/blender/twisted_treeline_layout.json` (structure coords + per-lane waypoints). Still runs on the hijacked EotS map; custom terrain is a later pass.
 
-In progress (next steps, in order):
-1. **Swap tower positions** — Alliance tower belongs at `2284.48f, 1731.23f, 1189.99f` (east, near Alliance spawn), Horde at `2044.28f, 1729.68f, 1189.96f` (west). The original placement guessed the map's east/west backwards. (Jacob later wants towers moved to the mid lane; positions via in-game `.gps`.)
-2. **Turret AI** — `src/server/scripts/Custom/npc_moba_tower.cpp` (drafted in chat, not yet compiled — expect API-name iteration): stationary, attacks nearest enemy player in 40yd every 1.5s, no chase/evade, `JustDied()` currently just broadcasts. Register via `AddSC_npc_moba_tower()` in `custom_script_loader.cpp`, attach via `ScriptName` on both creature rows.
-3. **Win condition** — `JustDied()` notifies the `BattlegroundMOBA` instance; base tower death → `EndBattleground(winner)`
-4. Lane creeps, then gold/items, then standalone BG ID + client MPQ patch
+Next (in order):
+1. **LoL-style resurrection** — the current feature. Fixed spawn, no corpse run, death timers that scale with match time. (Scoping notes in the `resurrection-timer-scoping` memory.)
+2. **Gold / items** economy.
+3. **Custom terrain** — move off EotS onto the Twisted Treeline map via the **WMO route** (fall back to ADT if not good enough). Bundles the standalone BG id + client MPQ patch.
 
 ## Build (this fork, this machine — overrides Section 1)
 
