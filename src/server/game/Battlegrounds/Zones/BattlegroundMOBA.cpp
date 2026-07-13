@@ -29,6 +29,9 @@
 #include "WorldStatePackets.h"
 #include "MobaTowerData.h"
 #include "MobaCreepData.h"
+#include "MobaResurrectionData.h"
+#include "Chat.h"
+#include "StringFormat.h"
 #include "ObjectAccessor.h"
 #include "TemporarySummon.h"
 #include "WaypointMgr.h"
@@ -55,6 +58,8 @@ void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
 {
     if (GetStatus() == STATUS_IN_PROGRESS)
     {
+        _matchElapsedMs += diff;
+
         _bgEvents.Update(diff);
         while (uint32 eventId = _bgEvents.ExecuteEvent())
             switch (eventId)
@@ -69,6 +74,8 @@ void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
                     break;
                 }
             }
+
+        UpdateRespawnTimers(diff);
     }
 }
 
@@ -113,6 +120,7 @@ void BattlegroundMOBA::HandleAreaTrigger(Player* player, uint32 trigger)
 bool BattlegroundMOBA::SetupBattleground()
 {
     sMobaTowerDataStore->LoadIfNeeded();
+    sMobaResurrectionDataStore->LoadIfNeeded();
     std::vector<MobaTowerConfig> const& towerConfigs = sMobaTowerDataStore->GetAll();
     if (towerConfigs.empty())
     {
@@ -120,19 +128,12 @@ bool BattlegroundMOBA::SetupBattleground()
         return false;
     }
 
-    // Must resize before any AddCreature/AddSpiritGuide call below.
+    // Must resize before any AddCreature call below.
     BgCreatures.resize(BG_MOBA_CREATURE_FIXED_MAX + towerConfigs.size());
 
     // doors (ground-level starting areas)
     AddObject(BG_MOBA_OBJECT_DOOR_A, BG_OBJECT_A_DOOR_EY_ENTRY, 2387.529f, 1587.426f, 1174.763f, 3.0222116f, 0.0f, 0.0f, 0.998219f, 0.059655f, RESPAWN_IMMEDIATELY);
     AddObject(BG_MOBA_OBJECT_DOOR_H, BG_OBJECT_H_DOOR_EY_ENTRY, 1942.9327f, 1547.6229f, 1176.458f, 0.32122585f, 0.0f, 0.0f, 0.159923f, 0.987129f, RESPAWN_IMMEDIATELY);
-
-    GraveyardStruct const* sg = nullptr;
-    sg = sGraveyard->GetGraveyard(BG_MOBA_GRAVEYARD_MAIN_ALLIANCE);
-    AddSpiritGuide(BG_MOBA_SPIRIT_MAIN_ALLIANCE, sg->x, sg->y, sg->z, 3.0222116f, TEAM_ALLIANCE);
-
-    sg = sGraveyard->GetGraveyard(BG_MOBA_GRAVEYARD_MAIN_HORDE);
-    AddSpiritGuide(BG_MOBA_SPIRIT_MAIN_HORDE, sg->x, sg->y, sg->z, 0.32122585f, TEAM_HORDE);
 
     // towers (data-driven; see mod_moba_tower_data / MobaTowerData.h)
     _towers.clear();
@@ -165,13 +166,6 @@ bool BattlegroundMOBA::SetupBattleground()
         if (!BgObjects[i])
         {
             LOG_ERROR("sql.sql", "BattlegroundMOBA: object slot {} failed to spawn, battleground not created!", i);
-            return false;
-        }
-
-    for (uint32 i = BG_MOBA_SPIRIT_MAIN_ALLIANCE; i < BG_MOBA_CREATURE_FIXED_MAX; ++i)
-        if (!BgCreatures[i])
-        {
-            LOG_ERROR("sql.sql", "BattlegroundMOBA: creature slot {} failed to spawn, battleground not created!", i);
             return false;
         }
 
@@ -355,4 +349,81 @@ GraveyardStruct const* BattlegroundMOBA::GetClosestGraveyard(Player* player)
     return sGraveyard->GetGraveyard(player->GetTeamId() == TEAM_ALLIANCE
         ? BG_MOBA_GRAVEYARD_MAIN_ALLIANCE
         : BG_MOBA_GRAVEYARD_MAIN_HORDE);
+}
+
+void BattlegroundMOBA::StartRespawnTimer(Player* player)
+{
+    if (!player)
+        return;
+
+    // One timer per player; re-clicking Release must not restart the countdown.
+    if (_respawnTimers.find(player->GetGUID()) != _respawnTimers.end())
+        return;
+
+    uint32 baseMs = 10000, perMinMs = 1500, capMs = 60000;
+    if (MobaResurrectionConfig const* cfg = sMobaResurrectionDataStore->GetConfig(GetMapId()))
+    {
+        baseMs   = cfg->baseMs;
+        perMinMs = cfg->perMinMs;
+        capMs    = cfg->capMs;
+    }
+
+    // Grows continuously with match time (measured from doors-open, so the prep
+    // phase is excluded), clamped to the cap.
+    uint32 waitMs = std::min<uint32>(capMs,
+        baseMs + static_cast<uint32>(static_cast<uint64>(perMinMs) * _matchElapsedMs / 60000));
+
+    MobaRespawnState state;
+    state.remainingMs = waitMs;
+    _respawnTimers[player->GetGUID()] = state;
+
+    ChatHandler(player->GetSession()).SendSysMessage(
+        Acore::StringFormat("You have died. Respawning in {} seconds.", (waitMs + 999) / 1000).c_str());
+}
+
+void BattlegroundMOBA::UpdateRespawnTimers(uint32 diff)
+{
+    for (auto itr = _respawnTimers.begin(); itr != _respawnTimers.end();)
+    {
+        Player* player = ObjectAccessor::FindPlayer(itr->first);
+        if (!player || player->GetBattleground() != this || player->IsAlive())
+        {
+            itr = _respawnTimers.erase(itr);
+            continue;
+        }
+
+        MobaRespawnState& state = itr->second;
+        if (state.remainingMs <= diff)
+        {
+            ResurrectAtBase(player);
+            itr = _respawnTimers.erase(itr);
+            continue;
+        }
+
+        state.remainingMs -= diff;
+
+        uint32 secondsLeft = (state.remainingMs + 999) / 1000;
+        if (secondsLeft != state.lastAnnouncedSec &&
+            (secondsLeft == 5 || secondsLeft == 3 || secondsLeft == 2 || secondsLeft == 1))
+        {
+            state.lastAnnouncedSec = secondsLeft;
+            ChatHandler(player->GetSession()).SendSysMessage(
+                Acore::StringFormat("Respawning in {}...", secondsLeft).c_str());
+        }
+
+        ++itr;
+    }
+}
+
+void BattlegroundMOBA::ResurrectAtBase(Player* player)
+{
+    if (Position const* startPos = GetTeamStartPosition(player->GetTeamId()))
+        player->TeleportTo(GetMapId(), startPos->GetPositionX(), startPos->GetPositionY(),
+            startPos->GetPositionZ(), startPos->GetOrientation());
+
+    // Same restore the stock BG resurrection uses (Battleground::_ProcessResurrect).
+    player->ResurrectPlayer(1.0f);
+    player->CastSpell(player, 6962, true);   // full health
+    player->CastSpell(player, 44535, true);  // full mana
+    player->SpawnCorpseBones(false);
 }

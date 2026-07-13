@@ -24,6 +24,7 @@
 #include "WorldStateDefines.h"
 #include "ObjectGuid.h"
 #include <vector>
+#include <unordered_map>
 
 enum BG_MOBA_ObjectEntry
 {
@@ -39,9 +40,7 @@ enum BG_MOBA_Graveyards
 
 enum BG_MOBA_CreatureTypes
 {
-    BG_MOBA_SPIRIT_MAIN_ALLIANCE    = 0,
-    BG_MOBA_SPIRIT_MAIN_HORDE       = 1,
-    BG_MOBA_CREATURE_FIXED_MAX      = 2 // towers occupy dynamic slots starting here; see SetupBattleground()
+    BG_MOBA_CREATURE_FIXED_MAX      = 0 // no fixed creatures; towers occupy dynamic slots from 0, see SetupBattleground()
 };
 
 enum BG_MOBA_ObjectTypes
@@ -85,6 +84,14 @@ struct MobaWaveComposition
     uint32 siegeEntry = 0; // 0 = not configured, skip even on siege waves
 };
 
+// Per-player LoL-style respawn countdown, started on Release Spirit and ticked
+// down in PostUpdateImpl. remainingMs hits 0 -> teleport to team start + revive.
+struct MobaRespawnState
+{
+    uint32 remainingMs = 0;
+    uint32 lastAnnouncedSec = 0;
+};
+
 struct BattlegroundMOBAScore final : public BattlegroundScore
 {
     friend class BattlegroundMOBA;
@@ -124,16 +131,24 @@ public:
     // see .github/MOBA_CREEP_ARCHITECTURE_PLAN.md for why both exist.
     void OnTowerDestroyed(Creature* tower, TeamId winnerTeamId);
 
+    // Starts a player's respawn countdown (called from the OnPlayerReleasedGhost hook).
+    void StartRespawnTimer(Player* player);
+
 private:
     void PostUpdateImpl(uint32 diff) override;
     void SpawnWave(TeamId team, bool includeSiege);
     void SpawnCreep(uint32 entry);
     void FreezeAllCreeps();
+    void UpdateRespawnTimers(uint32 diff);
+    void ResurrectAtBase(Player* player);
 
     EventMap _bgEvents;
     std::vector<MobaTowerState> _towers;
     MobaWaveComposition _waveComposition[2];
     std::vector<ObjectGuid> _spawnedCreeps;
     uint32 _waveCount = 0;
+    uint32 _matchElapsedMs = 0; // time since doors opened (excludes prep phase)
+    std::unordered_map<ObjectGuid, MobaRespawnState> _respawnTimers;
+
 };
 #endif
