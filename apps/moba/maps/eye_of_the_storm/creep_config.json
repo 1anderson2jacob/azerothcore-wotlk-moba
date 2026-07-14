@@ -1,8 +1,5 @@
 {
-  "id_range": [900010, 900099],
-  "output": "data/sql/custom/mod_moba_creeps.sql",
   "map": 566,
-  "lane_config": "apps/moba/lane_config.json",
   "creeps": [
     { "key": "alliance_melee_right", "name": "Alliance Footman", "subname": "MOBA Minion", "team": 0, "role": "melee",
       "source": "apps/moba/sources/creature_template_2279.txt", "display_id": 164, "display_scale": 1.0, "level": 80,

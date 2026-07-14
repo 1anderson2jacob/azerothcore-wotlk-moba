@@ -19,14 +19,14 @@
 #include "Player.h"
 #include "ScriptMgr.h"
 
-// LoL-style resurrection: the timer starts when the player clicks "Release
+// LoL-style respawn: the timer starts when the player clicks "Release
 // Spirit" (this hook), not at the moment of death. BattlegroundMOBA owns the
 // per-player countdown and the revive; this is just the trigger that forwards
 // a MOBA release into it.
-class moba_resurrection_playerscript : public PlayerScript
+class moba_respawn_playerscript : public PlayerScript
 {
 public:
-    moba_resurrection_playerscript() : PlayerScript("moba_resurrection_playerscript", { PLAYERHOOK_ON_PLAYER_RELEASED_GHOST }) { }
+    moba_respawn_playerscript() : PlayerScript("moba_respawn_playerscript", { PLAYERHOOK_ON_PLAYER_RELEASED_GHOST }) { }
 
     void OnPlayerReleasedGhost(Player* player) override
     {
@@ -42,7 +42,7 @@ public:
     }
 };
 
-void AddSC_moba_resurrection()
+void AddSC_moba_respawn()
 {
-    new moba_resurrection_playerscript();
+    new moba_respawn_playerscript();
 }

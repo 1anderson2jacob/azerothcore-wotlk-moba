@@ -140,7 +140,7 @@ private:
     void SpawnCreep(uint32 entry);
     void FreezeAllCreeps();
     void UpdateRespawnTimers(uint32 diff);
-    void ResurrectAtBase(Player* player);
+    void RespawnAtBase(Player* player);
 
     EventMap _bgEvents;
     std::vector<MobaTowerState> _towers;

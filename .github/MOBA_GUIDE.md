@@ -147,13 +147,13 @@ rows for the match's map (`GetForMap(GetMapId())`), so multiple maps can coexist
   `apps/moba/gen_creep_roster.py`, which owns `mod_moba_creeps.sql` — see
   `apps/moba/README.md`.
 
-## How resurrection works (read this before changing behavior)
+## How respawn works (read this before changing behavior)
 
 LoL-style individual respawn, replacing the stock shared-pulse graveyard
 resurrection. Fully self-contained in `BattlegroundMOBA` — no core engine edits.
 
 - **Timer starts on Release Spirit, not death.** A `PlayerScript`
-  (`src/server/scripts/Custom/moba_resurrection.cpp`, `OnPlayerReleasedGhost`
+  (`src/server/scripts/Custom/moba_respawn.cpp`, `OnPlayerReleasedGhost`
   hook) forwards a MOBA release into `BattlegroundMOBA::StartRespawnTimer`. A
   player who never clicks Release just stays dead (WoW behavior, intended — no
   force-revive).
@@ -165,9 +165,9 @@ resurrection. Fully self-contained in `BattlegroundMOBA` — no core engine edit
   start position (`GetTeamStartPosition`, so a ghost that wandered still
   respawns at base), resurrected, and full-restored (health spell 6962 + mana
   44535), corpse cleared.
-- **Config is map-keyed**: `mod_moba_resurrection` (`Map` PK, `BaseMs`,
-  `PerMinMs`, `CapMs`), loaded by `MobaResurrectionDataStore`
-  (`MobaResurrectionData.h`/`.cpp`). See "How to change resurrection timings".
+- **Config is map-keyed**: `mod_moba_respawn` (`Map` PK, `BaseMs`,
+  `PerMinMs`, `CapMs`), loaded by `MobaRespawnDataStore`
+  (`MobaRespawnData.h`/`.cpp`). See "How to change respawn timings".
 - **No spirit healers**: the spirit-guide NPCs were removed so the stock revive
   queue never populates (empty queue ⇒ base `_ProcessResurrect` is a no-op and
   can't race our timer). The `game_graveyard` 1103/1104 rows are *kept* —
@@ -180,33 +180,35 @@ resurrection. Fully self-contained in `BattlegroundMOBA` — no core engine edit
 
 1. In-game (GM character), stand at the new spot and run `.gps`. Note
    `X`, `Y`, `Z`, `Orientation`.
-2. `UPDATE mod_moba_tower_data SET PosX = .., PosY = .., PosZ = .., Orientation = .. WHERE CreatureEntry = <entry>;`
-3. Apply the SQL, then fully restart worldserver (see caching gotcha).
+2. Edit that tower's entry in `apps/moba/maps/<mode>/tower_config.json`
+   (`x`/`y`/`z`/`o`), then `python3 apps/moba/gen_tower_data.py`.
+3. Apply the regenerated `mod_moba_towers.sql`, then fully restart worldserver
+   (see caching gotcha).
 4. `.debug bg`, queue, confirm the new position.
+
+Ad-hoc `UPDATE mod_moba_tower_data ...` works for live experimentation, but fold
+the final values back into `tower_config.json` — regenerating reverts anything not there.
 
 ## How to add a new tower
 
 1. In-game, `.gps` at the new spot for `X, Y, Z, Orientation`.
-2. Add rows to `data/sql/custom/mod_moba_towers.sql`, following the
-   existing DELETE-before-INSERT pattern:
-   - A `creature_template` row for the new entry (copy an existing tower
-     row's columns: faction, `HealthModifier`, `unit_flags`, etc.,
-     `ScriptName = 'npc_moba_tower'`).
-   - A `creature_template_model` row (display ID + `DisplayScale`).
-   - A `mod_moba_tower_data` row: `CreatureEntry`, `Map` (the BG's map id;
-     `566` for the current hijacked-EotS map), `Team`, `Tier` (0 unless
-     it's guarded by another tower), `GuardedByEntry` (0 unless gated),
-     your `.gps` position, and attack range/interval/spell (or leave the
-     column defaults).
-3. No C++ or enum changes needed — the tower registry and `BgCreatures`
-   slot count are both fully data-driven now.
-4. Apply the SQL, fully restart worldserver, `.debug bg`, queue, confirm
-   it spawns.
+2. If it's a **new tower creature** (different model/faction), add its
+   `creature_template` + `creature_template_model` (and optional `HealthModifier`)
+   to `data/sql/custom/mod_moba_tower_defs.sql` — copy an existing tower's block,
+   `ScriptName = 'npc_moba_tower'`. Reusing an existing tower creature? skip this.
+3. Add a block to the map's `apps/moba/maps/<mode>/tower_config.json` `towers` list:
+   `entry`, `team`, `tier` (0 unless guarded), `guarded_by_entry` (0 unless gated),
+   your `.gps` `x`/`y`/`z`/`o`, and `attack_range`/`attack_interval_ms`/`attack_spell_id`.
+   Then `python3 apps/moba/gen_tower_data.py`.
+4. No C++ or enum changes — the tower registry and `BgCreatures` slot count are
+   fully data-driven.
+5. Apply `mod_moba_tower_defs.sql` (if you touched it) + the regenerated
+   `mod_moba_towers.sql`, fully restart worldserver, `.debug bg`, queue, confirm.
 
 ## How to add a tower with a tier/guard dependency
 
-1. Follow "How to add a new tower" above, but set `GuardedByEntry` to the
-   entry of the tower that must die first.
+1. Follow "How to add a new tower" above, but set `guarded_by_entry` in
+   `tower_config.json` to the entry of the tower that must die first.
 2. The guarded tower spawns inert (unattackable, unselectable, and its AI
    won't fire) until the guard tower is destroyed — no extra steps needed,
    `BattlegroundMOBA::OnTowerDestroyed` handles the unlock automatically.
@@ -216,12 +218,15 @@ resurrection. Fully self-contained in `BattlegroundMOBA` — no core engine edit
 
 ## How to change tower attack range or tick rate
 
-1. `UPDATE mod_moba_tower_data SET AttackRange = .., AttackIntervalMs = .. WHERE CreatureEntry = <entry>;`
-2. Apply the SQL, restart worldserver, `.debug bg`, queue, confirm.
+1. Edit `attack_range` / `attack_interval_ms` for that tower in
+   `apps/moba/maps/<mode>/tower_config.json`, then `python3 apps/moba/gen_tower_data.py`.
+2. Apply the regenerated `mod_moba_towers.sql`, restart worldserver, `.debug bg`, queue, confirm.
+   (Ad-hoc `UPDATE mod_moba_tower_data ...` for a live test; fold back to the config.)
 
 ## How to change the tower projectile/spell
 
-1. `UPDATE mod_moba_tower_data SET AttackSpellId = .. WHERE CreatureEntry = <entry>;`
+1. Edit `attack_spell_id` for that tower in `apps/moba/maps/<mode>/tower_config.json`,
+   then `python3 apps/moba/gen_tower_data.py`.
 2. Tower damage isn't an independent stat — it's entirely whatever the
    configured spell deals. To tune damage without changing the visual,
    pick a different rank/tier of the same spell family (same look,
@@ -234,13 +239,15 @@ resurrection. Fully self-contained in `BattlegroundMOBA` — no core engine edit
    `triggered=true` (see "How to make a creep's attack instant/free vs. a
    real cast" below) — deliberately instant and free, matching a
    stationary turret's flavor.
-4. Apply the SQL, restart worldserver, `.debug bg`, queue, confirm.
+4. Apply the regenerated `mod_moba_towers.sql`, restart worldserver, `.debug bg`, queue, confirm.
 
 ## How to change tower health
 
-1. `UPDATE creature_template SET HealthModifier = .. WHERE entry = <entry>;`
+1. Edit the `HealthModifier` for that entry in `data/sql/custom/mod_moba_tower_defs.sql`
+   (the shared, hand-written tower defs) — or `UPDATE creature_template SET
+   HealthModifier = .. WHERE entry = <entry>;` for a live test.
 2. `HealthModifier` is a multiplier on the creature's level-based base
-   health — not an absolute HP value.
+   health — not an absolute HP value. This is map-agnostic.
 3. Apply the SQL, restart worldserver, `.debug bg`, queue, confirm.
 
 ## How to change what counts as a hard-CC trigger for tower aggro
@@ -280,7 +287,7 @@ Full config/lockfile reference: `apps/moba/README.md`.
 ## How to add a new creep type
 
 `mod_moba_creeps.sql` is GENERATED by `apps/moba/gen_creep_roster.py` —
-don't hand-edit it. Creeps are described in `apps/moba/creep_config.json`;
+don't hand-edit it. Creeps are described in `apps/moba/maps/<mode>/creep_config.json`;
 the generator full-copies a real source creature's stats and enforces the
 override checklist that used to live in this recipe (AIName/ScriptName,
 loot/npcflag/VehicleId/difficulty-entry references and IconName cleared,
@@ -321,7 +328,7 @@ optional) — the generator warns when the composition differs.
 
 ## How to change a creep's attack range/interval/spell
 
-1. Edit the creep's entry in `apps/moba/creep_config.json`
+1. Edit the creep's entry in `apps/moba/maps/<mode>/creep_config.json`
    (`attack_range`/`attack_interval_ms`/`attack_spell_id` — casters only;
    melee/siege attack speed comes from the source creature's
    `BaseAttackTime`).
@@ -359,53 +366,38 @@ optional) — the generator warns when the composition differs.
 
 ## How to move the graveyard / player spawn-in / respawn point
 
-`game_graveyard` 1103/1104 now drive three things at once: the initial
-teleport-in (via `battleground_template.AllianceStartLoc`/`HordeStartLoc`,
-resolved through `sGraveyard->GetGraveyard`), where a released ghost lands
-(`GetClosestGraveyard`), and the LoL-style resurrection respawn
-(`GetTeamStartPosition`). One row moves all three.
+`game_graveyard` 1103/1104 drive three things at once — initial teleport-in
+(via `battleground_template` start-loc), the release-repop (`GetClosestGraveyard`),
+and the respawn (`GetTeamStartPosition`). All of it is now generated from one
+per-map config.
 
 1. In-game, `.gps` at the new ground-level spot for `X, Y, Z, Orientation`.
-2. Run against `acore_world`:
-   ```sql
-   UPDATE game_graveyard SET x = <X>, y = <Y>, z = <Z> WHERE ID = 1103; -- Alliance
-   UPDATE game_graveyard SET x = <X>, y = <Y>, z = <Z> WHERE ID = 1104; -- Horde
-   ```
-   (1103/1104 are our reused vanilla-EotS graveyard IDs — no need to touch
-   `battleground_template.AllianceStartLoc`/`HordeStartLoc`, they already
-   point at 1103/1104 and don't need to change.)
-3. Orientation isn't stored in `game_graveyard`. The spawn-in and respawn
-   facing come from `battleground_template.AllianceStartO`/`HordeStartO`
-   (row ID 7), which `GetTeamStartPosition` uses for the respawn teleport:
-   ```sql
-   UPDATE battleground_template SET AllianceStartO = <o>, HordeStartO = <o> WHERE ID = 7;
-   ```
-4. Apply the SQL, **fully restart worldserver** (start positions load once at
-   startup), `.debug bg`, queue, and confirm both your initial teleport-in and
-   a post-death respawn land at the new spot. This is now SQL-only — no C++ edit
-   (the spirit guides that used to need a hardcoded orientation are gone).
+2. Edit the `spawn` block in `apps/moba/maps/<mode>/respawn_config.json` — set the
+   team's `x`/`y`/`z` (position) and `o` (spawn-in / respawn facing). Then
+   `python3 apps/moba/gen_respawn.py`.
+3. Apply the regenerated `mod_moba_respawn.sql`, **fully restart worldserver**
+   (start positions load once at startup), `.debug bg`, queue, and confirm both
+   your initial teleport-in and a post-death respawn land at the new spot facing
+   the right way.
 
-## How to change resurrection timings
+The generator writes the `game_graveyard` coords and the `battleground_template`
+`StartLoc`/`StartO` for you — no hand `UPDATE`s. (The `WorldSafeLocs.dbc` gotcha
+below still applies to `AllianceStartLoc`/`HordeStartLoc`.)
+
+## How to change respawn timings
 
 Respawn wait = `min(CapMs, BaseMs + PerMinMs × whole match-minutes elapsed)`,
 per map, measured from doors-open.
 
-1. `UPDATE mod_moba_resurrection SET BaseMs = .., PerMinMs = .., CapMs = .. WHERE Map = 566;`
-   - `BaseMs` — floor wait (early-game deaths).
-   - `PerMinMs` — added per elapsed match-minute (late-game scaling).
-   - `CapMs` — ceiling the wait never exceeds.
-2. Apply the SQL, then **fully restart worldserver** — `MobaResurrectionDataStore`
-   caches once per process like the tower/creep stores (see the caching gotcha),
-   so `.debug bg` + requeue alone won't pick it up.
-3. `.debug bg`, queue, die, click Release, and confirm the countdown length —
-   try an early death vs. a few minutes in to see the scaling.
+1. Edit `timing` in `apps/moba/maps/<mode>/respawn_config.json`
+   (`base_ms` / `per_min_ms` / `cap_ms`), then `python3 apps/moba/gen_respawn.py`.
+2. Apply the regenerated `mod_moba_respawn.sql`, then **fully restart worldserver** —
+   `MobaRespawnDataStore` caches once per process (see the caching gotcha).
+3. `.debug bg`, queue, die, click Release, and confirm the countdown — try an
+   early death vs. a few minutes in to see the scaling.
 
-**Gotcha**: `battleground_template.AllianceStartLoc`/`HordeStartLoc`
-(row ID 7 = EotS) looks like it should reference `WorldSafeLocs.dbc`
-(that's even what the log message says on a bad ID), but it doesn't — it's
-resolved via `sGraveyard->GetGraveyard()`, which only reads the
-`game_graveyard` DB table. **Don't edit `WorldSafeLocs.dbc` for this** —
-wasted a whole detour learning that.
+Ad-hoc `UPDATE mod_moba_respawn ...` works for live experimentation, but fold the
+final values back into `respawn_config.json` — regenerating reverts anything not there.
 
 ## How to move the starting-area door (the visual "dome")
 
@@ -446,13 +438,13 @@ table.
 | Wave cadence | Every 30s; every 3rd wave adds a siege unit |
 | Creep lane corridor | 40 yd from lane, players only; +15 yd self-evade headroom |
 | Creep health regen | RegenHealth = 0 — damage persists between fights |
-| Respawn timing | BaseMs 10000 + PerMinMs 1500 × match-min, capped at CapMs 60000 (mod_moba_resurrection) |
+| Respawn timing | BaseMs 10000 + PerMinMs 1500 × match-min, capped at CapMs 60000 (mod_moba_respawn) |
 | BG map id (tower/creep rows are tagged with it) | 566 (hijacked EotS) |
 
 ## Known gotchas (not tied to one recipe)
 
 - **Data stores cache once per *worldserver process*, not per battleground
-  instance.** `MobaTowerDataStore`/`MobaCreepDataStore`/`MobaResurrectionDataStore` all guard their
+  instance.** `MobaTowerDataStore`/`MobaCreepDataStore`/`MobaRespawnDataStore` all guard their
   load with `if (_loaded) return;` on a singleton that lives for the whole
   process lifetime — so re-applying SQL and just `.debug bg` + requeuing on
   an already-running worldserver does **nothing**; the in-memory data is

@@ -15,19 +15,19 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "MobaResurrectionData.h"
+#include "MobaRespawnData.h"
 #include "DatabaseEnv.h"
 #include "QueryResult.h"
 #include "Field.h"
 #include "Log.h"
 
-MobaResurrectionDataStore* MobaResurrectionDataStore::instance()
+MobaRespawnDataStore* MobaRespawnDataStore::instance()
 {
-    static MobaResurrectionDataStore instance;
+    static MobaRespawnDataStore instance;
     return &instance;
 }
 
-void MobaResurrectionDataStore::LoadIfNeeded()
+void MobaRespawnDataStore::LoadIfNeeded()
 {
     if (_loaded)
         return;
@@ -35,11 +35,11 @@ void MobaResurrectionDataStore::LoadIfNeeded()
     _loaded = true;
 
     QueryResult result = WorldDatabase.Query(
-        "SELECT Map, BaseMs, PerMinMs, CapMs FROM mod_moba_resurrection");
+        "SELECT Map, BaseMs, PerMinMs, CapMs FROM mod_moba_respawn");
 
     if (!result)
     {
-        LOG_ERROR("sql.sql", "MobaResurrectionDataStore: table `mod_moba_resurrection` is empty or missing.");
+        LOG_ERROR("sql.sql", "MobaRespawnDataStore: table `mod_moba_respawn` is empty or missing.");
         return;
     }
 
@@ -47,7 +47,7 @@ void MobaResurrectionDataStore::LoadIfNeeded()
     {
         Field* fields = result->Fetch();
 
-        MobaResurrectionConfig cfg;
+        MobaRespawnConfig cfg;
         cfg.map      = fields[0].Get<uint32>();
         cfg.baseMs   = fields[1].Get<uint32>();
         cfg.perMinMs = fields[2].Get<uint32>();
@@ -57,7 +57,7 @@ void MobaResurrectionDataStore::LoadIfNeeded()
     } while (result->NextRow());
 }
 
-MobaResurrectionConfig const* MobaResurrectionDataStore::GetConfig(uint32 mapId) const
+MobaRespawnConfig const* MobaRespawnDataStore::GetConfig(uint32 mapId) const
 {
     auto itr = _byMap.find(mapId);
     return itr != _byMap.end() ? &itr->second : nullptr;

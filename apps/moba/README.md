@@ -1,16 +1,27 @@
-# MOBA lane tooling
+# MOBA content generators
 
-Generators for the MOBA battleground's data-driven content. Both follow
-the same pattern: a human-owned `*_config.json` you edit freely, a
-machine-owned `*.lock.json` that pins auto-assigned IDs forever (never
-hand-edit, always commit), and a generated SQL file nothing should
-hand-edit.
+Generators + per-map config for the MOBA battleground's data-driven content.
+Each map/mode is a self-contained bundle under `apps/moba/maps/<mode>/` (e.g.
+`maps/eye_of_the_storm/`) holding that map's `*_config.json` files; the
+generators glob those and emit one combined SQL file per content type. Generated
+SQL all carries a "GENERATED — do not hand-edit" header.
 
-- `gen_creep_paths.py` — walked lane points → densified,
-  formation-offset `waypoint_data` SQL (`mod_moba_creep_paths.sql`).
-- `gen_creep_roster.py` — per-creep choices + source-creature stat dumps
-  → the full creep SQL (`mod_moba_creeps.sql`: `creature_template`,
-  models, equipment, and the `mod_moba_creep_data` config table).
+- `gen_creep_roster.py` — per-creep choices + source-creature stat dumps →
+  `mod_moba_creeps.sql` (`creature_template`, models, equipment, and the
+  `mod_moba_creep_data` table). Uses a per-map lockfile
+  (`creep_config.lock.json`) to pin auto-assigned `creature_template` entries.
+- `gen_creep_paths.py` — walked lane points → densified, formation-offset
+  `waypoint_data` SQL (`mod_moba_creep_paths.sql`), from `lane_config.json`
+  (still shared/single until a second map's lanes exist).
+- `gen_tower_data.py` — per-map tower positions → `mod_moba_towers.sql`
+  (`mod_moba_tower_data`). Tower *creatures* are shared and hand-written in
+  `data/sql/custom/mod_moba_tower_defs.sql`; entries are hand-assigned, no lockfile.
+- `gen_respawn.py` — per-map respawn timing + spawn coords → `mod_moba_respawn.sql`
+  (the `mod_moba_respawn` timing table plus the `game_graveyard` /
+  `battleground_template` spawn wiring). No lockfile.
+
+Pipeline constants (output paths, id ranges, the `lane_config` path) live in the
+generators, not the configs — the per-map JSON files hold only that map's content.
 
 ## Workflow: (re)defining a lane
 
@@ -73,7 +84,7 @@ first run.
 
 ## Workflow: re-tuning an existing creep (`gen_creep_roster.py`)
 
-1. Edit its entry in `creep_config.json` (modifiers, level, spell,
+1. Edit its entry in `apps/moba/maps/<mode>/creep_config.json` (modifiers, level, spell,
    equipment, display, rank, ...).
 2. From the repo root: `python3 apps/moba/gen_creep_roster.py`
 3. Apply the SQL to `acore_world`, fully restart worldserver.
@@ -88,7 +99,7 @@ the source of truth, and the next apply reverts anything not in it.
    `mysql -E -u acore -pacore acore_world -e "SELECT * FROM creature_template WHERE entry=<id>" > apps/moba/sources/creature_template_<id>.txt`
    (`apps/moba/sources/` holds these verbatim dumps as committed,
    immutable reference data.)
-2. Add a block to `creep_config.json`'s `creeps` list (copy a similar
+2. Add a block to `apps/moba/maps/<mode>/creep_config.json`'s `creeps` list (copy a similar
    role's). `lane`/`slot` must exist in the lane lockfile — for a
    brand-new formation slot, add it to `lane_config.json` and run
    `gen_creep_paths.py` first. Team 0 uses the slot's `forward` path,
@@ -107,6 +118,6 @@ difficulty-entry references and `IconName` cleared, `RegenHealth = 0`
 `minlevel = maxlevel = level`. An optional per-creep `"rank"` overrides
 the source creature's rank (siege ships with 1 = elite).
 
-`creep_config.lock.json` follows the same rules as the lane lockfile:
+`apps/moba/maps/<mode>/creep_config.lock.json` follows the same rules as the lane lockfile:
 machine-owned, committed, never hand-edited — deleting it makes the next
 run assign fresh entries and orphans everything already in the DB.

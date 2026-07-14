@@ -15,8 +15,8 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef MOBA_RESURRECTION_DATA_H
-#define MOBA_RESURRECTION_DATA_H
+#ifndef MOBA_RESPAWN_DATA_H
+#define MOBA_RESPAWN_DATA_H
 
 #include "Common.h"
 #include <unordered_map>
@@ -24,8 +24,8 @@
 // One row per MOBA map: how long a released player waits before respawning.
 // The respawn LOCATION is the battleground's team start position, not stored
 // here -- it already lives in game_graveyard / battleground_template and is
-// shared with player spawn-in (see mod_moba_resurrection.sql).
-struct MobaResurrectionConfig
+// shared with player spawn-in (see mod_moba_respawn.sql).
+struct MobaRespawnConfig
 {
     uint32 map = 0;
     uint32 baseMs = 10000;
@@ -33,23 +33,23 @@ struct MobaResurrectionConfig
     uint32 capMs = 60000;
 };
 
-// Loads data/sql/custom/mod_moba_resurrection.sql's `mod_moba_resurrection`
+// Loads data/sql/custom/mod_moba_respawn.sql's `mod_moba_respawn`
 // table once, keyed by map id. Read by BattlegroundMOBA::StartRespawnTimer().
-class MobaResurrectionDataStore
+class MobaRespawnDataStore
 {
 public:
-    static MobaResurrectionDataStore* instance();
+    static MobaRespawnDataStore* instance();
 
     void LoadIfNeeded();
-    MobaResurrectionConfig const* GetConfig(uint32 mapId) const;
+    MobaRespawnConfig const* GetConfig(uint32 mapId) const;
 
 private:
-    MobaResurrectionDataStore() = default;
+    MobaRespawnDataStore() = default;
 
     bool _loaded = false;
-    std::unordered_map<uint32, MobaResurrectionConfig> _byMap;
+    std::unordered_map<uint32, MobaRespawnConfig> _byMap;
 };
 
-#define sMobaResurrectionDataStore MobaResurrectionDataStore::instance()
+#define sMobaRespawnDataStore MobaRespawnDataStore::instance()
 
 #endif

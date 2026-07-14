@@ -29,7 +29,7 @@
 #include "WorldStatePackets.h"
 #include "MobaTowerData.h"
 #include "MobaCreepData.h"
-#include "MobaResurrectionData.h"
+#include "MobaRespawnData.h"
 #include "Chat.h"
 #include "StringFormat.h"
 #include "ObjectAccessor.h"
@@ -120,7 +120,7 @@ void BattlegroundMOBA::HandleAreaTrigger(Player* player, uint32 trigger)
 bool BattlegroundMOBA::SetupBattleground()
 {
     sMobaTowerDataStore->LoadIfNeeded();
-    sMobaResurrectionDataStore->LoadIfNeeded();
+    sMobaRespawnDataStore->LoadIfNeeded();
     std::vector<MobaTowerConfig> towerConfigs = sMobaTowerDataStore->GetForMap(GetMapId());
     if (towerConfigs.empty())
     {
@@ -361,7 +361,7 @@ void BattlegroundMOBA::StartRespawnTimer(Player* player)
         return;
 
     uint32 baseMs = 10000, perMinMs = 1500, capMs = 60000;
-    if (MobaResurrectionConfig const* cfg = sMobaResurrectionDataStore->GetConfig(GetMapId()))
+    if (MobaRespawnConfig const* cfg = sMobaRespawnDataStore->GetConfig(GetMapId()))
     {
         baseMs   = cfg->baseMs;
         perMinMs = cfg->perMinMs;
@@ -395,7 +395,7 @@ void BattlegroundMOBA::UpdateRespawnTimers(uint32 diff)
         MobaRespawnState& state = itr->second;
         if (state.remainingMs <= diff)
         {
-            ResurrectAtBase(player);
+            RespawnAtBase(player);
             itr = _respawnTimers.erase(itr);
             continue;
         }
@@ -415,7 +415,7 @@ void BattlegroundMOBA::UpdateRespawnTimers(uint32 diff)
     }
 }
 
-void BattlegroundMOBA::ResurrectAtBase(Player* player)
+void BattlegroundMOBA::RespawnAtBase(Player* player)
 {
     if (Position const* startPos = GetTeamStartPosition(player->GetTeamId()))
         player->TeleportTo(GetMapId(), startPos->GetPositionX(), startPos->GetPositionY(),

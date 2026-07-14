@@ -1,0 +1,9 @@
+{
+  "map": 566,
+  "battleground_template_id": 7,
+  "timing": { "base_ms": 10000, "per_min_ms": 1500, "cap_ms": 60000 },
+  "spawn": {
+    "alliance": { "graveyard_id": 1103, "x": 2387.529,  "y": 1587.426,  "z": 1174.763, "o": 3.0222116 },
+    "horde":    { "graveyard_id": 1104, "x": 1942.9327, "y": 1547.6229, "z": 1176.458, "o": 0.32122585 }
+  }
+}

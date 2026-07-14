@@ -36,7 +36,7 @@ config optionally overrides the source creature's rank (0=normal, 1=elite).
 
 
 Usage (from the repo root):
-    python3 apps/moba/gen_creep_roster.py [path/to/creep_config.json]
+    python3 apps/moba/gen_creep_roster.py
 """
 
 import json
@@ -44,7 +44,11 @@ import re
 import sys
 from pathlib import Path
 
-DEFAULT_CONFIG = Path(__file__).parent / "creep_config.json"
+MAPS_DIR = Path(__file__).parent / "maps"
+OUTPUT = Path("data/sql/custom/mod_moba_creeps.sql")
+ID_RANGE = [900010, 900099]
+LANE_CONFIG = Path(__file__).parent / "lane_config.json"
+SCAN_SQL_DIRS = ["data/sql/custom"]
 
 ROLE_IDS = {"melee": 0, "caster": 1, "siege": 2}
 STRING_COLUMNS = {"name", "subname", "IconName", "AIName", "ScriptName"}
@@ -76,15 +80,7 @@ def note(msg):
 
 # ---------------------------------------------------------------- validation
 
-def validate_config(cfg):
-    id_range = cfg.get("id_range")
-    if (not isinstance(id_range, list) or len(id_range) != 2
-            or not all(isinstance(v, int) for v in id_range) or id_range[0] > id_range[1]):
-        fail('config "id_range" must be [low, high] with low <= high')
-    if not isinstance(cfg.get("output"), str) or not cfg["output"]:
-        fail('config "output" must be a file path string')
-    if not isinstance(cfg.get("lane_config"), str) or not cfg["lane_config"]:
-        fail('config "lane_config" must point at the lane generator config')
+def validate_config(cfg, path):
     if not isinstance(cfg.get("map"), int):
         fail('config "map" must be an integer map id (e.g. 566)')
 
@@ -242,17 +238,12 @@ def build_template_row(creep, entry, source_cols):
     return row
 
 
-def emit_sql(cfg, config_path, roster, column_order):
-    try:
-        config_path = config_path.resolve().relative_to(Path.cwd())
-    except ValueError:
-        pass  # config outside the repo -- keep the path as given
-
+def emit_sql(roster, column_order):
     entries = ", ".join(str(entry) for _, entry, _ in roster)
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE -- do not hand-edit.",
-        f"-- Produced by apps/moba/gen_creep_roster.py from {config_path}.",
+        f"-- Produced by apps/moba/gen_creep_roster.py from apps/moba/maps/*/creep_config.json.",
         "-- Stats are full copies of real source creatures (see the config's",
         "-- \"source\" fields) with a fixed override list enforced in code --",
         "-- see the generator's docstring for the list and rationale.",
@@ -317,7 +308,7 @@ def emit_sql(cfg, config_path, roster, column_order):
     for creep, entry, _ in roster:
         data_rows.append(
             f"-- {creep['key']} ({creep['lane']}/{creep['slot']})\n"
-            f"({entry}, {cfg['map']}, {creep['team']}, {ROLE_IDS[creep['role']]}, "
+            f"({entry}, {creep['_map']}, {creep['team']}, {ROLE_IDS[creep['role']]}, "
             f"{creep.get('attack_range', 20)}, {creep.get('attack_interval_ms', 2000)}, "
             f"{creep.get('attack_spell_id', 0)}, {creep['_path_id']}, {creep['despawn_ms']})")
     lines.append(",\n".join(data_rows) + ";")
@@ -327,59 +318,64 @@ def emit_sql(cfg, config_path, roster, column_order):
 # ---------------------------------------------------------------------- main
 
 def main():
-    config_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_CONFIG
-    if not config_path.is_file():
-        fail(f"config not found: {config_path}")
-    cfg = json.loads(config_path.read_text())
-    validate_config(cfg)
+    configs = sorted(MAPS_DIR.glob("*/creep_config.json"))
+    if not configs:
+        fail(f"no creep configs found under {MAPS_DIR}/*/creep_config.json")
 
-    lane_lock_path = Path(cfg["lane_config"]).with_suffix(".lock.json")
+    lane_lock_path = LANE_CONFIG.with_suffix(".lock.json")
     if not lane_lock_path.is_file():
         fail(f"lane lockfile not found: {lane_lock_path} -- run gen_creep_paths.py first")
     lane_lock = json.loads(lane_lock_path.read_text()).get("path_ids", {})
 
-    lock_path = config_path.with_suffix(".lock.json")
-    lock = json.loads(lock_path.read_text()) if lock_path.is_file() else {}
-
-    used = collect_used_entries(cfg.get("scan_sql_dirs", ["data/sql/custom"]))
-    used.update(lock.get("entries", {}).values())
+    # Gather every already-used entry (existing SQL + all per-map lockfiles) so
+    # entries never collide across maps.
+    used = collect_used_entries(SCAN_SQL_DIRS)
+    locks = {}
+    for cp in configs:
+        lp = cp.with_suffix(".lock.json")
+        locks[cp] = json.loads(lp.read_text()) if lp.is_file() else {}
+        used.update(locks[cp].get("entries", {}).values())
 
     assigned_log = []
-    roster = []  # (creep, entry, template_row)
+    roster = []  # (creep, entry, template_row); creep carries _map / _path_id
     column_order = None
-    for creep in cfg["creeps"]:
-        slot_ids = lane_lock.get(creep["lane"], {}).get(creep["slot"])
-        if not slot_ids:
-            fail(f'creep "{creep["key"]}": lane/slot "{creep["lane"]}/{creep["slot"]}" '
-                 f"not in {lane_lock_path} -- check the name, or run gen_creep_paths.py")
-        creep["_path_id"] = slot_ids["forward" if creep["team"] == 0 else "reverse"]
+    for cp in configs:
+        cfg = json.loads(cp.read_text())
+        validate_config(cfg, cp)
+        lock = locks[cp]
+        for creep in cfg["creeps"]:
+            creep["_map"] = cfg["map"]
+            slot_ids = lane_lock.get(creep["lane"], {}).get(creep["slot"])
+            if not slot_ids:
+                fail(f'creep "{creep["key"]}": lane/slot "{creep["lane"]}/{creep["slot"]}" '
+                     f"not in {lane_lock_path} -- check the name, or run gen_creep_paths.py")
+            creep["_path_id"] = slot_ids["forward" if creep["team"] == 0 else "reverse"]
 
-        source_cols, order = parse_vertical_dump(creep["source"])
-        if column_order is None:
-            column_order = order
-        elif order != column_order:
-            fail(f'source dumps disagree on column order ("{creep["source"]}" vs earlier) '
-                 f"-- were they taken from the same schema?")
+            source_cols, order = parse_vertical_dump(creep["source"])
+            if column_order is None:
+                column_order = order
+            elif order != column_order:
+                fail(f'source dumps disagree on column order ("{creep["source"]}" vs earlier) '
+                     f"-- were they taken from the same schema?")
 
-        entry, _ = get_entry(lock, creep["key"], used, cfg["id_range"], assigned_log)
-        roster.append((creep, entry, build_template_row(creep, entry, source_cols)))
+            entry, _ = get_entry(lock, creep["key"], used, ID_RANGE, assigned_log)
+            roster.append((creep, entry, build_template_row(creep, entry, source_cols)))
 
-    output_path = Path(cfg["output"])
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(emit_sql(cfg, config_path, roster, column_order))
+        lock["_comment"] = ("Machine-generated by gen_creep_roster.py -- do not edit. "
+                            "Maps creep keys to their permanently assigned "
+                            "creature_template entries.")
+        cp.with_suffix(".lock.json").write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
 
-    lock["_comment"] = ("Machine-generated by gen_creep_roster.py -- do not edit. "
-                        "Maps creep keys to their permanently assigned "
-                        "creature_template entries.")
-    lock_path.write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    OUTPUT.write_text(emit_sql(roster, column_order))
 
-    print(f"\nWrote {output_path} ({len(roster)} creeps).")
+    print(f"\nWrote {OUTPUT} ({len(roster)} creeps across {len(configs)} map(s)).")
     if assigned_log:
         print("Newly assigned creature entries (now locked):")
         for key, entry in assigned_log:
             print(f"  {key}: {entry}")
     else:
-        print("All creature entries reused from lockfile.")
+        print("All creature entries reused from lockfiles.")
     print("Apply the SQL to acore_world, then fully restart worldserver.")
 
 
