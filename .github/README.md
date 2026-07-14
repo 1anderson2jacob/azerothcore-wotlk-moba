@@ -17,6 +17,11 @@ A separate battleground ID (with a distributable client MPQ patch) is planned on
 - [x] Win condition: destroy the enemy base tower
 - [x] Lane creep waves
 - [x] LoL-style individual, game-length-scaling resurrection timers (replaces shared-interval graveyard resurrection)
+- [x] LoL-style recall to base (Hearthstone hijacked; no client patch)
+- [x] Per-map content bundles (map-keyed tower/creep/respawn tables; a new map = a new `apps/moba/maps/<mode>/` bundle)
+- [x] On-screen match clock (client addon; no client patch)
+- [ ] UI scoreboard
+- [ ] Fountain healing
 - [ ] Gold / itemization mid-match
 - [ ] Custom map/terrain
 - [ ] Standalone battleground ID via `BattlemasterList.dbc` patch (client MPQ distributed to players)
@@ -28,6 +33,7 @@ A separate battleground ID (with a distributable client MPQ patch) is planned on
 | `src/server/game/Battlegrounds/Zones/BattlegroundMOBA.{h,cpp}` | New battleground class (cloned from EotS, being reshaped) |
 | `src/server/game/Battlegrounds/BattlegroundMgr.cpp` | `BATTLEGROUND_EY` factory entries point to `BattlegroundMOBA` |
 | `src/server/game/Movement/MotionMaster.{h,cpp}` | Added public `MoveWaypoint(WaypointPath&, bool)` overload (mid-route path resume for lane creeps) |
+| `client/addons/MobaClock/` | Client addon: on-screen match clock, fed by server `LANG_ADDON` messages |
 
 ## Building (macOS, Apple Silicon)
 

@@ -37,6 +37,10 @@ assuming a SQL-only change takes effect on the next queue.**
 Both tables now carry a `Map` column, and `SetupBattleground` loads only the
 rows for the match's map (`GetForMap(GetMapId())`), so multiple maps can coexist.
 
+Client addon changes (`client/addons/*`) are **not** part of the build — deploy
+by copying the addon folder into the WoW client's `Interface/AddOns/`, then
+`/reload` in-game (or relog). No `make`/`make install` needed for a `.lua`-only edit.
+
 ---
 
 ## How the tower system works (read this before changing behavior)
@@ -208,6 +212,41 @@ instead of the player's inn; outside the BG it's unchanged.
   the standalone-BG phase.
 
 ---
+
+## How the match clock works (read this before changing behavior)
+
+On-screen elapsed match time, drawn by a **client addon** — no client patch, no
+DBC/MPQ. The stock EotS client has no match-clock widget and only renders
+worldstate HUD for its own zone, so a native clock would need an MPQ patch;
+instead a small addon draws it and the server feeds it the time.
+
+- **Addon**: `client/addons/MobaClock` (`.toc` + `.lua`), the project's first
+  client-side artifact. Draws a draggable/lockable frame that counts up locally.
+  Install by copying the folder into the client's `Interface/AddOns/`. Slash
+  commands: `/mobaclock test | stop | lock | unlock | reset` (also `/mclock`).
+- **Server feed**: `BattlegroundMOBA::SendMatchClock` / `BroadcastMatchClock`
+  send a `LANG_ADDON` chat message (prefix `MobaClock`, packet built like
+  `ArenaSpectator::CreatePacket`). Payloads: `T:<seconds>` starts/syncs and shows
+  the clock, `E` hides it. The client splits the message on a TAB into
+  `(prefix, payload)` for the addon's `CHAT_MSG_ADDON` handler (the addon also
+  falls back to splitting the tab itself, for robustness across client builds).
+- **When it sends**: `T:0` at doors-open (`StartingEventOpenDoors`);
+  `T:<elapsed>` to a late joiner (`AddPlayer`) and to everyone every 10s
+  (`MOBA_CLOCK_RESYNC_MS`, `PostUpdateImpl`) so `/reload` and late joins re-sync;
+  `E` on match end (`EndBattleground`) and on any early leave (`RemovePlayer`).
+- **Why local counting**: the addon advances the display itself between messages,
+  so the server only sends sparse start/sync/hide events — no per-second spam.
+- **Elapsed excludes prep**: starts at doors-open, matching `_matchElapsedMs`.
+
+## How to retune or move the clock
+
+- **Resync cadence**: `MOBA_CLOCK_RESYNC_MS` (anonymous namespace in
+  `BattlegroundMOBA.cpp`, default `10000`). Lower = faster `/reload` recovery,
+  more messages. Rebuild (Build, Install & Test).
+- **New payloads** (e.g. for the scoreboard bar): add senders alongside
+  `SendMatchClock` and handle them in the addon's `HandlePayload`.
+- **Move on screen**: `/mobaclock unlock`, drag, `/mobaclock lock`. Position/lock
+  persist per character (SavedVariables); `/mobaclock reset` recenters. No rebuild.
 
 ## How to move a tower
 

@@ -153,7 +153,6 @@ A fork of AzerothCore (WotLK 3.3.5a server) building a MOBA-style battleground o
 **Core approach:** the EotS battleground slot is hijacked. The client queues for EotS normally; the server instantiates a custom `BattlegroundMOBA` class instead of `BattlegroundEY`. No client patch needed. A standalone battleground ID (via `BattlemasterList.dbc` client patch) is planned only after gameplay stabilizes.
 
 - GitHub: `1anderson2jacob/azerothcore-wotlk-moba`, branch `moba-battleground` (upstream remote = official azerothcore repo)
-- Machine: MacBook Air M3, Apple Silicon. Client runs in a Parallels Windows VM (ChromieCraft 3.3.5a client), connecting to `10.211.55.2`.
 
 ## Gitignore overrides (fork)
 
@@ -174,11 +173,12 @@ Done (see git history + the `.github/MOBA_*_PLAN.md` docs for detail):
 - **Recall to base** — LoL-style, by hijacking Hearthstone (item 6948 / spell 8690): a `SpellScript` (`src/server/scripts/Custom/moba_recall.cpp`, bound via `data/sql/custom/mod_moba_recall.sql`) redirects the teleport to `GetTeamStartPosition` when the caster is in a `BattlegroundMOBA` and resets the cooldown so it's repeatable; outside the BG it's a normal Hearthstone. The 10s cast means movement/damage interrupt come free from the spell engine. Cast time is per-map and tiered (normal + empowered), stored in the respawn bundle (`recall` section → `mod_moba_respawn.RecallCastMs`/`RecallEmpoweredCastMs`) and applied by a small `Spell::prepare` override (`BattlegroundMOBA::GetRecallCastTimeMs`); the client cast bar follows via `SMSG_SPELL_START`. Empowered is currently gated on a placeholder aura (1243) pending a real mechanic. `AddPlayer` grants a Hearthstone if missing and clears its cooldown on entry.
 - **Custom map (Twisted Treeline) blockout** — pixel-traced in Blender to WoW scale (`var/blender/twisted_treeline_blockout.blend`); layout exported to `var/blender/twisted_treeline_layout.json` (structure coords + per-lane waypoints). Still runs on the hijacked EotS map; custom terrain is a later pass.
 - **Per-map config layout** — all MOBA content is authored as per-map JSON under `apps/moba/maps/<mode>/` (e.g. `eye_of_the_storm/`, map 566) and globbed by generators into combined, map-keyed SQL: `gen_creep_roster.py` (creeps), `gen_tower_data.py` (tower positions; shared creature defs hand-written in `data/sql/custom/mod_moba_tower_defs.sql`), `gen_respawn.py` (respawn timing + spawn wiring), `gen_creep_paths.py` (lane waypoints, still single). All content tables (`mod_moba_tower_data` / `mod_moba_creep_data` / `mod_moba_respawn`) carry a `Map` column; adding a map/mode = dropping in a `maps/<mode>/` bundle.
+- **UI match clock** — on-screen elapsed match time via the project's first client addon (`client/addons/MobaClock`, `.toc` + `.lua`), fed by the server over `LANG_ADDON` addon-channel messages (`BattlegroundMOBA::SendMatchClock` / `BroadcastMatchClock`, prefix `MobaClock`): `T:0` at doors-open, `T:<elapsed>` resynced every 10s and on late-join, `E` to hide on match end (`EndBattleground`) and early leave (`RemovePlayer`). The addon counts up locally between messages and is draggable/lockable via `/mobaclock`. No client patch (no DBC/MPQ) — `client/` is the tracked home for client-side artifacts and the deferred client-patch phase.
 
 Next (in order):
 
 Smaller gameplay items to knock out first (unordered):
-- **UI match clock** — show elapsed match time on-screen.
+- **UI scoreboard bar** — grow the match clock into a proper top bar (team kill score, objective/stat counters, clock), modeled on the Twisted Treeline scoreboard. Upper-center by default, draggable — reuse `MobaClock`'s existing frame/position/lock machinery and the same `LANG_ADDON` message channel (extend the payload beyond `T:<sec>`).
 - **Fountain healing** — heal players while they stand in the starting zone.
 - **Last-hit kill credit** — award minion/boss kill credit to the team that landed the killing blow, not the team that first aggro'd it.
 - **Super minions** — a reinforced minion variant.
@@ -225,6 +225,7 @@ If configuring from scratch, these flags are mandatory on this machine (Homebrew
 - **AddCreature signature:** `(entry, type, x, y, z, o, respawntime = 0, transport = nullptr)` — no TeamId param; faction comes from the template.
 - The original `BattlegroundEY.{h,cpp}` still exists untouched — use it as reference for how spawning/worldstates/events worked before the strip-down.
 - EotS client UI shows leftover grey point icons — cosmetic, unfixable server-side, resolves when the project moves to its own battleground ID.
+- **Client-side HUD without a client patch**: feed a client addon under `client/addons/` via server→client `LANG_ADDON` chat messages (build like `BattlegroundMOBA::SendMatchClock`, mirroring `ArenaSpectator::CreatePacket`). The 3.3.5a client splits the message on a TAB into `(prefix, payload)` for the addon's `CHAT_MSG_ADDON` handler. This is the no-DBC path for HUD elements (match clock, upcoming scoreboard bar). The alternative — a native `WorldStateUI.dbc` clock — only renders in its own zone and needs an MPQ patch, so it's deferred to the client-patch phase.
 
 ## Deferred / known-untidy
 

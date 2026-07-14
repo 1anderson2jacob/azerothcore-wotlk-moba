@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: MOBA Clock
+## Notes: Displays elapsed match time in the MOBA battleground.
+## Author: MOBA Battleground project
+## Version: 0.1
+## SavedVariables: MobaClockDB
+
+MobaClock.lua

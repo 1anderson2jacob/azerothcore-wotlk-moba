@@ -37,6 +37,16 @@
 #include "WaypointMgr.h"
 #include "MotionMaster.h"
 #include <algorithm>
+#include "Opcodes.h"
+
+namespace
+{
+    // Shared with the client-side MobaClock addon (client/addons/MobaClock). The
+    // server sends "MobaClock\t<payload>" as a LANG_ADDON chat message; the 3.3.5a
+    // client splits on the TAB into (prefix, payload) for the CHAT_MSG_ADDON event.
+    constexpr char MOBA_CLOCK_ADDON_PREFIX[] = "MobaClock";
+    constexpr uint32 MOBA_CLOCK_RESYNC_MS    = 10000; // re-broadcast cadence for /reload + late joiners
+}
 
 void BattlegroundMOBAScore::BuildObjectivesBlock(WorldPacket& data)
 {
@@ -76,6 +86,15 @@ void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
             }
 
         UpdateRespawnTimers(diff);
+
+        // Periodically re-broadcast the match clock so clients that reloaded their UI
+        // or joined late re-sync (the addon counts locally between updates).
+        _clockResyncMs += diff;
+        if (_clockResyncMs >= MOBA_CLOCK_RESYNC_MS)
+        {
+            _clockResyncMs = 0;
+            BroadcastMatchClock(Acore::StringFormat("T:{}", _matchElapsedMs / 1000));
+        }
     }
 }
 
@@ -94,10 +113,17 @@ void BattlegroundMOBA::StartingEventOpenDoors()
     StartTimedAchievement(ACHIEVEMENT_TIMED_TYPE_EVENT, BG_MOBA_EVENT_START_BATTLE);
 
     _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(30000));
+
+    // Match clock starts now (doors open). Tell every client's MobaClock addon to
+    // show 0:00 and start counting; PostUpdateImpl re-syncs periodically thereafter.
+    BroadcastMatchClock("T:0");
 }
 
 void BattlegroundMOBA::EndBattleground(TeamId winnerTeamId)
 {
+    // Hide the client-side match clock as the match ends.
+    BroadcastMatchClock("E");
+
     Battleground::EndBattleground(winnerTeamId);
 }
 
@@ -114,10 +140,18 @@ void BattlegroundMOBA::AddPlayer(Player* player)
         player->AddItem(BG_MOBA_RECALL_ITEM, 1);
 
     player->RemoveSpellCooldown(BG_MOBA_RECALL_SPELL, true);
+
+    // Late joiner during a live match: sync their MobaClock addon to the current time.
+    if (GetStatus() == STATUS_IN_PROGRESS)
+        SendMatchClock(player, Acore::StringFormat("T:{}", _matchElapsedMs / 1000));
 }
 
-void BattlegroundMOBA::RemovePlayer(Player* /*player*/)
+void BattlegroundMOBA::RemovePlayer(Player* player)
 {
+    // Hide the client-side match clock for anyone leaving the match early (Leave
+    // button, logout, GM removal). The normal win-condition path hides it via
+    // EndBattleground; this covers every exit before that.
+    SendMatchClock(player, "E");
 }
 
 void BattlegroundMOBA::HandleAreaTrigger(Player* player, uint32 trigger)
@@ -435,6 +469,34 @@ void BattlegroundMOBA::RespawnAtBase(Player* player)
     player->CastSpell(player, 6962, true);   // full health
     player->CastSpell(player, 44535, true);  // full mana
     player->SpawnCorpseBones(false);
+}
+
+void BattlegroundMOBA::SendMatchClock(Player* player, std::string const& body)
+{
+    if (!player)
+        return;
+
+    // LANG_ADDON is what marks this as an addon message client-side; the chat-type
+    // byte is irrelevant to delivery. Body is "<prefix>\t<payload>" (see the addon).
+    std::string message = Acore::StringFormat("{}\t{}", MOBA_CLOCK_ADDON_PREFIX, body);
+
+    WorldPacket data(SMSG_MESSAGECHAT, 1 + 4 + 8 + 4 + 8 + 4 + message.size() + 2);
+    data << uint8(CHAT_MSG_WHISPER);
+    data << uint32(LANG_ADDON);
+    data << uint64(0);                    // sender GUID (0 = server)
+    data << uint32(0);
+    data << uint64(0);                    // receiver GUID
+    data << uint32(message.size() + 1);
+    data << message;
+    data << uint8(0);
+    player->SendDirectMessage(&data);
+}
+
+void BattlegroundMOBA::BroadcastMatchClock(std::string const& body)
+{
+    for (auto const& itr : GetPlayers())
+        if (Player* player = itr.second)
+            SendMatchClock(player, body);
 }
 
 uint32 BattlegroundMOBA::GetRecallCastTimeMs(Player* player)

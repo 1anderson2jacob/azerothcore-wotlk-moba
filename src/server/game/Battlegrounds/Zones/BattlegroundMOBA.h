@@ -25,6 +25,7 @@
 #include "ObjectGuid.h"
 #include <vector>
 #include <unordered_map>
+#include <string>
 
 enum BG_MOBA_ObjectEntry
 {
@@ -153,12 +154,19 @@ private:
     void UpdateRespawnTimers(uint32 diff);
     void RespawnAtBase(Player* player);
 
+    // Feeds the client-side MobaClock addon (client/addons/MobaClock) the elapsed
+    // match time over an addon-channel message. `body` is the payload after the
+    // "MobaClock\t" prefix: "T:<seconds>" (re)starts/syncs the clock, "E" hides it.
+    void SendMatchClock(Player* player, std::string const& body);
+    void BroadcastMatchClock(std::string const& body);
+
     EventMap _bgEvents;
     std::vector<MobaTowerState> _towers;
     MobaWaveComposition _waveComposition[2];
     std::vector<ObjectGuid> _spawnedCreeps;
     uint32 _waveCount = 0;
     uint32 _matchElapsedMs = 0; // time since doors opened (excludes prep phase)
+    uint32 _clockResyncMs = 0;  // accumulates toward the next periodic clock re-broadcast
     std::unordered_map<ObjectGuid, MobaRespawnState> _respawnTimers;
 
 };
