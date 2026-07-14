@@ -105,6 +105,15 @@ void BattlegroundMOBA::AddPlayer(Player* player)
 {
     Battleground::AddPlayer(player);
     PlayerScores.emplace(player->GetGUID().GetCounter(), new BattlegroundMOBAScore(player->GetGUID()));
+
+    // Recall (moba_recall.cpp) is triggered by casting Hearthstone, redirected to
+    // base while in this BG. Ensure the player is holding one, and clear any
+    // pre-existing cooldown so recall is available the moment they enter (each
+    // recall cast resets it thereafter -- see spell_moba_hearthstone_recall::HandleTeleport).
+    if (!player->HasItemCount(BG_MOBA_RECALL_ITEM))
+        player->AddItem(BG_MOBA_RECALL_ITEM, 1);
+
+    player->RemoveSpellCooldown(BG_MOBA_RECALL_SPELL, true);
 }
 
 void BattlegroundMOBA::RemovePlayer(Player* /*player*/)
@@ -426,4 +435,29 @@ void BattlegroundMOBA::RespawnAtBase(Player* player)
     player->CastSpell(player, 6962, true);   // full health
     player->CastSpell(player, 44535, true);  // full mana
     player->SpawnCorpseBones(false);
+}
+
+uint32 BattlegroundMOBA::GetRecallCastTimeMs(Player* player)
+{
+    if (!player)
+        return 0;
+
+    // The dynamic_cast doubles as the "is this a MOBA BG" test. Returning 0 tells
+    // Spell::prepare to keep the spell's default cast time.
+    BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground());
+    if (!moba)
+        return 0;
+
+    MobaRespawnConfig const* cfg = sMobaRespawnDataStore->GetConfig(moba->GetMapId());
+    if (!cfg)
+        return 0;
+
+    // PLACEHOLDER empowered-recall trigger: until a real mechanic exists, a player
+    // carrying BG_MOBA_RECALL_EMPOWER_AURA gets the reduced cast time. Replace this
+    // HasAura check with the real condition when it lands. (Empowered falls back to
+    // normal if it isn't configured, i.e. recallEmpoweredCastMs == 0.)
+    if (cfg->recallEmpoweredCastMs && player->HasAura(BG_MOBA_RECALL_EMPOWER_AURA))
+        return cfg->recallEmpoweredCastMs;
+
+    return cfg->recallCastMs;
 }

@@ -61,6 +61,13 @@ enum BG_MOBA_Events
     EVENT_MOBA_SPAWN_WAVE = 1
 };
 
+enum BG_MOBA_Recall
+{
+    BG_MOBA_RECALL_SPELL        = 8690,  // Hearthstone; redirected to base by moba_recall.cpp
+    BG_MOBA_RECALL_ITEM         = 6948,  // Hearthstone item; granted in AddPlayer
+    BG_MOBA_RECALL_EMPOWER_AURA = 1243   // PLACEHOLDER empower trigger (Power Word: Fortitude R1); swap for the real mechanic
+};
+
 // Tracks a spawned tower's registry data: which team it belongs to, its
 // tier/guard dependency, and whether it's been destroyed. Populated from
 // `mod_moba_tower_data` (see MobaTowerData.h) in SetupBattleground().
@@ -133,6 +140,10 @@ public:
 
     // Starts a player's respawn countdown (called from the OnPlayerReleasedGhost hook).
     void StartRespawnTimer(Player* player);
+
+    // Per-map recall cast time (ms) for a player currently in a MOBA BG; 0 = no
+    // override (use the spell's default). Read by Spell::prepare to retime Hearthstone.
+    static uint32 GetRecallCastTimeMs(Player* player);
 
 private:
     void PostUpdateImpl(uint32 diff) override;

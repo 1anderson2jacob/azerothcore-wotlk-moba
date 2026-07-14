@@ -19,6 +19,7 @@
 #include "ArenaSpectator.h"
 #include "BattlefieldMgr.h"
 #include "Battleground.h"
+#include "BattlegroundMOBA.h"
 #include "CharmInfo.h"
 #include "CellImpl.h"
 #include "Common.h"
@@ -3527,6 +3528,13 @@ SpellCastResult Spell::prepare(SpellCastTargets const* targets, AuraEffect const
 
     // calculate cast time (calculated after first CheckCast check to prevent charge counting for first CheckCast fail)
     m_casttime = HasTriggeredCastFlag(TRIGGERED_CAST_DIRECTLY) ? 0 : m_spellInfo->CalcCastTime(m_caster, this);
+
+    // [MOBA] Retime Hearthstone to the map's recall cast time when it's used as
+    // recall inside a BattlegroundMOBA (see moba_recall.cpp). The client cast bar
+    // follows m_casttime via SMSG_SPELL_START, so the bar shows the overridden time.
+    if (m_spellInfo->Id == BG_MOBA_RECALL_SPELL && m_caster->IsPlayer())
+        if (uint32 recallMs = BattlegroundMOBA::GetRecallCastTimeMs(m_caster->ToPlayer()))
+            m_casttime = recallMs;
 
     if (m_caster->IsPlayer())
         if (m_caster->ToPlayer()->GetCommandStatus(CHEAT_CASTTIME))

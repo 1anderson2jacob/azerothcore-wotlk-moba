@@ -31,6 +31,8 @@ struct MobaRespawnConfig
     uint32 baseMs = 10000;
     uint32 perMinMs = 1500;
     uint32 capMs = 60000;
+    uint32 recallCastMs = 0;
+    uint32 recallEmpoweredCastMs = 0;
 };
 
 // Loads data/sql/custom/mod_moba_respawn.sql's `mod_moba_respawn`

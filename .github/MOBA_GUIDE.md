@@ -174,6 +174,39 @@ resurrection. Fully self-contained in `BattlegroundMOBA` — no core engine edit
   they're the start-loc / spawn bubble that spawn-in, the release-repop
   (`GetClosestGraveyard`), and the respawn all reuse.
 
+## How recall works (read this before changing behavior)
+
+LoL-style recall by **hijacking Hearthstone** — no client patch, no new spell.
+Casting Hearthstone (item 6948 / spell 8690) inside the BG teleports to base
+instead of the player's inn; outside the BG it's unchanged.
+
+- **Teleport redirect**: a `SpellScript`
+  (`src/server/scripts/Custom/moba_recall.cpp`, `spell_moba_hearthstone_recall`,
+  bound to spell 8690 via `data/sql/custom/mod_moba_recall.sql`) hooks the
+  teleport effect. In a `BattlegroundMOBA` it `PreventHitDefaultEffect`s the
+  home-bind teleport, sends the player to `GetTeamStartPosition` (same spot
+  respawn uses), then clears the cooldown so recall is repeatable.
+- **Interrupt for free**: it's a real Hearthstone cast, so movement and damage
+  break it exactly like LoL — nothing hand-rolled.
+- **Per-map, tiered cast time**: normal + empowered, in the respawn bundle
+  (`recall` section in `respawn_config.json` → `mod_moba_respawn.RecallCastMs` /
+  `RecallEmpoweredCastMs`). A small override in `Spell::prepare` calls
+  `BattlegroundMOBA::GetRecallCastTimeMs` and replaces `m_casttime`; the client
+  cast bar follows via `SMSG_SPELL_START`, so the bar shows the overridden time.
+  `0` = use the spell's default (no override).
+- **Empowered is placeholder-gated**: `GetRecallCastTimeMs` returns the empowered
+  time when the player carries aura `BG_MOBA_RECALL_EMPOWER_AURA` (1243, Power
+  Word: Fortitude R1) — a throwaway trigger to be swapped for a real mechanic.
+  Test with `.aura 1243` / `.unaura 1243`. Don't use a haste buff as the
+  placeholder — haste changes cast time itself and would confound the test.
+- **Availability**: `AddPlayer` grants a Hearthstone if the player lacks one and
+  clears its cooldown on entry, so a hearth on CD from the open world doesn't
+  block recall.
+- **Cosmetic limit**: the item's on-use tooltip still reads "Returns you to
+  <bind>" — the Hearthstone spell's client-rendered, bind-based text, not
+  changeable server-side. Resolves when recall becomes its own custom spell in
+  the standalone-BG phase.
+
 ---
 
 ## How to move a tower
@@ -399,6 +432,24 @@ per map, measured from doors-open.
 Ad-hoc `UPDATE mod_moba_respawn ...` works for live experimentation, but fold the
 final values back into `respawn_config.json` — regenerating reverts anything not there.
 
+## How to change the recall cast time
+
+Recall cast time is per-map and tiered (normal + empowered), stored in the
+respawn bundle alongside respawn timing.
+
+1. Edit the `recall` block in `apps/moba/maps/<mode>/respawn_config.json`
+   (`cast_time_ms` = normal, `empowered_cast_time_ms` = the reduced tier; ms,
+   `0` = fall back to the spell's default / to normal), then
+   `python3 apps/moba/gen_respawn.py`.
+2. Apply the regenerated `mod_moba_respawn.sql`, then **fully restart worldserver**
+   (`MobaRespawnDataStore` caches once per process — see the caching gotcha).
+3. `.debug bg`, queue, cast Hearthstone in-BG → the cast bar shows the normal
+   time; `.aura 1243` then cast → the empowered time; `.unaura 1243` to revert.
+
+Tier selection lives in `BattlegroundMOBA::GetRecallCastTimeMs`. To replace the
+placeholder empower trigger with a real mechanic, change the `HasAura` check
+there (and `BG_MOBA_RECALL_EMPOWER_AURA` in `BattlegroundMOBA.h`).
+
 ## How to move the starting-area door (the visual "dome")
 
 The door gameobject *is* the dome/forcefield players see before the match
@@ -440,6 +491,9 @@ table.
 | Creep health regen | RegenHealth = 0 — damage persists between fights |
 | Respawn timing | BaseMs 10000 + PerMinMs 1500 × match-min, capped at CapMs 60000 (mod_moba_respawn) |
 | BG map id (tower/creep rows are tagged with it) | 566 (hijacked EotS) |
+| Recall trigger | Hearthstone (item 6948 / spell 8690), redirected to base in-BG |
+| Recall cast time | normal 9000 ms / empowered 4500 ms (mod_moba_respawn RecallCastMs / RecallEmpoweredCastMs) |
+| Recall empower trigger | placeholder aura 1243 (Power Word: Fortitude R1) — swap for real mechanic |
 
 ## Known gotchas (not tied to one recipe)
 

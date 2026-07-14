@@ -13,12 +13,14 @@ CREATE TABLE `mod_moba_respawn` (
     `Map`      INT UNSIGNED NOT NULL PRIMARY KEY,        -- BG map id
     `BaseMs`   INT UNSIGNED NOT NULL DEFAULT 10000,      -- base respawn wait
     `PerMinMs` INT UNSIGNED NOT NULL DEFAULT 1500,       -- added per elapsed match-minute
-    `CapMs`    INT UNSIGNED NOT NULL DEFAULT 60000       -- maximum respawn wait
+    `CapMs`    INT UNSIGNED NOT NULL DEFAULT 60000,       -- maximum respawn wait
+    `RecallCastMs`          INT UNSIGNED NOT NULL DEFAULT 0,  -- recall cast time (ms); 0 = spell default
+    `RecallEmpoweredCastMs` INT UNSIGNED NOT NULL DEFAULT 0   -- empowered recall cast time (ms); 0 = fall back to normal
 );
 
-INSERT INTO `mod_moba_respawn` (`Map`, `BaseMs`, `PerMinMs`, `CapMs`)
+INSERT INTO `mod_moba_respawn` (`Map`, `BaseMs`, `PerMinMs`, `CapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`)
 VALUES
-(566, 10000, 1500, 60000);
+(566, 10000, 1500, 60000, 9000, 4500);
 
 -- Spawn wiring for map 566 (eye_of_the_storm)
 UPDATE battleground_template SET AllianceStartLoc = 1103, AllianceStartO = 3.0222116, HordeStartLoc = 1104, HordeStartO = 0.32122585 WHERE ID = 7;

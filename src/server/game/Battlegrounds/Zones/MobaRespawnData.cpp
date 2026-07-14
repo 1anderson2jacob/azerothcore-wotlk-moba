@@ -35,7 +35,7 @@ void MobaRespawnDataStore::LoadIfNeeded()
     _loaded = true;
 
     QueryResult result = WorldDatabase.Query(
-        "SELECT Map, BaseMs, PerMinMs, CapMs FROM mod_moba_respawn");
+        "SELECT Map, BaseMs, PerMinMs, CapMs, RecallCastMs, RecallEmpoweredCastMs FROM mod_moba_respawn");
 
     if (!result)
     {
@@ -48,10 +48,12 @@ void MobaRespawnDataStore::LoadIfNeeded()
         Field* fields = result->Fetch();
 
         MobaRespawnConfig cfg;
-        cfg.map      = fields[0].Get<uint32>();
-        cfg.baseMs   = fields[1].Get<uint32>();
-        cfg.perMinMs = fields[2].Get<uint32>();
-        cfg.capMs    = fields[3].Get<uint32>();
+        cfg.map                   = fields[0].Get<uint32>();
+        cfg.baseMs                = fields[1].Get<uint32>();
+        cfg.perMinMs              = fields[2].Get<uint32>();
+        cfg.capMs                 = fields[3].Get<uint32>();
+        cfg.recallCastMs          = fields[4].Get<uint32>();
+        cfg.recallEmpoweredCastMs = fields[5].Get<uint32>();
 
         _byMap[cfg.map] = cfg;
     } while (result->NextRow());

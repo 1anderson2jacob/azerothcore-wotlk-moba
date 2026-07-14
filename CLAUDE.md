@@ -171,10 +171,20 @@ Done (see git history + the `.github/MOBA_*_PLAN.md` docs for detail):
 - **Towers** — data-driven registry (`src/server/game/Battlegrounds/Zones/MobaTowerData.{h,cpp}`); creature rows **900000** (Alliance, displayID 27101 Keep Cannon) / **900001** (Horde, displayID 18505 Fel Cannon), faction 84/83, no regen. AI in `src/server/scripts/Custom/npc_moba_tower.cpp` (+ `moba_tower_aggro.cpp`): stationary, "lock target until invalid". Win condition fires on both player and minion kills (`HandleKillUnit` + `npc_moba_tower::JustDied`). Positions moved to map center.
 - **Lane creeps** — waves walk generated waypoint paths with LoL-style leashing (attack only players within 40yd of the lane; resume from where combat ended; never regress past furthest progress; keep damage between fights; stop at lane end). `npc_moba_creep.cpp` + `MobaCreepData.{h,cpp}`; `data/sql/custom/mod_moba_creeps.sql` is **generated** by `apps/moba/gen_creep_roster.py`, not hand-edited.
 - **Respawn** — LoL-style: per-player death timer that starts on Release Spirit (not on death), fixed respawn at the team's start position, no shared-pulse graveyard res. `src/server/scripts/Custom/moba_respawn.cpp` (`OnPlayerReleasedGhost` hook) → `BattlegroundMOBA::StartRespawnTimer`; countdown + revive in `PostUpdateImpl`. Config is per-map (`apps/moba/maps/<mode>/respawn_config.json` → `gen_respawn.py` → `mod_moba_respawn.sql` → `MobaRespawnData.{h,cpp}`): timing (`BaseMs + PerMinMs × match-minutes`, capped, measured from doors-open) plus the per-team spawn coords, which the generator writes into `game_graveyard`/`battleground_template` (read at runtime via `GetTeamStartPosition`). Spirit-guide NPCs removed so the base revive queue never populates; graveyard rows 1103/1104 kept as the start-loc / spawn bubble.
+- **Recall to base** — LoL-style, by hijacking Hearthstone (item 6948 / spell 8690): a `SpellScript` (`src/server/scripts/Custom/moba_recall.cpp`, bound via `data/sql/custom/mod_moba_recall.sql`) redirects the teleport to `GetTeamStartPosition` when the caster is in a `BattlegroundMOBA` and resets the cooldown so it's repeatable; outside the BG it's a normal Hearthstone. The 10s cast means movement/damage interrupt come free from the spell engine. Cast time is per-map and tiered (normal + empowered), stored in the respawn bundle (`recall` section → `mod_moba_respawn.RecallCastMs`/`RecallEmpoweredCastMs`) and applied by a small `Spell::prepare` override (`BattlegroundMOBA::GetRecallCastTimeMs`); the client cast bar follows via `SMSG_SPELL_START`. Empowered is currently gated on a placeholder aura (1243) pending a real mechanic. `AddPlayer` grants a Hearthstone if missing and clears its cooldown on entry.
 - **Custom map (Twisted Treeline) blockout** — pixel-traced in Blender to WoW scale (`var/blender/twisted_treeline_blockout.blend`); layout exported to `var/blender/twisted_treeline_layout.json` (structure coords + per-lane waypoints). Still runs on the hijacked EotS map; custom terrain is a later pass.
 - **Per-map config layout** — all MOBA content is authored as per-map JSON under `apps/moba/maps/<mode>/` (e.g. `eye_of_the_storm/`, map 566) and globbed by generators into combined, map-keyed SQL: `gen_creep_roster.py` (creeps), `gen_tower_data.py` (tower positions; shared creature defs hand-written in `data/sql/custom/mod_moba_tower_defs.sql`), `gen_respawn.py` (respawn timing + spawn wiring), `gen_creep_paths.py` (lane waypoints, still single). All content tables (`mod_moba_tower_data` / `mod_moba_creep_data` / `mod_moba_respawn`) carry a `Map` column; adding a map/mode = dropping in a `maps/<mode>/` bundle.
 
 Next (in order):
+
+Smaller gameplay items to knock out first (unordered):
+- **Start horn on wave spawn** — move the BG start horn / gate sound to fire when the first minion wave spawns, not at doors-open.
+- **UI match clock** — show elapsed match time on-screen.
+- **Fountain healing** — heal players while they stand in the starting zone.
+- **Last-hit kill credit** — award minion/boss kill credit to the team that landed the killing blow, not the team that first aggro'd it.
+- **Super minions** — a reinforced minion variant.
+
+Then:
 1. **Gold / items** economy.
 2. **Custom terrain** — move off EotS onto the Twisted Treeline map via the **WMO route** (fall back to ADT if not good enough). Bundles the standalone BG id + client MPQ patch.
 
@@ -224,3 +234,4 @@ If configuring from scratch, these flags are mandatory on this machine (Homebrew
 - `BG_MOBA_Score` enum holds only the Flurry achievement ID — decide later whether EotS achievements should fire at all in this mode
 - `m_BuffChange = true` left in constructor; buffs were removed — harmless, clean up opportunistically
 - README roadmap checkboxes need updating as steps complete
+- **Recall tooltip** — in-BG, the Hearthstone item still reads "Returns you to Durotar". That line is the Hearthstone spell's client-rendered, bind-based on-use tooltip (same class as the EotS grey point-icons — unfixable server-side). Resolves when recall becomes its own custom spell in the standalone-BG-id / client-MPQ-patch phase.

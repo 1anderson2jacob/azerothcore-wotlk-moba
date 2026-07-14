@@ -46,6 +46,13 @@ def validate(cfg, path):
         for k in REQUIRED_SPAWN_TEAM:
             if k not in spawn[team]:
                 fail(f'{path}: spawn.{team} missing "{k}"')
+    recall = cfg.get("recall")
+    if recall is not None:
+        if not isinstance(recall, dict) or not isinstance(recall.get("cast_time_ms"), int):
+            fail(f'{path}: "recall.cast_time_ms" must be an integer (ms)')
+        emp = recall.get("empowered_cast_time_ms")
+        if emp is not None and not isinstance(emp, int):
+            fail(f'{path}: "recall.empowered_cast_time_ms" must be an integer (ms)')
 
 
 def load_configs():
@@ -76,16 +83,21 @@ def emit(configs):
         "    `Map`      INT UNSIGNED NOT NULL PRIMARY KEY,        -- BG map id",
         "    `BaseMs`   INT UNSIGNED NOT NULL DEFAULT 10000,      -- base respawn wait",
         "    `PerMinMs` INT UNSIGNED NOT NULL DEFAULT 1500,       -- added per elapsed match-minute",
-        "    `CapMs`    INT UNSIGNED NOT NULL DEFAULT 60000       -- maximum respawn wait",
+        "    `CapMs`    INT UNSIGNED NOT NULL DEFAULT 60000,       -- maximum respawn wait",
+        "    `RecallCastMs`          INT UNSIGNED NOT NULL DEFAULT 0,  -- recall cast time (ms); 0 = spell default",
+        "    `RecallEmpoweredCastMs` INT UNSIGNED NOT NULL DEFAULT 0   -- empowered recall cast time (ms); 0 = fall back to normal",
         ");",
         "",
-        "INSERT INTO `mod_moba_respawn` (`Map`, `BaseMs`, `PerMinMs`, `CapMs`)",
+        "INSERT INTO `mod_moba_respawn` (`Map`, `BaseMs`, `PerMinMs`, `CapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`)",
         "VALUES",
     ]
     rows = []
     for _, cfg in configs:
         t = cfg["timing"]
-        rows.append(f"({cfg['map']}, {t['base_ms']}, {t['per_min_ms']}, {t['cap_ms']})")
+        recall = cfg.get("recall") or {}
+        recall_ms = recall.get("cast_time_ms", 0)
+        recall_emp_ms = recall.get("empowered_cast_time_ms", 0)
+        rows.append(f"({cfg['map']}, {t['base_ms']}, {t['per_min_ms']}, {t['cap_ms']}, {recall_ms}, {recall_emp_ms})")
     lines.append(",\n".join(rows) + ";")
 
     for path, cfg in configs:
