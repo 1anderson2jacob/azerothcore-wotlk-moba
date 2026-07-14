@@ -178,7 +178,6 @@ Done (see git history + the `.github/MOBA_*_PLAN.md` docs for detail):
 Next (in order):
 
 Smaller gameplay items to knock out first (unordered):
-- **Start horn on wave spawn** — move the BG start horn / gate sound to fire when the first minion wave spawns, not at doors-open.
 - **UI match clock** — show elapsed match time on-screen.
 - **Fountain healing** — heal players while they stand in the starting zone.
 - **Last-hit kill credit** — award minion/boss kill credit to the team that landed the killing blow, not the team that first aggro'd it.
@@ -235,3 +234,5 @@ If configuring from scratch, these flags are mandatory on this machine (Homebrew
 - `m_BuffChange = true` left in constructor; buffs were removed — harmless, clean up opportunistically
 - README roadmap checkboxes need updating as steps complete
 - **Recall tooltip** — in-BG, the Hearthstone item still reads "Returns you to Durotar". That line is the Hearthstone spell's client-rendered, bind-based on-use tooltip (same class as the EotS grey point-icons — unfixable server-side). Resolves when recall becomes its own custom spell in the standalone-BG-id / client-MPQ-patch phase.
+- **Custom battle sounds** — two additive audio cues (SOUND_BG_START stays put): one alongside the start horn at doors-open, another on the **first** minion wave only. Server side is two `PlaySoundToAll` calls (~10 min): the doors-open cue in `BattlegroundMOBA::StartingEventOpenDoors`, the wave cue in the `EVENT_MOBA_SPAWN_WAVE` handler gated on `_waveCount == 1`. Deferred because the audio is custom ("from outside the game"): the server only sends a `SoundEntries.dbc` ID, so new sounds need new DBC rows + the audio packed into a client patch MPQ. Bundle with the standalone-BG-id / client-MPQ-patch phase (same pipeline as the recall tooltip and the Twisted Treeline move).
+- **Custom music** - add Twisted Treeline music. Deferred for same reason as 'Custom Battle sounds'
