@@ -6,13 +6,11 @@
 #include "MotionMaster.h"
 #include "WaypointMgr.h"
 
-// Max 2D distance a creep may be dragged from its lane (home position always
-// sits on a path node) before it force-evades and resumes the lane. The
-// engine's own 30yd leash check is deliberately SKIPPED while combat stays
-// "fresh" (Creature::CanCreatureAttack: damage, melee proximity, and
-// unreachable targets all refresh a ~17s extension window -- authentic WoW
-// kiting behavior), so without this hard cap a player moving at run speed
-// can drag a wave across the whole map.
+// Max 2D distance a creep may be dragged from its lane before it force-evades
+// and resumes. The engine's own 30yd leash is deliberately SKIPPED while combat
+// stays "fresh" (Creature::CanCreatureAttack: damage, melee proximity, and
+// unreachable targets each refresh a ~17s window -- authentic WoW kiting), so
+// without this hard cap a player at run speed can drag a wave across the map.
 float constexpr MOBA_CREEP_LANE_CORRIDOR = 40.0f;
 
 struct npc_moba_creep : public ScriptedAI
@@ -30,17 +28,15 @@ struct npc_moba_creep : public ScriptedAI
 
         _lanePath = sWaypointMgr->GetPath(_cfg->pathId);
 
-        // Once the match is over the creep must stay frozen where
-        // FreezeAllCreeps() left it. Reset() re-fires on every evade, and the
-        // re-arm below would otherwise restart the lane path.
+        // Post-match: stay frozen where FreezeAllCreeps() left us. Reset()
+        // re-fires on evade, and the re-arm below would restart the lane.
         if (MatchEnded())
             return;
 
-        // Arm the lane path on first spawn only (Reset() also re-fires on
-        // evade; the slot-type check keeps us from rewinding to node 1).
-        // Non-repeating: a creep that survives to the lane's end stands
-        // there and keeps fighting whatever enters aggro range, LoL-style,
-        // instead of turning around and walking the lane back.
+        // Arm the lane on first spawn only -- Reset() re-fires on evade, and the
+        // slot-type check keeps that from rewinding us to node 1. false =
+        // non-repeating: a creep that reaches the lane's end holds and fights
+        // there, never turns around and walks back.
         if (me->GetMotionMaster()->GetMotionSlotType(MOTION_SLOT_IDLE) != WAYPOINT_MOTION_TYPE)
             me->GetMotionMaster()->MoveWaypoint(_cfg->pathId, false);
 
@@ -77,11 +73,11 @@ struct npc_moba_creep : public ScriptedAI
         if (_cfg && _cfg->role == MOBA_CREEP_ROLE_CASTER)
         {
             scheduler.Update(diff);
-            UpdateVictim(); // keep default threat/target housekeeping; never DoMeleeAttackIfReady
+            UpdateVictim(); // threat/target housekeeping; casters never DoMeleeAttackIfReady
             return;
         }
 
-        ScriptedAI::UpdateAI(diff); // melee & siege: full default engine behavior, no custom code
+        ScriptedAI::UpdateAI(diff); // melee & siege: default engine behavior
     }
 
     void AttackStart(Unit* victim) override
@@ -92,14 +88,12 @@ struct npc_moba_creep : public ScriptedAI
             ScriptedAI::AttackStart(victim);
     }
 
-    // Hard lane-corridor rule, LoL-style, measured against the lane path
-    // itself -- NOT home position: the waypoint generator stamps home to
-    // the creature's current position every moving tick
-    // (WaypointMovementGenerator::DoUpdate), so a home-based corridor
-    // followed the creep wherever a player dragged it. Players are the
-    // only targets gated: creeps/towers are lane-bound already, and gating
-    // them by this rule blocked tower pushes once (tower rejected at 41yd
-    // from a mid-drag home anchor).
+    // Lane-corridor rule measured against the lane path, NOT home position: the
+    // waypoint generator stamps home to the creature's current position every
+    // moving tick (WaypointMovementGenerator::DoUpdate), so a home-based corridor
+    // followed the creep wherever a player dragged it. Players are the only
+    // targets gated -- creeps/towers are lane-bound already, and gating them by
+    // this rule blocked a tower push once (rejected at 41yd from a mid-drag home).
     bool CanAIAttack(Unit const* victim) const override
     {
         if (!victim->GetCharmerOrOwnerPlayerOrPlayerItself())
@@ -108,8 +102,8 @@ struct npc_moba_creep : public ScriptedAI
         return DistanceFromLane2d(victim->GetPositionX(), victim->GetPositionY()) <= MOBA_CREEP_LANE_CORRIDOR;
     }
 
-    // Node Ids are the DB point numbers and are preserved in the truncated
-    // resume paths, so this stays comparable across resumes.
+    // Node Ids are the DB point numbers, preserved in the truncated resume
+    // paths, so this stays comparable across resumes.
     void WaypointReached(uint32 nodeId, uint32 /*pathId*/) override
     {
         if (nodeId > _highestReachedNodeId)
@@ -136,12 +130,11 @@ struct npc_moba_creep : public ScriptedAI
             return;
 
         // LoL-style leashing: no run-back. The default evade would
-        // MoveTargetedHome() to the last-reached waypoint node and resume
-        // the path from there -- a creep that chased 30yd forward runs all
-        // 30yd back first. Instead, resume the lane near where combat
-        // ended. UNIT_STATE_EVADE is normally cleared by the home-return
-        // generator we're skipping, so clear it here (as the engine's
-        // pet/MoveFollow evade branch does).
+        // MoveTargetedHome() to the last-reached node and resume from there --
+        // a creep that chased 30yd forward runs all 30yd back first. Instead,
+        // resume the lane near where combat ended. UNIT_STATE_EVADE is normally
+        // cleared by the home-return generator we're skipping, so clear it here
+        // (as the engine's pet/MoveFollow evade branch does).
         me->ClearUnitState(UNIT_STATE_EVADE);
         ResumeLaneFromHere();
     }
@@ -176,7 +169,7 @@ private:
         if (!path || path->Nodes.empty())
             return;
 
-        // Nearest node (2D) to where combat left us...
+        // Nearest node to where combat left us...
         std::size_t resumeIdx = 0;
         float bestSq = std::numeric_limits<float>::max();
         for (std::size_t i = 0; i < path->Nodes.size(); ++i)
@@ -191,10 +184,9 @@ private:
             }
         }
 
-        // ...but never behind our furthest lane progress: a creep kited
-        // toward its own base resumes from where it already got to, so a
-        // player can't walk a wave backwards (re-dragging it by attacking
-        // still works, which matches LoL).
+        // ...but never behind our furthest progress: a creep kited toward its
+        // own base resumes from where it already reached, so a player can't walk
+        // a wave backwards (re-dragging by attacking still works, as in LoL).
         for (std::size_t i = resumeIdx + 1; i < path->Nodes.size(); ++i)
             if (path->Nodes[i].Id == _highestReachedNodeId)
             {
@@ -204,21 +196,18 @@ private:
 
         WaypointNode const& resumeNode = path->Nodes[resumeIdx];
 
-        // Anchor home to the resume node ON the lane -- never to wherever
-        // combat dragged us. Home is what the engine's leash check
-        // (CanCreatureAttack, 30yd) measures from; keeping it on the lane
-        // bounds every chase to a corridor around the path. Anchoring to
-        // the creep's current position instead lets a fleeing player
-        // ratchet the leash forward indefinitely (chase 30yd -> evade ->
-        // new home right there -> re-aggro -> repeat to the map edge --
-        // this shipped as a real bug once).
+        // Anchor home to the resume node ON the lane. Home is what the engine's
+        // own leash (CanCreatureAttack, 30yd) measures from, so keeping it on the
+        // lane bounds every chase to a corridor around the path; anchoring to the
+        // creep's current position instead lets a fleeing player ratchet the leash
+        // to the map edge (chase -> evade -> new home here -> re-aggro -> repeat).
+        // Shipped as a real bug once. See CanAIAttack for why home drifts.
         me->SetHomePosition(resumeNode.X, resumeNode.Y, resumeNode.Z, me->GetOrientation());
 
-        // The engine can't start a DB waypoint path mid-route (i_currentNode
-        // is only seedable from CreatureData, which TempSummons don't have),
-        // so hand the generator a truncated copy: the remaining nodes from
-        // the resume node onward. Copy the nodes directly -- the
-        // WaypointNode convenience constructor would reset MoveType to walk.
+        // The engine can't start a DB waypoint path mid-route (i_currentNode is
+        // only seedable from CreatureData, which TempSummons lack), so hand the
+        // generator a truncated copy from the resume node on. Copy nodes directly
+        // -- the WaypointNode convenience constructor would reset MoveType to walk.
         _resumePath.Id = _cfg->pathId;
         _resumePath.Nodes.assign(path->Nodes.begin() + resumeIdx, path->Nodes.end());
 
@@ -229,7 +218,7 @@ private:
     void CastAtVictim(TaskContext context)
     {
         if (Unit* victim = me->GetVictim())
-            if (me->IsWithinDist(victim, _cfg->range)) // DoCastVictim(..., true) skips range checks itself
+            if (me->IsWithinDist(victim, _cfg->range)) // cheap pre-filter before attempting the cast
                 DoCastVictim(_cfg->spellId, false);
 
         context.Repeat(std::chrono::milliseconds(_cfg->intervalMs));

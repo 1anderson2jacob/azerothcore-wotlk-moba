@@ -20,16 +20,14 @@
 #include "ScriptMgr.h"
 #include "SpellScript.h"
 
-// LoL-style recall: the player casts Hearthstone (breaks on movement or damage --
-// both free from the spell engine; its cast time is retimed per-map in
-// Spell::prepare via BattlegroundMOBA::GetRecallCastTimeMs). While inside the MOBA
-// battleground we hijack the teleport: instead of the home bind (their inn), we
-// drop them at their team's start position -- the same spot respawn uses -- and
-// reset the cooldown so recall is repeatable. Outside the MOBA BG the spell behaves
-// exactly like a normal Hearthstone.
+// LoL-style recall: while in a MOBA BG, casting Hearthstone (spell 8690) drops the
+// player at their team's base instead of their inn and clears the cooldown so it
+// repeats; outside the BG it's an ordinary Hearthstone. Cast time is retimed per-map
+// in Spell::prepare (GetRecallCastTimeMs); movement/damage interrupt come free from
+// the spell engine. Full design: the guide's recall section.
 //
-// Bound to spell 8690 via a spell_script_names row (data/sql/custom/mod_moba_recall.sql).
-// Pattern mirrors spell_item_scroll_of_recall in src/server/scripts/Spells/spell_item.cpp.
+// Bound to spell 8690 via spell_script_names (data/sql/custom/mod_moba_recall.sql).
+// Pattern mirrors spell_item_scroll_of_recall (src/server/scripts/Spells/spell_item.cpp).
 
 class spell_moba_hearthstone_recall : public SpellScript
 {

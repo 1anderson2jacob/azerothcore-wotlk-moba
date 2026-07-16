@@ -2,12 +2,10 @@
 
 ## Status of this doc
 
-**Forward plan, not yet verified against tooling or engine source.** Unlike
-`MOBA_TOWER_ARCHITECTURE_PLAN.md` / `MOBA_CREEP_ARCHITECTURE_PLAN.md` (whose
-"verified building blocks" were confirmed by reading engine code), the steps
-below are the intended pipeline and carry real unknowns — exporter quirks,
-exact DBC columns, extractor behavior on a WMO-only map. Treat each step as a
-thing to prove in its own focused session, not a settled recipe.
+**Forward plan, not yet verified against tooling or engine source.** The steps
+below are the intended pipeline and carry real unknowns — exporter quirks, exact
+DBC columns, extractor behavior on a WMO-only map. Treat each step as a thing to
+prove in its own focused session, not a settled recipe.
 
 ## Context / decision
 

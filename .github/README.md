@@ -10,21 +10,29 @@ A separate battleground ID (with a distributable client MPQ patch) is planned on
 
 ## Roadmap
 
+Shipped:
+
 - [x] Clone `BattlegroundEY` → `BattlegroundMOBA`, wire into `BattlegroundMgr` on the EotS slot
 - [x] Strip the netherstorm flag system
 - [x] Strip the capture-point scoring system
 - [x] Attackable towers (custom creatures with turret AI)
 - [x] Win condition: destroy the enemy base tower
 - [x] Lane creep waves
-- [x] LoL-style individual, game-length-scaling resurrection timers (replaces shared-interval graveyard resurrection)
+- [x] LoL-style individual, game-length-scaling respawn timers (replaces shared-interval graveyard resurrection)
 - [x] LoL-style recall to base (Hearthstone hijacked; no client patch)
-- [x] Per-map content bundles (map-keyed tower/creep/respawn tables; a new map = a new `apps/moba/maps/<mode>/` bundle)
-- [x] On-screen match clock (client addon; no client patch)
-- [x] UI scoreboard
-- [ ] Fountain healing
+- [x] Per-map content bundles (map-keyed tables; a new map = a new `apps/moba/maps/<mode>/` bundle)
+- [x] On-screen HUD bar — match clock, team score, KDA, creep score (client addon; no client patch)
+- [x] Fountain healing
+
+Next, in order:
+
+- [ ] Docs / code-comment pass — cut duplication and per-session context cost
+- [ ] `GetBgTeamId` vs `GetTeamId` audit across `BattlegroundMOBA`
+- [ ] Last-hit kill credit — award minion kills to the team that landed the killing blow, not the team that first aggro'd
+- [ ] Super minions — a reinforced minion variant
 - [ ] Gold / itemization mid-match
-- [ ] Custom map/terrain
-- [ ] Standalone battleground ID via `BattlemasterList.dbc` patch (client MPQ distributed to players)
+- [ ] Custom map/terrain — move onto the Twisted Treeline map (WMO route, ADT fallback; see `MOBA_MAP_WMO_PLAN.md`)
+- [ ] Standalone battleground ID via `BattlemasterList.dbc` patch (client MPQ distributed to players) — bundles with the custom-map work
 
 ## Key changed files
 

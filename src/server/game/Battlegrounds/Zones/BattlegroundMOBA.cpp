@@ -192,7 +192,7 @@ bool BattlegroundMOBA::SetupBattleground()
         {
             state.guid = creature->GetGUID();
 
-            // Inert/guarded towers start unattackable until their guard tower falls (see HandleKillUnit).
+            // Inert/guarded towers start unattackable until their guard tower falls (cleared in OnTowerDestroyed).
             if (cfg.guardedByEntry)
                 creature->SetUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE));
         }
@@ -249,7 +249,6 @@ bool BattlegroundMOBA::SetupBattleground()
 
 void BattlegroundMOBA::Init()
 {
-    //call parent's class reset
     Battleground::Init();
 
     _bgEvents.Reset();
@@ -346,7 +345,16 @@ void BattlegroundMOBA::SpawnWave(TeamId team, bool includeSiege)
         SpawnCreep(comp.siegeEntry);
 }
 
-
+// Creeps are TempSummons, not Battleground::AddCreature/BgCreatures -- that
+// registry is a fixed-size, persistent roster, wrong for repeatedly-spawned
+// ephemerals. Two engine traps live here:
+//   * Map::SummonCreature takes no TempSummonType (only WorldObject's
+//     convenience overload does), and TempSummon's constructor defaults to
+//     TEMPSUMMON_MANUAL_DESPAWN -- skip the SetTempSummonType call below and
+//     every creep silently never cleans up.
+//   * TIMED_DESPAWN_OUT_OF_COMBAT, not CORPSE_TIMED_DESPAWN: the corpse
+//     variant's countdown never advances while the creep is alive, so one that
+//     paces the lane unengaged would never despawn.
 void BattlegroundMOBA::SpawnCreep(uint32 entry)
 {
     MobaCreepConfig const* cfg = sMobaCreepDataStore->GetConfig(entry);
@@ -486,14 +494,12 @@ void BattlegroundMOBA::RespawnAtBase(Player* player)
     player->SpawnCorpseBones(false);
 }
 
-// LoL-style fountain: standing in your own base bubble restores a percentage of
-// max health/mana per tick, in or out of combat. Enemies in your bubble get
-// nothing. The bubble is battleground_template.StartMaxDist -- the same value
-// the core's prep-phase leash (_CheckSafePositions) uses, so the heal zone and
-// the leash can't drift apart. Two traps: GetStartMaxDist() returns that
-// distance ALREADY SQUARED (BattlegroundMgr stores MaxStartDistSq), hence the
-// squared compare; and the core leash measures 3D while this measures 2D, so
-// the heal zone is a cylinder -- same radius, forgiving of the base's verticality.
+// Fountain heal: players inside their own base bubble regain a % of max
+// health/mana per tick. The bubble is battleground_template.StartMaxDist, shared
+// with the core's prep-phase leash (_CheckSafePositions) so the two can't drift.
+// Two traps: GetStartMaxDist() returns that distance ALREADY SQUARED (BattlegroundMgr
+// stores MaxStartDistSq), hence the squared compare; and the core leash is 3D while
+// this is 2D, so the heal zone is a cylinder -- same radius, forgiving of terrain.
 void BattlegroundMOBA::UpdateFountainHealing(uint32 diff)
 {
     MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId());

@@ -82,7 +82,7 @@ private:
     void Tick(TaskContext context)
     {
         // Guarded/inert towers don't fight back until their guard tower falls
-        // (BattlegroundMOBA::HandleKillUnit clears the flag when that happens).
+        // (OnTowerDestroyed clears the flag when that happens).
         if (me->HasUnitFlag(UNIT_FLAG_NON_ATTACKABLE))
         {
             context.Repeat(std::chrono::milliseconds(_cfg->intervalMs));

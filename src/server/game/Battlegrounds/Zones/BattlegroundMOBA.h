@@ -138,7 +138,7 @@ public:
 
     // Shared by HandleKillUnit (player-attributed tower kills) and
     // npc_moba_tower::JustDied (creature/creep-attributed tower kills) --
-    // see .github/MOBA_CREEP_ARCHITECTURE_PLAN.md for why both exist.
+    // see npc_moba_tower::JustDied for why both paths exist.
     void OnTowerDestroyed(Creature* tower, TeamId winnerTeamId);
 
     // Starts a player's respawn countdown (called from the OnPlayerReleasedGhost hook).
