@@ -26,7 +26,7 @@ Shipped:
 
 Next, in order:
 
-- [ ] Docs / code-comment pass — cut duplication and per-session context cost
+- [x] Docs / code-comment pass — cut duplication and per-session context cost
 - [ ] `GetBgTeamId` vs `GetTeamId` audit across `BattlegroundMOBA`
 - [ ] Last-hit kill credit — award minion kills to the team that landed the killing blow, not the team that first aggro'd
 - [ ] Super minions — a reinforced minion variant
