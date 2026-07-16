@@ -108,6 +108,8 @@ protected:
     BattlegroundMOBAScore(ObjectGuid playerGuid) : BattlegroundScore(playerGuid) { }
 
     void BuildObjectivesBlock(WorldPacket& data) final;
+
+    uint32 CreepKills = 0;
 };
 
 class AC_GAME_API BattlegroundMOBA : public Battleground
@@ -142,6 +144,9 @@ public:
     // Starts a player's respawn countdown (called from the OnPlayerReleasedGhost hook).
     void StartRespawnTimer(Player* player);
 
+    // Reply to a MobaHUD client "ready" ping with this player's current HUD state.
+    void SendHudStateTo(Player* player);
+
     // Per-map recall cast time (ms) for a player currently in a MOBA BG; 0 = no
     // override (use the spell's default). Read by Spell::prepare to retime Hearthstone.
     static uint32 GetRecallCastTimeMs(Player* player);
@@ -154,19 +159,23 @@ private:
     void UpdateRespawnTimers(uint32 diff);
     void RespawnAtBase(Player* player);
 
-    // Feeds the client-side MobaClock addon (client/addons/MobaClock) the elapsed
-    // match time over an addon-channel message. `body` is the payload after the
-    // "MobaClock\t" prefix: "T:<seconds>" (re)starts/syncs the clock, "E" hides it.
-    void SendMatchClock(Player* player, std::string const& body);
-    void BroadcastMatchClock(std::string const& body);
+    // MobaHUD addon feed (client/addons/MobaHUD). `body` is the payload after the
+    // "MobaHUD\t" prefix: "T:<sec>" clock start/sync, "E" hide the bar,
+    // "S:<ally>,<enemy>,<k>,<d>,<a>,<cs>" scoreboard update (values are team-relative).
+    void SendHudMessage(Player* player, std::string const& body);
+    void BroadcastHudMessage(std::string const& body);
+    void SendScoreboard(Player* player);
+    void BroadcastScoreboard();
+    std::string BuildScoreboardBody(Player* player) const;
 
     EventMap _bgEvents;
     std::vector<MobaTowerState> _towers;
     MobaWaveComposition _waveComposition[2];
     std::vector<ObjectGuid> _spawnedCreeps;
     uint32 _waveCount = 0;
-    uint32 _matchElapsedMs = 0; // time since doors opened (excludes prep phase)
-    uint32 _clockResyncMs = 0;  // accumulates toward the next periodic clock re-broadcast
+    uint32 _matchElapsedMs = 0;   // time since doors opened (excludes prep phase)
+    uint32 _hudResyncMs = 0;      // accumulates toward the next periodic HUD re-broadcast
+    uint32 _teamPlayerKills[2] = {0, 0}; // enemy-player kills per team (the "X vs Y" score)
     std::unordered_map<ObjectGuid, MobaRespawnState> _respawnTimers;
 
 };

@@ -1,0 +1,8 @@
+## Interface: 30300
+## Title: MOBA HUD
+## Notes: MOBA battleground scoreboard bar (team score, KDA, creep score, match clock).
+## Author: MOBA Battleground project
+## Version: 0.2
+## SavedVariables: MobaHUDDB
+
+MobaHUD.lua

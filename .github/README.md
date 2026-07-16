@@ -20,7 +20,7 @@ A separate battleground ID (with a distributable client MPQ patch) is planned on
 - [x] LoL-style recall to base (Hearthstone hijacked; no client patch)
 - [x] Per-map content bundles (map-keyed tower/creep/respawn tables; a new map = a new `apps/moba/maps/<mode>/` bundle)
 - [x] On-screen match clock (client addon; no client patch)
-- [ ] UI scoreboard
+- [x] UI scoreboard
 - [ ] Fountain healing
 - [ ] Gold / itemization mid-match
 - [ ] Custom map/terrain
@@ -33,7 +33,8 @@ A separate battleground ID (with a distributable client MPQ patch) is planned on
 | `src/server/game/Battlegrounds/Zones/BattlegroundMOBA.{h,cpp}` | New battleground class (cloned from EotS, being reshaped) |
 | `src/server/game/Battlegrounds/BattlegroundMgr.cpp` | `BATTLEGROUND_EY` factory entries point to `BattlegroundMOBA` |
 | `src/server/game/Movement/MotionMaster.{h,cpp}` | Added public `MoveWaypoint(WaypointPath&, bool)` overload (mid-route path resume for lane creeps) |
-| `client/addons/MobaClock/` | Client addon: on-screen match clock, fed by server `LANG_ADDON` messages |
+| `client/addons/MobaHUD/` | Client addon: on-screen HUD bar (team score, KDA, CS, match clock), fed by server `LANG_ADDON` messages |
+| `src/server/scripts/Custom/moba_hud.cpp` | Answers the addon's "ready" ping with current HUD state (group-chat `OnPlayerCanUseChat` hook) |
 
 ## Building (macOS, Apple Silicon)
 

@@ -22,6 +22,8 @@ void AddSC_moba_tower_aggro();
 void AddSC_npc_moba_creep();
 void AddSC_moba_respawn();
 void AddSC_moba_recall();
+void AddSC_moba_hud();
+
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
@@ -32,4 +34,5 @@ void AddCustomScripts()
     AddSC_npc_moba_creep();
     AddSC_moba_respawn();
     AddSC_moba_recall();
+    AddSC_moba_hud();
 }

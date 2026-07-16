@@ -41,11 +41,11 @@
 
 namespace
 {
-    // Shared with the client-side MobaClock addon (client/addons/MobaClock). The
-    // server sends "MobaClock\t<payload>" as a LANG_ADDON chat message; the 3.3.5a
-    // client splits on the TAB into (prefix, payload) for the CHAT_MSG_ADDON event.
-    constexpr char MOBA_CLOCK_ADDON_PREFIX[] = "MobaClock";
-    constexpr uint32 MOBA_CLOCK_RESYNC_MS    = 10000; // re-broadcast cadence for /reload + late joiners
+    // Shared with the client-side MobaHUD addon (client/addons/MobaHUD). The server
+    // sends "MobaHUD\t<payload>" as a LANG_ADDON chat message; the 3.3.5a client
+    // splits on the TAB into (prefix, payload) for the CHAT_MSG_ADDON event.
+    constexpr char MOBA_HUD_ADDON_PREFIX[] = "MobaHUD";
+    constexpr uint32 MOBA_HUD_RESYNC_MS    = 10000; // re-broadcast cadence for /reload + late joiners
 }
 
 void BattlegroundMOBAScore::BuildObjectivesBlock(WorldPacket& data)
@@ -66,35 +66,34 @@ BattlegroundMOBA::~BattlegroundMOBA()
 
 void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
 {
-    if (GetStatus() == STATUS_IN_PROGRESS)
-    {
-        _matchElapsedMs += diff;
+    if (GetStatus() != STATUS_IN_PROGRESS)
+        return;
 
-        _bgEvents.Update(diff);
-        while (uint32 eventId = _bgEvents.ExecuteEvent())
-            switch (eventId)
-            {
-                case EVENT_MOBA_SPAWN_WAVE:
-                {
-                    ++_waveCount;
-                    bool includeSiege = (_waveCount % 3 == 0);
-                    SpawnWave(TEAM_ALLIANCE, includeSiege);
-                    SpawnWave(TEAM_HORDE, includeSiege);
-                    _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(30000));
-                    break;
-                }
-            }
+    _matchElapsedMs += diff;
 
-        UpdateRespawnTimers(diff);
-
-        // Periodically re-broadcast the match clock so clients that reloaded their UI
-        // or joined late re-sync (the addon counts locally between updates).
-        _clockResyncMs += diff;
-        if (_clockResyncMs >= MOBA_CLOCK_RESYNC_MS)
+    _bgEvents.Update(diff);
+    while (uint32 eventId = _bgEvents.ExecuteEvent())
+        switch (eventId)
         {
-            _clockResyncMs = 0;
-            BroadcastMatchClock(Acore::StringFormat("T:{}", _matchElapsedMs / 1000));
+            case EVENT_MOBA_SPAWN_WAVE:
+            {
+                ++_waveCount;
+                bool includeSiege = (_waveCount % 3 == 0);
+                SpawnWave(TEAM_ALLIANCE, includeSiege);
+                SpawnWave(TEAM_HORDE, includeSiege);
+                _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(30000));
+                break;
+            }
         }
+
+    UpdateRespawnTimers(diff);
+
+    _hudResyncMs += diff;
+    if (_hudResyncMs >= MOBA_HUD_RESYNC_MS)
+    {
+        _hudResyncMs = 0;
+        BroadcastHudMessage(Acore::StringFormat("T:{}", _matchElapsedMs / 1000));
+        BroadcastScoreboard();
     }
 }
 
@@ -114,15 +113,15 @@ void BattlegroundMOBA::StartingEventOpenDoors()
 
     _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(30000));
 
-    // Match clock starts now (doors open). Tell every client's MobaClock addon to
-    // show 0:00 and start counting; PostUpdateImpl re-syncs periodically thereafter.
-    BroadcastMatchClock("T:0");
+    // Match starts now (doors open): show the HUD bar at 0:00 with a zeroed scoreboard.
+    BroadcastHudMessage("T:0");
+    BroadcastScoreboard();
 }
 
 void BattlegroundMOBA::EndBattleground(TeamId winnerTeamId)
 {
-    // Hide the client-side match clock as the match ends.
-    BroadcastMatchClock("E");
+    // Hide the client-side HUD bar as the match ends.
+    BroadcastHudMessage("E");
 
     Battleground::EndBattleground(winnerTeamId);
 }
@@ -140,18 +139,13 @@ void BattlegroundMOBA::AddPlayer(Player* player)
         player->AddItem(BG_MOBA_RECALL_ITEM, 1);
 
     player->RemoveSpellCooldown(BG_MOBA_RECALL_SPELL, true);
-
-    // Late joiner during a live match: sync their MobaClock addon to the current time.
-    if (GetStatus() == STATUS_IN_PROGRESS)
-        SendMatchClock(player, Acore::StringFormat("T:{}", _matchElapsedMs / 1000));
 }
 
 void BattlegroundMOBA::RemovePlayer(Player* player)
 {
-    // Hide the client-side match clock for anyone leaving the match early (Leave
-    // button, logout, GM removal). The normal win-condition path hides it via
-    // EndBattleground; this covers every exit before that.
-    SendMatchClock(player, "E");
+    // Hide the HUD bar for anyone leaving the match early (Leave button, logout, GM
+    // removal). The normal win-condition path hides it via EndBattleground.
+    SendHudMessage(player, "E");
 }
 
 void BattlegroundMOBA::HandleAreaTrigger(Player* player, uint32 trigger)
@@ -266,13 +260,33 @@ void BattlegroundMOBA::HandleKillPlayer(Player* player, Player* killer)
     if (GetStatus() != STATUS_IN_PROGRESS)
         return;
 
-    Battleground::HandleKillPlayer(player, killer);
+    Battleground::HandleKillPlayer(player, killer); // updates deaths / killing blows / honorable kills
+
+    // Team kill score (the "X vs Y" segment).
+    if (killer && killer != player)
+        ++_teamPlayerKills[killer->GetBgTeamId()];
+
+    // Team score plus several players' K/D/A changed -> refresh everyone.
+    BroadcastScoreboard();
 }
 
 void BattlegroundMOBA::HandleKillUnit(Creature* creature, Player* killer)
 {
     if (GetStatus() != STATUS_IN_PROGRESS)
         return;
+
+    // Lane creep last-hit -> +1 creep score (CS) for the killer. Towers aren't in the
+    // creep data store, so this naturally skips them; tower kills fall through to
+    // OnTowerDestroyed below.
+    if (creature && killer && sMobaCreepDataStore->GetConfig(creature->GetEntry()))
+    {
+        auto itr = PlayerScores.find(killer->GetGUID().GetCounter());
+        if (itr != PlayerScores.end())
+        {
+            static_cast<BattlegroundMOBAScore*>(itr->second)->CreepKills++;
+            SendScoreboard(killer);
+        }
+    }
 
     OnTowerDestroyed(creature, killer->GetTeamId());
 }
@@ -471,14 +485,14 @@ void BattlegroundMOBA::RespawnAtBase(Player* player)
     player->SpawnCorpseBones(false);
 }
 
-void BattlegroundMOBA::SendMatchClock(Player* player, std::string const& body)
+void BattlegroundMOBA::SendHudMessage(Player* player, std::string const& body)
 {
     if (!player)
         return;
 
-    // LANG_ADDON is what marks this as an addon message client-side; the chat-type
-    // byte is irrelevant to delivery. Body is "<prefix>\t<payload>" (see the addon).
-    std::string message = Acore::StringFormat("{}\t{}", MOBA_CLOCK_ADDON_PREFIX, body);
+    // LANG_ADDON marks this as an addon message client-side; the chat-type byte is
+    // irrelevant to delivery. Body is "<prefix>\t<payload>" (see the MobaHUD addon).
+    std::string message = Acore::StringFormat("{}\t{}", MOBA_HUD_ADDON_PREFIX, body);
 
     WorldPacket data(SMSG_MESSAGECHAT, 1 + 4 + 8 + 4 + 8 + 4 + message.size() + 2);
     data << uint8(CHAT_MSG_WHISPER);
@@ -492,11 +506,63 @@ void BattlegroundMOBA::SendMatchClock(Player* player, std::string const& body)
     player->SendDirectMessage(&data);
 }
 
-void BattlegroundMOBA::BroadcastMatchClock(std::string const& body)
+void BattlegroundMOBA::BroadcastHudMessage(std::string const& body)
 {
     for (auto const& itr : GetPlayers())
         if (Player* player = itr.second)
-            SendMatchClock(player, body);
+            SendHudMessage(player, body);
+}
+
+// Builds the per-recipient scoreboard payload. Team kills are team-relative
+// (ally = the recipient's team) so the addon can colour segment 1 as "you".
+std::string BattlegroundMOBA::BuildScoreboardBody(Player* player) const
+{
+    TeamId team  = player->GetBgTeamId();
+    TeamId other = GetOtherTeamId(team);
+
+    uint32 k = 0, d = 0, a = 0, cs = 0;
+    auto itr = PlayerScores.find(player->GetGUID().GetCounter());
+    if (itr != PlayerScores.end())
+    {
+        // Must go through BattlegroundMOBAScore* (not the base pointer): GetDeaths /
+        // GetHonorableKills are protected on BattlegroundScore, reachable here only
+        // because BattlegroundMOBA is a friend of BattlegroundMOBAScore, and the
+        // protected-member rule requires access via the friended (derived) type.
+        BattlegroundMOBAScore* score = static_cast<BattlegroundMOBAScore*>(itr->second);
+        k  = score->GetKillingBlows();
+        d  = score->GetDeaths();
+        uint32 hk = score->GetHonorableKills();   // credited kills (own + proximity)
+        a  = hk > k ? hk - k : 0;                  // proximity assist = credited minus own killing blows
+        cs = score->CreepKills;
+    }
+
+    return Acore::StringFormat("S:{},{},{},{},{},{}",
+        _teamPlayerKills[team], _teamPlayerKills[other], k, d, a, cs);
+}
+
+void BattlegroundMOBA::SendScoreboard(Player* player)
+{
+    if (player)
+        SendHudMessage(player, BuildScoreboardBody(player));
+}
+
+void BattlegroundMOBA::BroadcastScoreboard()
+{
+    for (auto const& itr : GetPlayers())
+        if (Player* player = itr.second)
+            SendHudMessage(player, BuildScoreboardBody(player));
+}
+
+void BattlegroundMOBA::SendHudStateTo(Player* player)
+{
+    if (!player)
+        return;
+
+    SendScoreboard(player);
+    // Only start the clock if the match is live; during warmup it stays frozen at 0:00
+    // until StartingEventOpenDoors sends T:0.
+    if (GetStatus() == STATUS_IN_PROGRESS)
+        SendHudMessage(player, Acore::StringFormat("T:{}", _matchElapsedMs / 1000));
 }
 
 uint32 BattlegroundMOBA::GetRecallCastTimeMs(Player* player)

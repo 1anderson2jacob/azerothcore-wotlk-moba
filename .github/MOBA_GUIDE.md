@@ -213,40 +213,70 @@ instead of the player's inn; outside the BG it's unchanged.
 
 ---
 
-## How the match clock works (read this before changing behavior)
+## How the HUD bar works (read this before changing behavior)
 
-On-screen elapsed match time, drawn by a **client addon** — no client patch, no
-DBC/MPQ. The stock EotS client has no match-clock widget and only renders
-worldstate HUD for its own zone, so a native clock would need an MPQ patch;
-instead a small addon draws it and the server feeds it the time.
+The on-screen match bar — team kill score, personal KDA, creep score (CS), and the
+elapsed clock — drawn by a **client addon**. No client patch, no DBC/MPQ: the stock
+EotS client has no such widget and only renders worldstate HUD for its own zone, so a
+native version would need an MPQ patch. Instead a small addon draws the bar and the
+server feeds it the numbers.
 
-- **Addon**: `client/addons/MobaClock` (`.toc` + `.lua`), the project's first
-  client-side artifact. Draws a draggable/lockable frame that counts up locally.
-  Install by copying the folder into the client's `Interface/AddOns/`. Slash
-  commands: `/mobaclock test | stop | lock | unlock | reset` (also `/mclock`).
-- **Server feed**: `BattlegroundMOBA::SendMatchClock` / `BroadcastMatchClock`
-  send a `LANG_ADDON` chat message (prefix `MobaClock`, packet built like
-  `ArenaSpectator::CreatePacket`). Payloads: `T:<seconds>` starts/syncs and shows
-  the clock, `E` hides it. The client splits the message on a TAB into
-  `(prefix, payload)` for the addon's `CHAT_MSG_ADDON` handler (the addon also
-  falls back to splitting the tab itself, for robustness across client builds).
-- **When it sends**: `T:0` at doors-open (`StartingEventOpenDoors`);
-  `T:<elapsed>` to a late joiner (`AddPlayer`) and to everyone every 10s
-  (`MOBA_CLOCK_RESYNC_MS`, `PostUpdateImpl`) so `/reload` and late joins re-sync;
-  `E` on match end (`EndBattleground`) and on any early leave (`RemovePlayer`).
-- **Why local counting**: the addon advances the display itself between messages,
-  so the server only sends sparse start/sync/hide events — no per-second spam.
-- **Elapsed excludes prep**: starts at doors-open, matching `_matchElapsedMs`.
+- **Addon**: `client/addons/MobaHUD` (`.toc` + `.lua`). Draggable/lockable frame,
+  upper-center by default; counts the clock up locally between server messages.
+  Install by copying the folder into the client's `Interface/AddOns/`. Slash commands:
+  `/mobahud test | stop | lock | unlock | reset` (also `/mhud`).
+- **Server feed**: `BattlegroundMOBA::SendHudMessage` / `BroadcastHudMessage` send a
+  `LANG_ADDON` chat message (prefix `MobaHUD`, packet built like
+  `ArenaSpectator::CreatePacket`). Payloads:
+  - `T:<seconds>` — start/sync the clock, show the bar
+  - `S:<ally>,<enemy>,<k>,<d>,<a>,<cs>` — scoreboard update, built **per recipient**
+    (`BuildScoreboardBody`) so ally/enemy are team-relative and the addon stays dumb
+  - `E` — hide the bar
+  The client splits the message on a TAB into `(prefix, payload)` for the addon's
+  `CHAT_MSG_ADDON` handler (the addon also falls back to splitting the tab itself).
+- **Where the numbers come from**:
+  - Team kills (`X vs Y`) — `_teamPlayerKills[2]`, incremented in `HandleKillPlayer`.
+  - K / D — the existing `SCORE_KILLING_BLOWS` / `SCORE_DEATHS` score fields.
+  - A — derived free as `HonorableKills − KillingBlows`. WoW already credits an
+    honorable kill to every teammate within group-reward distance of the victim, so
+    "credited kills minus your own killing blows" is a proximity assist with zero new
+    tracking. Swap for damage-based tracking if it ever needs to be stricter.
+  - CS — `BattlegroundMOBAScore::CreepKills`, incremented in `HandleKillUnit` when the
+    dead creature is a lane creep (`sMobaCreepDataStore->GetConfig(entry)` non-null,
+    which naturally excludes towers).
+- **When it sends**: `T:0` + scoreboard at doors-open (`StartingEventOpenDoors`);
+  scoreboard to everyone on a player kill, and to just the killer on a creep last-hit;
+  `T:` + scoreboard to everyone every 10s (`MOBA_HUD_RESYNC_MS`, `PostUpdateImpl`) as a
+  safety resync; `E` on match end (`EndBattleground`) and early leave (`RemovePlayer`).
+- **The ready ping** (how the bar appears on join): pushing state from `AddPlayer` does
+  **not** work — the packet leaves while the client is still loading and is lost.
+  Instead the addon sends one `SendAddonMessage("MobaHUD", "REQ", "BATTLEGROUND")` on
+  `PLAYER_ENTERING_WORLD` (pvp instances only), and
+  `src/server/scripts/Custom/moba_hud.cpp` answers with
+  `BattlegroundMOBA::SendHudStateTo`. That single signal covers prep-join, mid-match
+  join, and `/reload`, with no warmup polling. Inbound addon messages have no dedicated
+  script hook, so it rides `PlayerScript::OnPlayerCanUseChat(..., Group*)` (which
+  battleground chat routes through) and returns `false` to consume the ping.
+- **Clock excludes prep**: `SendHudStateTo` only sends `T:` when the match is
+  `STATUS_IN_PROGRESS`, so during warmup the bar shows with the clock frozen at 0:00 and
+  doors-open starts it. Elapsed tracks `_matchElapsedMs`.
 
-## How to retune or move the clock
+## How to retune or move the HUD bar
 
-- **Resync cadence**: `MOBA_CLOCK_RESYNC_MS` (anonymous namespace in
-  `BattlegroundMOBA.cpp`, default `10000`). Lower = faster `/reload` recovery,
-  more messages. Rebuild (Build, Install & Test).
-- **New payloads** (e.g. for the scoreboard bar): add senders alongside
-  `SendMatchClock` and handle them in the addon's `HandlePayload`.
-- **Move on screen**: `/mobaclock unlock`, drag, `/mobaclock lock`. Position/lock
-  persist per character (SavedVariables); `/mobaclock reset` recenters. No rebuild.
+- **Resync cadence**: `MOBA_HUD_RESYNC_MS` (anonymous namespace in
+  `BattlegroundMOBA.cpp`, default `10000`). It's only a safety net now that the ping
+  handles joins — lower it only if you see drift. Rebuild (Build, Install & Test).
+- **New payloads / segments**: add a sender alongside `SendHudMessage`, extend
+  `BuildScoreboardBody`, and handle the payload in the addon's `HandlePayload`.
+- **Icons / layout**: the inline icons and segment layout are constants at the top of
+  `MobaHUD.lua` (`ICON_KDA`, `ICON_CS`, `ICON_CLOCK`) plus `Render()`. Pure client —
+  `/reload`, no rebuild.
+- **WoW text-escape gotcha**: in addon strings `|` is the escape character, so a
+  literal pipe must be doubled (`||`). A lone `|` swallows the next escape — a `|r`
+  after it renders as a stray "r" and the colour never resets. This bit the segment
+  divider once.
+- **Move on screen**: `/mobahud unlock`, drag, `/mobahud lock`. Position/lock persist
+  per character (SavedVariables `MobaHUDDB`); `/mobahud reset` recenters. No rebuild.
 
 ## How to move a tower
 
