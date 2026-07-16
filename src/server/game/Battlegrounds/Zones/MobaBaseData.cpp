@@ -15,19 +15,19 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "MobaRespawnData.h"
+#include "MobaBaseData.h"
 #include "DatabaseEnv.h"
 #include "QueryResult.h"
 #include "Field.h"
 #include "Log.h"
 
-MobaRespawnDataStore* MobaRespawnDataStore::instance()
+MobaBaseDataStore* MobaBaseDataStore::instance()
 {
-    static MobaRespawnDataStore instance;
+    static MobaBaseDataStore instance;
     return &instance;
 }
 
-void MobaRespawnDataStore::LoadIfNeeded()
+void MobaBaseDataStore::LoadIfNeeded()
 {
     if (_loaded)
         return;
@@ -35,11 +35,12 @@ void MobaRespawnDataStore::LoadIfNeeded()
     _loaded = true;
 
     QueryResult result = WorldDatabase.Query(
-        "SELECT Map, BaseMs, PerMinMs, CapMs, RecallCastMs, RecallEmpoweredCastMs FROM mod_moba_respawn");
+        "SELECT Map, RespawnBaseMs, RespawnPerMinMs, RespawnCapMs, RecallCastMs, RecallEmpoweredCastMs, "
+        "FountainTickMs, FountainHpPct, FountainManaPct FROM mod_moba_base");
 
     if (!result)
     {
-        LOG_ERROR("sql.sql", "MobaRespawnDataStore: table `mod_moba_respawn` is empty or missing.");
+        LOG_ERROR("sql.sql", "MobaBaseDataStore: table `mod_moba_base` is empty or missing.");
         return;
     }
 
@@ -47,19 +48,22 @@ void MobaRespawnDataStore::LoadIfNeeded()
     {
         Field* fields = result->Fetch();
 
-        MobaRespawnConfig cfg;
+        MobaBaseConfig cfg;
         cfg.map                   = fields[0].Get<uint32>();
-        cfg.baseMs                = fields[1].Get<uint32>();
-        cfg.perMinMs              = fields[2].Get<uint32>();
-        cfg.capMs                 = fields[3].Get<uint32>();
+        cfg.respawnBaseMs         = fields[1].Get<uint32>();
+        cfg.respawnPerMinMs       = fields[2].Get<uint32>();
+        cfg.respawnCapMs          = fields[3].Get<uint32>();
         cfg.recallCastMs          = fields[4].Get<uint32>();
         cfg.recallEmpoweredCastMs = fields[5].Get<uint32>();
+        cfg.fountainTickMs        = fields[6].Get<uint32>();
+        cfg.fountainHpPct         = fields[7].Get<uint32>();
+        cfg.fountainManaPct       = fields[8].Get<uint32>();
 
         _byMap[cfg.map] = cfg;
     } while (result->NextRow());
 }
 
-MobaRespawnConfig const* MobaRespawnDataStore::GetConfig(uint32 mapId) const
+MobaBaseConfig const* MobaBaseDataStore::GetConfig(uint32 mapId) const
 {
     auto itr = _byMap.find(mapId);
     return itr != _byMap.end() ? &itr->second : nullptr;

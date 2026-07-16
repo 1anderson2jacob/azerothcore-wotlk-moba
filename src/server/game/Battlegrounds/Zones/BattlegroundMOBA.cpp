@@ -29,7 +29,7 @@
 #include "WorldStatePackets.h"
 #include "MobaTowerData.h"
 #include "MobaCreepData.h"
-#include "MobaRespawnData.h"
+#include "MobaBaseData.h"
 #include "Chat.h"
 #include "StringFormat.h"
 #include "ObjectAccessor.h"
@@ -87,6 +87,7 @@ void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
         }
 
     UpdateRespawnTimers(diff);
+    UpdateFountainHealing(diff);
 
     _hudResyncMs += diff;
     if (_hudResyncMs >= MOBA_HUD_RESYNC_MS)
@@ -157,7 +158,7 @@ void BattlegroundMOBA::HandleAreaTrigger(Player* player, uint32 trigger)
 bool BattlegroundMOBA::SetupBattleground()
 {
     sMobaTowerDataStore->LoadIfNeeded();
-    sMobaRespawnDataStore->LoadIfNeeded();
+    sMobaBaseDataStore->LoadIfNeeded();
     std::vector<MobaTowerConfig> towerConfigs = sMobaTowerDataStore->GetForMap(GetMapId());
     if (towerConfigs.empty())
     {
@@ -418,11 +419,11 @@ void BattlegroundMOBA::StartRespawnTimer(Player* player)
         return;
 
     uint32 baseMs = 10000, perMinMs = 1500, capMs = 60000;
-    if (MobaRespawnConfig const* cfg = sMobaRespawnDataStore->GetConfig(GetMapId()))
+    if (MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId()))
     {
-        baseMs   = cfg->baseMs;
-        perMinMs = cfg->perMinMs;
-        capMs    = cfg->capMs;
+        baseMs   = cfg->respawnBaseMs;
+        perMinMs = cfg->respawnPerMinMs;
+        capMs    = cfg->respawnCapMs;
     }
 
     // Grows continuously with match time (measured from doors-open, so the prep
@@ -483,6 +484,53 @@ void BattlegroundMOBA::RespawnAtBase(Player* player)
     player->CastSpell(player, 6962, true);   // full health
     player->CastSpell(player, 44535, true);  // full mana
     player->SpawnCorpseBones(false);
+}
+
+// LoL-style fountain: standing in your own base bubble restores a percentage of
+// max health/mana per tick, in or out of combat. Enemies in your bubble get
+// nothing. The bubble is battleground_template.StartMaxDist -- the same value
+// the core's prep-phase leash (_CheckSafePositions) uses, so the heal zone and
+// the leash can't drift apart. Two traps: GetStartMaxDist() returns that
+// distance ALREADY SQUARED (BattlegroundMgr stores MaxStartDistSq), hence the
+// squared compare; and the core leash measures 3D while this measures 2D, so
+// the heal zone is a cylinder -- same radius, forgiving of the base's verticality.
+void BattlegroundMOBA::UpdateFountainHealing(uint32 diff)
+{
+    MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId());
+    if (!cfg || !cfg->fountainTickMs || (!cfg->fountainHpPct && !cfg->fountainManaPct))
+        return;
+
+    float radiusSq = GetStartMaxDist();
+    if (!radiusSq)
+        return;
+
+    _fountainTickMs += diff;
+    if (_fountainTickMs < cfg->fountainTickMs)
+        return;
+
+    _fountainTickMs = 0;
+
+    for (auto const& itr : GetPlayers())
+    {
+        Player* player = itr.second;
+        if (!player || !player->IsAlive())
+            continue;
+
+        Position const* startPos = GetTeamStartPosition(player->GetBgTeamId());
+        if (!startPos || player->GetExactDist2dSq(startPos) > radiusSq)
+            continue;
+
+        if (cfg->fountainHpPct)
+            player->ModifyHealth(player->CountPctFromMaxHealth(cfg->fountainHpPct));
+
+        // Rage/energy/runic power have their own regen rules -- only mana refills.
+        if (cfg->fountainManaPct && player->getPowerType() == POWER_MANA)
+        {
+            uint32 maxMana = player->GetMaxPower(POWER_MANA);
+            uint32 gain    = CalculatePct(maxMana, cfg->fountainManaPct);
+            player->SetPower(POWER_MANA, std::min<uint32>(maxMana, player->GetPower(POWER_MANA) + gain));
+        }
+    }
 }
 
 void BattlegroundMOBA::SendHudMessage(Player* player, std::string const& body)
@@ -576,7 +624,7 @@ uint32 BattlegroundMOBA::GetRecallCastTimeMs(Player* player)
     if (!moba)
         return 0;
 
-    MobaRespawnConfig const* cfg = sMobaRespawnDataStore->GetConfig(moba->GetMapId());
+    MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(moba->GetMapId());
     if (!cfg)
         return 0;
 

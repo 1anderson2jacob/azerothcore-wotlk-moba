@@ -158,6 +158,7 @@ private:
     void FreezeAllCreeps();
     void UpdateRespawnTimers(uint32 diff);
     void RespawnAtBase(Player* player);
+    void UpdateFountainHealing(uint32 diff);
 
     // MobaHUD addon feed (client/addons/MobaHUD). `body` is the payload after the
     // "MobaHUD\t" prefix: "T:<sec>" clock start/sync, "E" hide the bar,
@@ -175,6 +176,7 @@ private:
     uint32 _waveCount = 0;
     uint32 _matchElapsedMs = 0;   // time since doors opened (excludes prep phase)
     uint32 _hudResyncMs = 0;      // accumulates toward the next periodic HUD re-broadcast
+    uint32 _fountainTickMs = 0;   // accumulates toward the next fountain heal tick
     uint32 _teamPlayerKills[2] = {0, 0}; // enemy-player kills per team (the "X vs Y" score)
     std::unordered_map<ObjectGuid, MobaRespawnState> _respawnTimers;
 

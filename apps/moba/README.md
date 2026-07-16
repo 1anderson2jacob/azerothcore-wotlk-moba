@@ -16,9 +16,9 @@ SQL all carries a "GENERATED — do not hand-edit" header.
 - `gen_tower_data.py` — per-map tower positions → `mod_moba_towers.sql`
   (`mod_moba_tower_data`). Tower *creatures* are shared and hand-written in
   `data/sql/custom/mod_moba_tower_defs.sql`; entries are hand-assigned, no lockfile.
-- `gen_respawn.py` — per-map respawn timing + spawn coords → `mod_moba_respawn.sql`
-  (the `mod_moba_respawn` timing table plus the `game_graveyard` /
-  `battleground_template` spawn wiring). No lockfile.
+- `gen_base.py` — per-map base tunables + spawn coords → `mod_moba_base.sql`
+  (the `mod_moba_base` table — respawn timing, recall cast times — plus the
+  `game_graveyard` / `battleground_template` spawn wiring). No lockfile.
 
 Pipeline constants (output paths, id ranges, the `lane_config` path) live in the
 generators, not the configs — the per-map JSON files hold only that map's content.

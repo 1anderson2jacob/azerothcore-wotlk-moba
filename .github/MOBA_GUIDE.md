@@ -169,9 +169,9 @@ resurrection. Fully self-contained in `BattlegroundMOBA` — no core engine edit
   start position (`GetTeamStartPosition`, so a ghost that wandered still
   respawns at base), resurrected, and full-restored (health spell 6962 + mana
   44535), corpse cleared.
-- **Config is map-keyed**: `mod_moba_respawn` (`Map` PK, `BaseMs`,
-  `PerMinMs`, `CapMs`), loaded by `MobaRespawnDataStore`
-  (`MobaRespawnData.h`/`.cpp`). See "How to change respawn timings".
+- **Config is map-keyed**: `mod_moba_base` (`Map` PK, `RespawnBaseMs`,
+  `RespawnPerMinMs`, `RespawnCapMs`), loaded by `MobaBaseDataStore`
+  (`MobaBaseData.h`/`.cpp`). See "How to change respawn timings".
 - **No spirit healers**: the spirit-guide NPCs were removed so the stock revive
   queue never populates (empty queue ⇒ base `_ProcessResurrect` is a no-op and
   can't race our timer). The `game_graveyard` 1103/1104 rows are *kept* —
@@ -192,8 +192,8 @@ instead of the player's inn; outside the BG it's unchanged.
   respawn uses), then clears the cooldown so recall is repeatable.
 - **Interrupt for free**: it's a real Hearthstone cast, so movement and damage
   break it exactly like LoL — nothing hand-rolled.
-- **Per-map, tiered cast time**: normal + empowered, in the respawn bundle
-  (`recall` section in `respawn_config.json` → `mod_moba_respawn.RecallCastMs` /
+- **Per-map, tiered cast time**: normal + empowered, in the base bundle
+  (`recall` section in `base_config.json` → `mod_moba_base.RecallCastMs` /
   `RecallEmpoweredCastMs`). A small override in `Spell::prepare` calls
   `BattlegroundMOBA::GetRecallCastTimeMs` and replaces `m_casttime`; the client
   cast bar follows via `SMSG_SPELL_START`, so the bar shows the overridden time.
@@ -474,10 +474,10 @@ and the respawn (`GetTeamStartPosition`). All of it is now generated from one
 per-map config.
 
 1. In-game, `.gps` at the new ground-level spot for `X, Y, Z, Orientation`.
-2. Edit the `spawn` block in `apps/moba/maps/<mode>/respawn_config.json` — set the
+2. Edit the `spawn` block in `apps/moba/maps/<mode>/base_config.json` — set the
    team's `x`/`y`/`z` (position) and `o` (spawn-in / respawn facing). Then
-   `python3 apps/moba/gen_respawn.py`.
-3. Apply the regenerated `mod_moba_respawn.sql`, **fully restart worldserver**
+   `python3 apps/moba/gen_base.py`.
+3. Apply the regenerated `mod_moba_base.sql`, **fully restart worldserver**
    (start positions load once at startup), `.debug bg`, queue, and confirm both
    your initial teleport-in and a post-death respawn land at the new spot facing
    the right way.
@@ -491,33 +491,52 @@ below still applies to `AllianceStartLoc`/`HordeStartLoc`.)
 Respawn wait = `min(CapMs, BaseMs + PerMinMs × whole match-minutes elapsed)`,
 per map, measured from doors-open.
 
-1. Edit `timing` in `apps/moba/maps/<mode>/respawn_config.json`
-   (`base_ms` / `per_min_ms` / `cap_ms`), then `python3 apps/moba/gen_respawn.py`.
-2. Apply the regenerated `mod_moba_respawn.sql`, then **fully restart worldserver** —
-   `MobaRespawnDataStore` caches once per process (see the caching gotcha).
+1. Edit `respawn` in `apps/moba/maps/<mode>/base_config.json`
+   (`base_ms` / `per_min_ms` / `cap_ms`), then `python3 apps/moba/gen_base.py`.
+2. Apply the regenerated `mod_moba_base.sql`, then **fully restart worldserver** —
+   `MobaBaseDataStore` caches once per process (see the caching gotcha).
 3. `.debug bg`, queue, die, click Release, and confirm the countdown — try an
    early death vs. a few minutes in to see the scaling.
 
-Ad-hoc `UPDATE mod_moba_respawn ...` works for live experimentation, but fold the
-final values back into `respawn_config.json` — regenerating reverts anything not there.
+Ad-hoc `UPDATE mod_moba_base ...` works for live experimentation, but fold the
+final values back into `base_config.json` — regenerating reverts anything not there.
 
 ## How to change the recall cast time
 
 Recall cast time is per-map and tiered (normal + empowered), stored in the
-respawn bundle alongside respawn timing.
+base bundle alongside respawn timing.
 
-1. Edit the `recall` block in `apps/moba/maps/<mode>/respawn_config.json`
+1. Edit the `recall` block in `apps/moba/maps/<mode>/base_config.json`
    (`cast_time_ms` = normal, `empowered_cast_time_ms` = the reduced tier; ms,
    `0` = fall back to the spell's default / to normal), then
-   `python3 apps/moba/gen_respawn.py`.
-2. Apply the regenerated `mod_moba_respawn.sql`, then **fully restart worldserver**
-   (`MobaRespawnDataStore` caches once per process — see the caching gotcha).
+   `python3 apps/moba/gen_base.py`.
+2. Apply the regenerated `mod_moba_base.sql`, then **fully restart worldserver**
+   (`MobaBaseDataStore` caches once per process — see the caching gotcha).
 3. `.debug bg`, queue, cast Hearthstone in-BG → the cast bar shows the normal
    time; `.aura 1243` then cast → the empowered time; `.unaura 1243` to revert.
 
 Tier selection lives in `BattlegroundMOBA::GetRecallCastTimeMs`. To replace the
 placeholder empower trigger with a real mechanic, change the `HasAura` check
 there (and `BG_MOBA_RECALL_EMPOWER_AURA` in `BattlegroundMOBA.h`).
+
+## How to change fountain healing
+
+Standing in your own base bubble restores `FountainHpPct` % of max health and
+`FountainManaPct` % of max mana every `FountainTickMs`, in or out of combat.
+Mana only — rage/energy/runic are left to their own regen.
+
+1. Edit the `fountain` block in `apps/moba/maps/<mode>/base_config.json`
+   (`tick_ms` = cadence, `0` turns healing off; `hp_pct` / `mana_pct` = percent
+   of max restored per tick), then `python3 apps/moba/gen_base.py`.
+2. Apply the regenerated `mod_moba_base.sql`, then **fully restart worldserver**
+   (`MobaBaseDataStore` caches once per process — see the caching gotcha).
+3. `.debug bg`, queue, `.damage 5000` yourself in base and watch it refill; walk
+   out of the bubble and confirm it stops.
+
+The **radius** is not in the `fountain` block — it's `spawn.radius`
+(`battleground_template.StartMaxDist`), shared with the core's prep-phase leash,
+so the heal zone and the "can't leave before doors open" bubble are one number.
+Changing it moves both. `GetStartMaxDist()` returns it **squared**.
 
 ## How to move the starting-area door (the visual "dome")
 
@@ -558,16 +577,18 @@ table.
 | Wave cadence | Every 30s; every 3rd wave adds a siege unit |
 | Creep lane corridor | 40 yd from lane, players only; +15 yd self-evade headroom |
 | Creep health regen | RegenHealth = 0 — damage persists between fights |
-| Respawn timing | BaseMs 10000 + PerMinMs 1500 × match-min, capped at CapMs 60000 (mod_moba_respawn) |
+| Respawn timing | RespawnBaseMs 10000 + RespawnPerMinMs 1500 × match-min, capped at RespawnCapMs 60000 (mod_moba_base) |
+| Fountain healing | 10% max HP + 10% max mana per 1000 ms inside the base bubble (mod_moba_base FountainTickMs / FountainHpPct / FountainManaPct) |
+| Base bubble radius | 10 yd — `battleground_template.StartMaxDist` (`spawn.radius`); drives both the prep leash and the fountain |
 | BG map id (tower/creep rows are tagged with it) | 566 (hijacked EotS) |
 | Recall trigger | Hearthstone (item 6948 / spell 8690), redirected to base in-BG |
-| Recall cast time | normal 9000 ms / empowered 4500 ms (mod_moba_respawn RecallCastMs / RecallEmpoweredCastMs) |
+| Recall cast time | normal 9000 ms / empowered 4500 ms (mod_moba_base RecallCastMs / RecallEmpoweredCastMs) |
 | Recall empower trigger | placeholder aura 1243 (Power Word: Fortitude R1) — swap for real mechanic |
 
 ## Known gotchas (not tied to one recipe)
 
 - **Data stores cache once per *worldserver process*, not per battleground
-  instance.** `MobaTowerDataStore`/`MobaCreepDataStore`/`MobaRespawnDataStore` all guard their
+  instance.** `MobaTowerDataStore`/`MobaCreepDataStore`/`MobaBaseDataStore` all guard their
   load with `if (_loaded) return;` on a singleton that lives for the whole
   process lifetime — so re-applying SQL and just `.debug bg` + requeuing on
   an already-running worldserver does **nothing**; the in-memory data is
