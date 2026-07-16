@@ -45,7 +45,7 @@ namespace
 
         for (MobaTowerState& tower : moba->GetTowers())
         {
-            if (tower.destroyed || tower.team != victim->GetTeamId())
+            if (tower.destroyed || tower.team != victim->GetBgTeamId())
                 continue;
 
             MobaTowerConfig const* cfg = sMobaTowerDataStore->GetConfig(tower.entry);

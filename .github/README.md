@@ -26,13 +26,21 @@ Shipped:
 
 Next, in order:
 
-- [x] Docs / code-comment pass — cut duplication and per-session context cost
-- [ ] `GetBgTeamId` vs `GetTeamId` audit across `BattlegroundMOBA`
+- [ ] Enable cross-faction MOBA
 - [ ] Last-hit kill credit — award minion kills to the team that landed the killing blow, not the team that first aggro'd
 - [ ] Super minions — a reinforced minion variant
 - [ ] Gold / itemization mid-match
 - [ ] Custom map/terrain — move onto the Twisted Treeline map (WMO route, ADT fallback; see `MOBA_MAP_WMO_PLAN.md`)
 - [ ] Standalone battleground ID via `BattlemasterList.dbc` patch (client MPQ distributed to players) — bundles with the custom-map work
+
+## Housekeeping
+
+Code/doc chores — cleanups, audits, convention passes — that don't change gameplay. Not the feature roadmap above; not CLAUDE.md's "Deferred / known-untidy", which tracks live traps an editor must know while changing code.
+
+- [x] Docs / code-comment pass — cut duplication and per-session context cost
+- [x] `GetBgTeamId` vs `GetTeamId` audit across `BattlegroundMOBA`
+- [ ] `BG_MOBA_Score` enum holds only the Flurry achievement ID — decide whether EotS achievements should fire at all in this mode
+- [ ] Remove leftover `m_BuffChange = true` from the `BattlegroundMOBA` constructor (buffs were removed; harmless)
 
 ## Key changed files
 

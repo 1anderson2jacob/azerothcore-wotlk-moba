@@ -288,7 +288,7 @@ void BattlegroundMOBA::HandleKillUnit(Creature* creature, Player* killer)
         }
     }
 
-    OnTowerDestroyed(creature, killer->GetTeamId());
+    OnTowerDestroyed(creature, killer->GetBgTeamId());
 }
 
 void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId)
@@ -412,7 +412,7 @@ void BattlegroundMOBA::FillInitialWorldStates(WorldPackets::WorldState::InitWorl
 
 GraveyardStruct const* BattlegroundMOBA::GetClosestGraveyard(Player* player)
 {
-    return sGraveyard->GetGraveyard(player->GetTeamId() == TEAM_ALLIANCE
+    return sGraveyard->GetGraveyard(player->GetBgTeamId() == TEAM_ALLIANCE
         ? BG_MOBA_GRAVEYARD_MAIN_ALLIANCE
         : BG_MOBA_GRAVEYARD_MAIN_HORDE);
 }
@@ -483,7 +483,7 @@ void BattlegroundMOBA::UpdateRespawnTimers(uint32 diff)
 
 void BattlegroundMOBA::RespawnAtBase(Player* player)
 {
-    if (Position const* startPos = GetTeamStartPosition(player->GetTeamId()))
+    if (Position const* startPos = GetTeamStartPosition(player->GetBgTeamId()))
         player->TeleportTo(GetMapId(), startPos->GetPositionX(), startPos->GetPositionY(),
             startPos->GetPositionZ(), startPos->GetOrientation());
 

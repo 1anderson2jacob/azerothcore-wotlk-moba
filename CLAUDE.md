@@ -202,7 +202,4 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 ## Deferred / known-untidy
 
 - Tower `DisplayScale` 5.0 too large; tower positions temporary (mid-lane placement planned, via `.gps`)
-- `BG_MOBA_Score` enum holds only the Flurry achievement ID — decide whether EotS achievements should fire at all in this mode
-- `m_BuffChange = true` left in the constructor; buffs were removed — harmless, clean up opportunistically
-- `RespawnAtBase` uses `GetTeamId()` where the core uses `GetBgTeamId()` — audit pending
 - **Client-patch bundle** — all blocked on the same MPQ/DBC work, so do them together: the recall tooltip still reads "Returns you to \<bind\>"; recall and fountain have no custom spell visuals; custom battle sounds (a doors-open cue and a first-wave-only cue — two `PlaySoundToAll` calls, ~10 min once `SoundEntries.dbc` rows exist); Twisted Treeline music; the leftover EotS grey point-icons.

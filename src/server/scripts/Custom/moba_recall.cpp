@@ -54,8 +54,7 @@ class spell_moba_hearthstone_recall : public SpellScript
         // Cancel the built-in "teleport to inn" and send the player to their base.
         PreventHitDefaultEffect(effIndex);
 
-        // GetTeamId() to match RespawnAtBase, so recall and respawn land at the same base.
-        if (Position const* startPos = moba->GetTeamStartPosition(player->GetTeamId()))
+        if (Position const* startPos = moba->GetTeamStartPosition(player->GetBgTeamId()))
             player->TeleportTo(moba->GetMapId(), startPos->GetPositionX(), startPos->GetPositionY(),
                 startPos->GetPositionZ(), startPos->GetOrientation());
 
