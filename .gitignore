@@ -11,6 +11,8 @@
 !/modules/CMakeLists.txt
 !/modules/*.h
 !/modules/*.cmake
+!/modules/mod-cfbg
+!/modules/mod-cfbg/**
 /build*/
 /var/*
 !/var/build/.gitkeep
@@ -118,3 +120,4 @@ local.properties
 # fork: track custom scripts and SQL (override upstream ignores on lines 24-25)
 !/src/server/scripts/Custom/*
 !/data/sql/custom/*
+/apps/moba/local.conf

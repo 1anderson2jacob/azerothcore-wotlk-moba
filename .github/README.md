@@ -8,6 +8,8 @@ Rather than patching client DBC files, this project **hijacks the Eye of the Sto
 
 A separate battleground ID (with a distributable client MPQ patch) is planned once gameplay stabilizes — see the roadmap.
 
+CFBG rides the same EotS-slot hijack; the earlier GetBgTeamId audit is why the MOBA respected the BG team automatically.
+
 ## Roadmap
 
 Shipped:
@@ -23,10 +25,10 @@ Shipped:
 - [x] Per-map content bundles (map-keyed tables; a new map = a new `apps/moba/maps/<mode>/` bundle)
 - [x] On-screen HUD bar — match clock, team score, KDA, creep score (client addon; no client patch)
 - [x] Fountain healing
+- [x] Enable cross-faction MOBA - via mod-cfbg (mixed-faction teams) + AllowTwoSide.Interaction.Group (cross-faction parties).
 
 Next, in order:
 
-- [ ] Enable cross-faction MOBA
 - [ ] Last-hit kill credit — award minion kills to the team that landed the killing blow, not the team that first aggro'd
 - [ ] Super minions — a reinforced minion variant
 - [ ] Gold / itemization mid-match
@@ -68,6 +70,7 @@ cmake ../../../ \
 make -j$(sysctl -n hw.ncpu)
 make install
 ```
+Then, from the repo root, run `./apps/moba/setup.sh` — it generates the runtime `worldserver.conf` and module confs from their tracked `.dist` templates and layers on machine-local overrides from `apps/moba/local.conf`. Databases self-populate on the first worldserver boot (base schema, updates, then the fork's custom SQL under `data/sql/custom/db_world/`).
 
 If using the acore.sh dashboard instead, the same flags can go in `conf/config.sh` as `CCUSTOMOPTIONS`.
 
@@ -75,13 +78,12 @@ For other platforms, follow the standard [AzerothCore installation guide](https:
 
 ## Testing the battleground locally
 
-1. Set EotS minimum players to 1:
-   ```sql
-   UPDATE acore_world.battleground_template SET MinPlayersPerTeam=1 WHERE ID=7;
-   ```
+1. Build + install, then run `./apps/moba/setup.sh` (see Building above)
 2. Start `authserver` and `worldserver`, log in with a GM account
-3. In-game: `.debug bg` (must be re-run after every worldserver restart), then queue for Eye of the Storm
+3. In-game: `.debug bg` (must be re-run after every worldserver restart), then queue for Eye of the Storm — `.debug bg` forces the per-team minimum to 1, so a solo/small queue pops
 4. Level requirement is 61+; use `.character level 80` on a test character
+
+For solo (1-client) testing, add `CFBG.EvenTeams.Enabled` = 0 to `apps/moba/local.conf` and re-run `setup.sh` — a lone player is otherwise held as an uneven team. Cross-faction only shows itself with two characters (CFBG distributes multiple players across teams).
 
 ## Syncing with upstream AzerothCore
 

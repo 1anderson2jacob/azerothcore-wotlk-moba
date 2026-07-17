@@ -1,0 +1,9 @@
+# apps/moba/local.conf.example — copy to apps/moba/local.conf (gitignored) and edit.
+# Per-machine test knobs, layered over committed config by apps/moba/setup.sh.
+# Each line replaces the same key in worldserver.conf or a module conf.
+
+# Faster local iteration — shorten the pre-match gate timer:
+# Battleground.PrepTime = 15
+
+# Let a solo queue pop for testing (pairs with the MinPlayersPerTeam DB step in the README):
+# CFBG.EvenTeams.Enabled = 0

@@ -1,8 +1,8 @@
 -- ============================================================
 -- GENERATED FILE — do not hand-edit.
--- Produced by apps/moba/gen_creep_paths.py from apps/moba/lane_config.json.
--- Re-running the generator recreates this file with the same path
--- IDs (persisted in the lockfile next to the config).
+-- Produced by apps/moba/gen_creep_paths.py from apps/moba/maps/*/lane_config.json.
+-- Re-running recreates this file with the same path IDs (persisted in
+-- each map bundle's lane_config.lock.json).
 -- ============================================================
 
 DELETE FROM `waypoint_data` WHERE `id` IN (900111, 900121, 900110, 900120, 900100, 900101, 900112, 900122);

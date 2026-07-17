@@ -3,11 +3,11 @@
 MOBA tower generator.
 
 Reads per-map tower configs (apps/moba/maps/<mode>/tower_config.json) and
-generates data/sql/custom/mod_moba_towers.sql: the map-keyed mod_moba_tower_data
+generates data/sql/custom/db_world/mod_moba_towers.sql: the map-keyed mod_moba_tower_data
 table (spawn position, tier/guard dependency, per-tower AI config).
 
 The tower CREATURES (creature_template / model / health) are shared across maps
-and hand-written in data/sql/custom/mod_moba_tower_defs.sql -- this generator
+and hand-written in data/sql/custom/db_world/mod_moba_tower_defs.sql -- this generator
 owns only the per-map rows. Tower entries are assigned by hand in the config
 (900000/900001), so there's no lockfile.
 
@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 MAPS_DIR = Path(__file__).parent / "maps"
-OUTPUT = Path("data/sql/custom/mod_moba_towers.sql")
+OUTPUT = Path("data/sql/custom/db_world/mod_moba_towers.sql")
 
 REQUIRED_TOWER = ["entry", "team", "tier", "guarded_by_entry", "x", "y", "z", "o",
                   "attack_range", "attack_interval_ms", "attack_spell_id"]
@@ -106,7 +106,7 @@ def main():
     OUTPUT.write_text(emit(configs))
     total = sum(len(c["towers"]) for _, c in configs)
     print(f"Wrote {OUTPUT} ({total} towers across {len(configs)} map(s)).")
-    print("Apply mod_moba_tower_defs.sql AND mod_moba_towers.sql, then fully restart worldserver.")
+    print("Restart worldserver — mod_moba_tower_defs.sql and mod_moba_towers.sql auto-apply on boot.")
 
 
 if __name__ == "__main__":

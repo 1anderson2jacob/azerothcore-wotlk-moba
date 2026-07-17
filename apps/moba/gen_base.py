@@ -3,7 +3,7 @@
 MOBA base generator.
 
 Reads per-map base configs (apps/moba/maps/<mode>/base_config.json) and
-generates data/sql/custom/mod_moba_base.sql: the map-keyed mod_moba_base table
+generates data/sql/custom/db_world/mod_moba_base.sql: the map-keyed mod_moba_base table
 (respawn timing, recall cast times, fountain healing), plus the per-map spawn
 wiring (game_graveyard coordinates, and the battleground_template
 start-location / orientation / radius that back them).
@@ -26,7 +26,7 @@ import sys
 from pathlib import Path
 
 MAPS_DIR = Path(__file__).parent / "maps"
-OUTPUT = Path("data/sql/custom/mod_moba_base.sql")
+OUTPUT = Path("data/sql/custom/db_world/mod_moba_base.sql")
 
 REQUIRED_RESPAWN = ["base_ms", "per_min_ms", "cap_ms"]
 REQUIRED_SPAWN_TEAM = ["graveyard_id", "x", "y", "z", "o"]
@@ -147,7 +147,7 @@ def main():
     OUTPUT.write_text(emit(configs))
     maps = ", ".join(str(c["map"]) for _, c in configs)
     print(f"Wrote {OUTPUT} ({len(configs)} map(s): {maps}).")
-    print("Apply the SQL to acore_world, then fully restart worldserver.")
+    print("ARestart worldserver — the SQL auto-applies from data/sql/custom/db_world on boot.")
 
 
 if __name__ == "__main__":

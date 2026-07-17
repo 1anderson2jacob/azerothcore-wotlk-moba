@@ -3,7 +3,8 @@
 Generators and per-map config for the battleground's data-driven content. Each
 map/mode is a self-contained bundle under `apps/moba/maps/<mode>/` (e.g.
 `maps/eye_of_the_storm/`) holding that map's `*_config.json`; the generators glob
-those and emit one combined SQL file per content type, each carrying a
+those and emit one combined SQL file per content type into
+`data/sql/custom/db_world/` (auto-applied on worldserver boot), each carrying a
 "GENERATED — do not hand-edit" header.
 
 **Workflows live in `.github/MOBA_GUIDE.md`** — walking a lane, adding a creep,
@@ -13,14 +14,15 @@ what each config key means, and the lockfile rules.
 | Generator | Reads | Writes |
 |---|---|---|
 | `gen_creep_roster.py` | `maps/<mode>/creep_config.json` + source dumps in `sources/` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data` |
-| `gen_creep_paths.py` | `lane_config.json` (still shared/single until a second map's lanes exist) | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data` |
+| `gen_creep_paths.py` | `maps/<mode>/lane_config.json` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data` |
 | `gen_tower_data.py` | `maps/<mode>/tower_config.json` | `mod_moba_towers.sql` — `mod_moba_tower_data` |
 | `gen_base.py` | `maps/<mode>/base_config.json` | `mod_moba_base.sql` — `mod_moba_base`, plus the `game_graveyard` / `battleground_template` spawn wiring |
 
-Pipeline constants (output paths, id ranges, the `lane_config` path) live in the
-generators, not the configs — the per-map JSON holds only that map's content.
-Tower *creatures* are the exception to the generated rule: shared and hand-written
-in `data/sql/custom/mod_moba_tower_defs.sql`.
+Pipeline constants (output paths, id ranges, scanned SQL dirs) live in the
+generators, not the configs — each generator globs `maps/*/<name>_config.json`, so
+the per-map JSON holds only that map's content. Tower *creatures* are the exception
+to the generated rule: shared and hand-written in
+`data/sql/custom/db_world/mod_moba_tower_defs.sql`.
 
 ## `lane_config.json` — human-owned, edit freely
 
@@ -29,10 +31,6 @@ in `data/sql/custom/mod_moba_tower_defs.sql`.
   nodes break creep re-aggro: the engine's leash checks anchor to
   waypoint-generator positions, and sparse nodes leave those anchors far from the
   creature (see the guide's gotcha index).
-- `output` — where the generated SQL is written, relative to where you run the
-  script from (run from the repo root).
-- `scan_sql_dirs` — directories scanned for already-used waypoint IDs, so fresh
-  allocation never collides with hand-written SQL.
 - `slots` — the default formation, one entry per creep path per team.
   - `lateral_offset` — yards sideways from the centerline; **positive = the
     walking creep's own left**. The value mirrors automatically for the other team
@@ -90,7 +88,7 @@ orphans every reference already in the DB. Don't.
 
 ## Reusing `gen_creep_paths.py` elsewhere
 
-Copy it alongside `lane_config.example.json`, rename the example to
-`lane_config.json`, adjust `id_range` / `scan_sql_dirs` / `output` to the
-project's conventions, and fill in real lanes. The lockfile is created on first
-run.
+Copy `lane_config.example.json` into a map bundle as `maps/<mode>/lane_config.json`,
+adjust `id_range` / `max_spacing` / `slots`, and fill in real lanes. Output path and
+scanned-SQL dirs are generator constants now, not config fields. The lockfile is
+created next to the config on first run.

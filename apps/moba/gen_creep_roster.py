@@ -4,12 +4,12 @@ MOBA creep-roster generator.
 
 Reads a human-owned creep config (per-creep choices: stats tuning, role,
 team, display, equipment, lane/formation slot) plus verbatim source-creature
-stat dumps, and generates data/sql/custom/mod_moba_creeps.sql wholesale:
+stat dumps, and generates data/sql/custom/db_world/mod_moba_creeps.sql wholesale:
 creature_template (full-stat copy of the source with a fixed set of
 deliberate overrides), creature_template_model, creature_equip_template,
 and the mod_moba_creep_data config table.
 
-WaypointPathId is resolved from the lane generator's lockfile
+WaypointPathId is resolved from each map bundle's lane generator lockfile
 (lane_config.lock.json): a creep uses its lane/slot's "forward" path for
 team 0 (Alliance) and "reverse" for team 1 (Horde) -- matching how
 BattlegroundMOBA wires teams. Nothing is typed twice.
@@ -45,10 +45,9 @@ import sys
 from pathlib import Path
 
 MAPS_DIR = Path(__file__).parent / "maps"
-OUTPUT = Path("data/sql/custom/mod_moba_creeps.sql")
+OUTPUT = Path("data/sql/custom/db_world/mod_moba_creeps.sql")
 ID_RANGE = [900010, 900099]
-LANE_CONFIG = Path(__file__).parent / "lane_config.json"
-SCAN_SQL_DIRS = ["data/sql/custom"]
+SCAN_SQL_DIRS = ["data/sql/custom/db_world"]
 
 ROLE_IDS = {"melee": 0, "caster": 1, "siege": 2}
 STRING_COLUMNS = {"name", "subname", "IconName", "AIName", "ScriptName"}
@@ -322,11 +321,6 @@ def main():
     if not configs:
         fail(f"no creep configs found under {MAPS_DIR}/*/creep_config.json")
 
-    lane_lock_path = LANE_CONFIG.with_suffix(".lock.json")
-    if not lane_lock_path.is_file():
-        fail(f"lane lockfile not found: {lane_lock_path} -- run gen_creep_paths.py first")
-    lane_lock = json.loads(lane_lock_path.read_text()).get("path_ids", {})
-
     # Gather every already-used entry (existing SQL + all per-map lockfiles) so
     # entries never collide across maps.
     used = collect_used_entries(SCAN_SQL_DIRS)
@@ -343,6 +337,13 @@ def main():
         cfg = json.loads(cp.read_text())
         validate_config(cfg, cp)
         lock = locks[cp]
+
+        # Waypoint paths come from this map bundle's lane lockfile.
+        lane_lock_path = cp.parent / "lane_config.lock.json"
+        if not lane_lock_path.is_file():
+            fail(f"lane lockfile not found: {lane_lock_path} -- run gen_creep_paths.py first")
+        lane_lock = json.loads(lane_lock_path.read_text()).get("path_ids", {})
+
         for creep in cfg["creeps"]:
             creep["_map"] = cfg["map"]
             slot_ids = lane_lock.get(creep["lane"], {}).get(creep["slot"])
@@ -376,7 +377,7 @@ def main():
             print(f"  {key}: {entry}")
     else:
         print("All creature entries reused from lockfiles.")
-    print("Apply the SQL to acore_world, then fully restart worldserver.")
+    print("ARestart worldserver — the SQL auto-applies from data/sql/custom/db_world on boot.")
 
 
 if __name__ == "__main__":

@@ -23,8 +23,10 @@ make -j$(sysctl -n hw.ncpu)
 make install                   # binaries don't reach env/dist/bin without it
 ```
 
-**SQL change** — apply the file to `acore_world`, then **fully restart
-worldserver**. Not optional: the `Moba*DataStore` singletons load once per
+**SQL change** — the generated files live under `data/sql/custom/db_world/` and
+auto-apply on the next worldserver boot (the DB updater), so a SQL change just
+means **fully restart worldserver**. The full restart is not optional: the
+`Moba*DataStore` singletons load once per
 *process* (`if (_loaded) return;`), so re-applying SQL and re-queueing against a
 running server does nothing, and reinstalling the binary doesn't help either —
 the running process keeps its in-memory copy. This has burned real debugging
@@ -177,7 +179,7 @@ the 3.3.5a client splits the message on a TAB into `(prefix, payload)`.
 
 **Add a tower** — if it needs a new creature (different model/faction), add
 `creature_template` + `creature_template_model` to
-`data/sql/custom/mod_moba_tower_defs.sql`, copying an existing tower's block with
+`data/sql/custom/db_world/mod_moba_tower_defs.sql`, copying an existing tower's block with
 `ScriptName = 'npc_moba_tower'`. Then add a block to the map's
 `tower_config.json` `towers` list: `entry`, `team`, `tier`, `guarded_by_entry`,
 `.gps` coords, `attack_range`/`attack_interval_ms`/`attack_spell_id`. Run
@@ -218,7 +220,7 @@ A judgment call — revisit if the trigger feels loose or tight in play.
 curves and over bumps; node Z is interpolated linearly). Save the console
 scrollback, then `python3 apps/moba/gen_creep_paths.py --extract scrollback.txt`
 prints the points array. Paste it into that lane's `points` in
-`lane_config.json`. **Order matters** — the team on the `forward` path IDs
+`lmaps/<mode>/lane_config.json`. **Order matters** — the team on the `forward` path IDs
 (currently Alliance) spawns at the FIRST point; reverse the array if you walked
 the other way. Run `gen_creep_paths.py`; deploy. Path IDs come from the lockfile,
 so re-walking an existing lane needs no `mod_moba_creep_data` changes. Full field
@@ -228,7 +230,7 @@ and lockfile reference: `apps/moba/README.md`.
 block to `creep_config.json` (copy a similar role's, including equipment item IDs
 from its `creature_equip_template` row — weapons aren't in `creature_template`
 and melee swing unarmed without them). A new formation slot must be added to
-`lane_config.json` and `gen_creep_paths.py` run first. Then
+`lmaps/<mode>/lane_config.json` and `gen_creep_paths.py` run first. Then
 `gen_creep_roster.py`; deploy. Full field reference: `apps/moba/README.md`.
 `BattlegroundMOBA` expects exactly 2 melee + 1 caster per team (siege optional);
 the generator warns otherwise.

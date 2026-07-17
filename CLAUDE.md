@@ -98,6 +98,7 @@ Claude MUST NOT — these are Jacob's; hand him the exact command and wait for w
 - Execute SQL or open mysql sessions — deliver SQL as a file or snippet
 - Run `make install`
 - Modify anything outside the repo (worldserver.conf in env/dist, system config, Homebrew)
+- Run `apps/moba/setup.sh` (it writes `env/dist` — a Jacob-only op)
 
 ### Decision rules
 
@@ -134,7 +135,7 @@ Neither is duplicated here. Read them when the task needs them.
 | Respawn, recall, fountain | `Zones/MobaBaseData.{h,cpp}`, `scripts/Custom/moba_respawn.cpp` + `moba_recall.cpp` | `base_config.json` → `gen_base.py` → `mod_moba_base.sql` |
 | HUD bar | `client/addons/MobaHUD/`, `scripts/Custom/moba_hud.cpp` | — (client addon; copy into `Interface/AddOns/`) |
 
-Per-map config bundles live in `apps/moba/maps/<mode>/`; generators in `apps/moba/` (see `apps/moba/README.md`). Adding a map/mode = dropping in a new `maps/<mode>/` bundle — every content table carries a `Map` column. Custom DB entries live at **900000+**. Custom SQL is applied by hand; there's no auto-import wiring.
+Per-map config bundles live in `apps/moba/maps/<mode>/`; generators in `apps/moba/` (see `apps/moba/README.md`). Adding a map/mode = dropping in a new `maps/<mode>/` bundle — every content table carries a `Map` column. Custom DB entries live at **900000+**. Custom SQL in data/sql/custom/db_world/ (+db_auth/db_characters) and vendored-module SQL auto-apply on worldserver boot (Updates.AutoSetup).
 
 ## Gitignore overrides (fork)
 
@@ -166,7 +167,7 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 
 - Servers: `./acore.sh run-worldserver` / `run-authserver` in separate terminals (the worldserver console takes GM commands directly)
 - MySQL: user `acore`, password `acore`, DBs `acore_auth` / `acore_characters` / `acore_world`
-- `worldserver.conf`: `Battleground.PrepTime = 15` (local-only; conf is gitignored)
+- **Config**: committed settings live in tracked `.dist` — `modules/mod-cfbg/conf/CFBG.conf.dist` holds CFBG tuning **and** the `AllowTwoSide.Interaction.Group` core override; machine-local test knobs (`Battleground.PrepTime`, `CFBG.EvenTeams.Enabled`) live in gitignored `apps/moba/local.conf`. `apps/moba/setup.sh` builds the runtime `.conf` from both.
 - **`.debug bg` must be re-run in-game after every worldserver restart** or the solo queue won't pop
 - Test character: GM level 3, level 80. Useful: `.gps`, `.morph <id>` / `.demorph`, `.damage <n>`, `.character level 80`
 - Claude cannot see the game client or the worldserver console — ask Jacob to relay output and in-game observations
