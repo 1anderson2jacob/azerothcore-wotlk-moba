@@ -275,20 +275,25 @@ void BattlegroundMOBA::HandleKillUnit(Creature* creature, Player* killer)
     if (GetStatus() != STATUS_IN_PROGRESS)
         return;
 
-    // Lane creep last-hit -> +1 creep score (CS) for the killer. Towers aren't in the
-    // creep data store, so this naturally skips them; tower kills fall through to
-    // OnTowerDestroyed below.
-    if (creature && killer && sMobaCreepDataStore->GetConfig(creature->GetEntry()))
-    {
-        auto itr = PlayerScores.find(killer->GetGUID().GetCounter());
-        if (itr != PlayerScores.end())
-        {
-            static_cast<BattlegroundMOBAScore*>(itr->second)->CreepKills++;
-            SendScoreboard(killer);
-        }
-    }
-
+    // killer here is the loot recipient (first player to tap), not the killing
+    // blow -- Unit::Kill overwrites it before calling us. Fine for towers, whose
+    // credit is team-level (OnTowerDestroyed no-ops on non-tower creatures, so
+    // lane creeps pass through harmlessly). Lane-creep CS needs the actual last
+    // hit and is credited in npc_moba_creep::JustDied instead.
     OnTowerDestroyed(creature, killer->GetBgTeamId());
+}
+
+void BattlegroundMOBA::CreditCreepKill(Player* killer)
+{
+    if (GetStatus() != STATUS_IN_PROGRESS || !killer)
+        return;
+
+    auto itr = PlayerScores.find(killer->GetGUID().GetCounter());
+    if (itr != PlayerScores.end())
+    {
+        static_cast<BattlegroundMOBAScore*>(itr->second)->CreepKills++;
+        SendScoreboard(killer); // CS is shown only to its owner -> refresh just them
+    }
 }
 
 void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId)

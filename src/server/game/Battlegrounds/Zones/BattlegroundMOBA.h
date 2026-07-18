@@ -141,6 +141,11 @@ public:
     // see npc_moba_tower::JustDied for why both paths exist.
     void OnTowerDestroyed(Creature* tower, TeamId winnerTeamId);
 
+    // Credit a lane-creep last-hit (CS) to the killing-blow player. Called from
+    // npc_moba_creep::JustDied -- unlike HandleKillUnit, whose killer is the loot
+    // recipient (first player to aggro), this is the true last hit.
+    void CreditCreepKill(Player* killer);
+
     // Starts a player's respawn countdown (called from the OnPlayerReleasedGhost hook).
     void StartRespawnTimer(Player* player);
 

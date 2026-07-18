@@ -2,6 +2,7 @@
 #include "ScriptMgr.h"
 #include "AllSpellScript.h"
 #include "Battleground.h"
+#include "BattlegroundMOBA.h"
 #include "Map.h"
 #include "MobaCreepData.h"
 #include "MotionMaster.h"
@@ -172,6 +173,27 @@ struct npc_moba_creep : public ScriptedAI
         // (as the engine's pet/MoveFollow evade branch does).
         me->ClearUnitState(UNIT_STATE_EVADE);
         ResumeLaneFromHere();
+    }
+
+    // Last-hit CS: credit goes to whoever landed the killing blow, not the first
+    // tapper. HandleKillUnit's killer is the loot recipient (Unit::Kill overwrites
+    // it), so it can't award last hits -- but the killer passed here is the true
+    // killing-blow attacker; a pet/guardian credits its owner. Enemy creeps only:
+    // friendly-fire on creeps is impossible anyway (team hostility + spell gate),
+    // so the team guard is belt-and-suspenders, but it keeps own-team kills off
+    // the board if that ever changes.
+    void JustDied(Unit* killer) override
+    {
+        if (!_cfg)
+            return;
+
+        Player* p = killer ? killer->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
+        if (!p || p->GetBgTeamId() == _cfg->team)
+            return;
+
+        if (BattlegroundMap* bgMap = me->GetMap()->ToBattlegroundMap())
+            if (auto* moba = dynamic_cast<BattlegroundMOBA*>(bgMap->GetBG()))
+                moba->CreditCreepKill(p);
     }
 
 private:

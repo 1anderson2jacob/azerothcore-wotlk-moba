@@ -27,12 +27,14 @@ Shipped:
 - [x] Fountain healing
 - [x] Enable cross-faction MOBA - via mod-cfbg (mixed-faction teams) + AllowTwoSide.Interaction.Group (cross-faction parties).
 - [x] Heal/shield allied minions — heals, HoTs, absorbs, and cleanses land on your own minions (cross-faction included); other buffs are rejected ("Invalid target") — stat buffs are inert on NPCs
+- [x] Last-hit kill credit — minion kills (CS) go to the player who landed the killing blow, not the first tapper; a friendly-creep last hit credits nobody
 
 Next, in order:
 
-- [ ] Last-hit kill credit — award minion kills to the team that landed the killing blow, not the team that first aggro'd
-- [ ] Super minions — a reinforced minion variant
+- [ ] Neutral Minions
+- [ ] Minion on-death drops infrastructure
 - [ ] Gold / itemization mid-match
+- [ ] Super minions — a reinforced minion variant
 - [ ] Custom map/terrain — move onto the Twisted Treeline map (WMO route, ADT fallback; see `MOBA_MAP_WMO_PLAN.md`)
 - [ ] Standalone battleground ID via `BattlemasterList.dbc` patch (client MPQ distributed to players) — bundles with the custom-map work
 
@@ -52,7 +54,7 @@ Code/doc chores — cleanups, audits, convention passes — that don't change ga
 | `src/server/game/Battlegrounds/Zones/BattlegroundMOBA.{h,cpp}` | New battleground class (cloned from EotS, being reshaped) |
 | `src/server/game/Battlegrounds/BattlegroundMgr.cpp` | `BATTLEGROUND_EY` factory entries point to `BattlegroundMOBA` |
 | `src/server/game/Movement/MotionMaster.{h,cpp}` | Added public `MoveWaypoint(WaypointPath&, bool)` overload (mid-route path resume for lane creeps) |
-| `client/addons/MobaHUD/` | Client addon: on-screen HUD bar (team score, KDA, CS, match clock), fed by server `LANG_ADDON` messages |
+| `client/addons/MobaHUD/` | Client addon: on-screen HUD bar (KDA, CS, match clock), fed by server `LANG_ADDON` messages |
 | `src/server/scripts/Custom/moba_hud.cpp` | Answers the addon's "ready" ping with current HUD state (group-chat `OnPlayerCanUseChat` hook) |
 
 ## Building (macOS, Apple Silicon)
