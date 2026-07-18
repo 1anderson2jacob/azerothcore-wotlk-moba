@@ -941,7 +941,6 @@ void MotionMaster::MoveWaypoint(WaypointPath& path, bool repeatable)
         _owner->IsPlayer() ? "Player" : "Creature", _owner->GetGUID().ToString(), path.Id, repeatable ? "YES" : "NO");
 }
 
-
 /**
  * @brief Rotate the unit. You can specify the time of the rotation.
  */

@@ -92,6 +92,12 @@ the two engine traps there.
   leash and home position are both unusable here — the corridor constant and
   `ResumeLaneFromHere` in `npc_moba_creep.cpp` explain why. Mid-route resume uses
   a fork-added `MotionMaster::MoveWaypoint(WaypointPath&, bool)` overload.
+  - **Assist rules**: players can heal/HoT/shield/cleanse their own minions but not
+  buff them, and minion buffs survive evade. Three mechanisms, each with its own
+  why-comment: `UNIT_FLAG_PLAYER_CONTROLLED` on the template (client-side
+  helpful-target gate, `gen_creep_roster.py`), the `moba_creep_spell_gate`
+  allow-list, and the inlined evade that skips `RemoveEvadeAuras`
+  (`npc_moba_creep.cpp`).
 - **End of match**: `FreezeAllCreeps()` stops the living ones; the AI separately
   suppresses `Reset()`/evade afterward via `MatchEnded()`, or an evade would
   re-arm the lane path.
@@ -258,6 +264,11 @@ spell's own data* — right for towers, wrong for casters (we shipped that bug:
 Fireball looked instant and free until it was changed to `false`). Applies to all
 casters; not per-entry. C++ change.
 
+**Change which spells players can cast on allied minions** — the allow-list
+`switch` in `moba_creep_spell_gate::OnSpellCheckCast` (`npc_moba_creep.cpp`);
+positive spells matching no allowed effect are rejected before mana/GCD are
+spent. C++ change.
+
 ## Recipes: base (spawn, respawn, recall, fountain)
 
 All four live in one per-map bundle: `maps/<mode>/base_config.json` →
@@ -335,6 +346,17 @@ touching that area:
 - **`GetStartMaxDist()` returns a *squared* distance.** → `UpdateFountainHealing`.
 - **`DoCastVictim(id, true)` bypasses cast time, mana, and GCD** regardless of the
   spell's data. → "Make a creep's attack instant/free" above.
+- **Helpful spells aimed at a plain friendly NPC never reach the server** — the
+  client silently self-casts instead; `UNIT_FLAG_PLAYER_CONTROLLED` is what marks
+  a unit as a valid helpful-spell target. → `gen_creep_roster.py`,
+  `CREEP_UNIT_FLAG_PLAYER_CONTROLLED` comment.
+- **Stat buffs do nothing on creatures** (`Creature::UpdateStats` is a no-op).
+  → `npc_moba_creep.cpp`, `moba_creep_spell_gate` comment.
+- **Mechanical-type creatures are hard-immune to direct heals.**
+  → `gen_creep_roster.py`, `"type"` override comment.
+- **An inlined evade must end with `EngagementOver()`** — omit it and the
+  creature stays "engaged" forever and ignores every later enemy.
+  → `npc_moba_creep.cpp`, `EnterEvadeMode`.
 
 Traps with no single code home:
 

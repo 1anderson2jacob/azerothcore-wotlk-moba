@@ -26,6 +26,7 @@ Shipped:
 - [x] On-screen HUD bar — match clock, team score, KDA, creep score (client addon; no client patch)
 - [x] Fountain healing
 - [x] Enable cross-faction MOBA - via mod-cfbg (mixed-faction teams) + AllowTwoSide.Interaction.Group (cross-faction parties).
+- [x] Heal/shield allied minions — heals, HoTs, absorbs, and cleanses land on your own minions (cross-faction included); other buffs are rejected ("Invalid target") — stat buffs are inert on NPCs
 
 Next, in order:
 

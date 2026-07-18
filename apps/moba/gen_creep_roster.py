@@ -59,13 +59,22 @@ CREEP_REQUIRED = ["key", "name", "subname", "team", "role", "source", "display_i
                   "display_scale", "level", "health_modifier", "armor_modifier",
                   "equip", "despawn_ms", "lane", "slot"]
 CASTER_REQUIRED = ["attack_range", "attack_interval_ms", "attack_spell_id"]
+# unit_flags override: OR in UNIT_FLAG_PLAYER_CONTROLLED (0x8) so players can cast
+# helpful spells (heals/buffs) on their own minions. The WoW client silently self-casts
+# a helpful spell aimed at a plain friendly NPC; this is the flag the engine puts on the
+# friendly units you CAN heal (pets, the triage/escort NPCs -- see npcs_special.cpp). It
+# reroutes attack-validity to the PvP/PvC path, but creep hostility stays faction-based,
+# so creep-vs-creep and tower combat are unaffected. OR'd, not set, to keep each source
+# creature's own unit_flags.
+CREEP_UNIT_FLAG_PLAYER_CONTROLLED = 0x8
+
 
 # Columns the generator overrides -- must exist in every source dump.
 OVERRIDDEN_COLUMNS = ["entry", "name", "subname", "minlevel", "maxlevel", "faction",
                       "difficulty_entry_1", "difficulty_entry_2", "difficulty_entry_3", "IconName",
                       "npcflag", "lootid", "pickpocketloot", "skinloot", "VehicleId",
                       "AIName", "ScriptName", "HealthModifier", "ArmorModifier",
-                      "RegenHealth", "movementId", "CreatureImmunitiesId", "VerifiedBuild"]
+                      "RegenHealth", "movementId", "CreatureImmunitiesId", "unit_flags", "type", "VerifiedBuild"]
 
 
 def fail(msg):
@@ -229,6 +238,11 @@ def build_template_row(creep, entry, source_cols):
         "RegenHealth": "0",
         "movementId": "0",
         "CreatureImmunitiesId": "0",
+        "unit_flags": str(int(source_cols["unit_flags"]) | CREEP_UNIT_FLAG_PLAYER_CONTROLLED),
+        # All minions Humanoid regardless of source: the siege source (Demolisher) is
+        # Mechanical, and Mechanical creatures are hard-immune to direct heal effects
+        # (Creature::IsImmunedToSpellEffect) -- Flash Heal said IMMUNE on siege only.
+        "type": "7",  # CREATURE_TYPE_HUMANOID
         "VerifiedBuild": "0",
     })
     # Optional per-creep overrides (default: source creature's value)

@@ -24,7 +24,6 @@ void AddSC_moba_respawn();
 void AddSC_moba_recall();
 void AddSC_moba_hud();
 
-
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
 void AddCustomScripts()

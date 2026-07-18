@@ -1,9 +1,13 @@
 #include "ScriptedCreature.h"
 #include "ScriptMgr.h"
+#include "AllSpellScript.h"
 #include "Battleground.h"
 #include "Map.h"
 #include "MobaCreepData.h"
 #include "MotionMaster.h"
+#include "Spell.h"
+#include "SpellAuraDefines.h"
+#include "SpellInfo.h"
 #include "WaypointMgr.h"
 
 // Max 2D distance a creep may be dragged from its lane before it force-evades
@@ -126,8 +130,39 @@ struct npc_moba_creep : public ScriptedAI
             return;
         }
 
-        if (!_EnterEvadeMode(why))
+        // Inlined CreatureAI::_EnterEvadeMode minus its RemoveEvadeAuras() call:
+        // creeps evade at the end of EVERY skirmish, and RemoveEvadeAuras strips
+        // all player-cast buffs from an unowned creature -- minion buffs should
+        // run their full duration instead. Also skipped: the zone-script /
+        // formation / summoner evade notifications (creeps have none of the
+        // three). Mirror CreatureAI.cpp's _EnterEvadeMode when merging upstream.
+        if (me->IsInEvadeMode())
             return;
+
+        if (!me->IsAlive())
+        {
+            EngagementOver();
+            return;
+        }
+
+        // Recursion guard, as in _EnterEvadeMode: CombatStop below purges combat
+        // refs, which re-enters EnterEvadeMode; IsInEvadeMode() above catches it.
+        me->AddUnitState(UNIT_STATE_EVADE);
+
+        me->ClearComboPointHolders();
+        me->CombatStop(true);
+        me->LoadCreaturesAddon(true);
+        me->SetLootRecipient(nullptr);
+        me->ResetPlayerDamageReq();
+        me->ClearLastLeashExtensionTimePtr();
+        me->SetCannotReachTarget();
+
+        // MANDATORY: clears the AI's _isEngaged latch. Without it the creep is
+        // permanently "already fighting" after its first evade -- new enemies
+        // never trigger EngagementStart (JustStartedThreateningMe gates on it)
+        // and on-sight aggro is skipped, so the creep ignores every later wave.
+        // Omitting this line shipped as a real bug once.
+        EngagementOver();
 
         // LoL-style leashing: no run-back. The default evade would
         // MoveTargetedHome() to the last-reached node and resume from there --
@@ -231,7 +266,55 @@ private:
     uint32 _corridorCheckTimer = 0;
 };
 
+// Positive spells a player may cast on a lane creep: heals, HoTs, absorbs, and
+// cleanses -- effects that actually do something to a creature. Everything else
+// (stat buffs: PW:F, MotW, Kings, ...) is rejected with "Invalid target", because
+// Creature::UpdateStats is a no-op -- a stat buff applies its icon but changes
+// nothing, which reads in-game as a bug. Rejecting beats silently lying.
+// Runs from the top of Spell::CheckCast, before mana/cooldown are consumed.
+class moba_creep_spell_gate : public AllSpellScript
+{
+public:
+    moba_creep_spell_gate() : AllSpellScript("moba_creep_spell_gate", std::vector<uint16>{uint16(ALLSPELLHOOK_ON_SPELL_CHECK_CAST)}) { }
+
+    void OnSpellCheckCast(Spell* spell, bool /*strict*/, SpellCastResult& res) override
+    {
+        if (!spell->GetCaster()->GetCharmerOrOwnerPlayerOrPlayerItself())
+            return; // only gate player (and pet) casts; creep/tower/BG internals untouched
+
+        Unit* target = spell->m_targets.GetUnitTarget();
+        if (!target || !target->IsCreature() || !sMobaCreepDataStore->GetConfig(target->GetEntry()))
+            return;
+
+        SpellInfo const* info = spell->GetSpellInfo();
+        if (!info->IsPositive())
+            return; // attacking a creep is governed by the normal hostility rules
+
+        for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
+        {
+            switch (info->Effects[i].Effect)
+            {
+                case SPELL_EFFECT_HEAL:
+                case SPELL_EFFECT_HEAL_PCT:
+                case SPELL_EFFECT_HEAL_MAX_HEALTH:
+                case SPELL_EFFECT_DISPEL:
+                    return; // allowed
+                case SPELL_EFFECT_APPLY_AURA:
+                    if (info->Effects[i].ApplyAuraName == SPELL_AURA_PERIODIC_HEAL
+                        || info->Effects[i].ApplyAuraName == SPELL_AURA_SCHOOL_ABSORB)
+                        return; // allowed
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        res = SPELL_FAILED_BAD_TARGETS;
+    }
+};
+
 void AddSC_npc_moba_creep()
 {
     RegisterCreatureAI(npc_moba_creep);
+    new moba_creep_spell_gate();
 }
