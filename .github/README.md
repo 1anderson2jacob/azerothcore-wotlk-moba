@@ -33,10 +33,13 @@ Next, in order:
 
 - [ ] Neutral Minions
 - [ ] Minion on-death drops infrastructure
+- [ ] Player on-death drops infrastructure
 - [ ] Gold / itemization mid-match
 - [ ] Super minions — a reinforced minion variant
 - [ ] Custom map/terrain — move onto the Twisted Treeline map (WMO route, ADT fallback; see `MOBA_MAP_WMO_PLAN.md`)
 - [ ] Standalone battleground ID via `BattlemasterList.dbc` patch (client MPQ distributed to players) — bundles with the custom-map work
+- [ ] Player kill rewards and bounties
+- [ ] Client-patch bundle - recall tooltip / animation, fountain heal visuals, custom battle sounds, music
 
 ## Housekeeping
 
