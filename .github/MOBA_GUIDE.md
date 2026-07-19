@@ -445,3 +445,8 @@ C++ or are allocation policy:
 | Creep lane corridor | 40 yd, players only; +15 yd self-evade headroom (`npc_moba_creep.cpp`) |
 | HUD resync cadence | 10s (`MOBA_HUD_RESYNC_MS`) |
 | Recall trigger / empower placeholder | Hearthstone item 6948 / spell 8690; aura 1243 |
+
+
+## Fun ideas: a list of interesting ideas that may or may not be implemented
+
+- creep waves have a buff (uncleansable) that reduces AOE dmg by 50% when corresponding lane inhib is up
