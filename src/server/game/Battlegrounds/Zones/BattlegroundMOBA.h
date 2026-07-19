@@ -23,6 +23,7 @@
 #include "EventMap.h"
 #include "WorldStateDefines.h"
 #include "ObjectGuid.h"
+#include "MobaNeutralData.h"
 #include <vector>
 #include <unordered_map>
 #include <string>
@@ -59,7 +60,11 @@ enum BG_MOBA_Score
 // _bgEvents event IDs.
 enum BG_MOBA_Events
 {
-    EVENT_MOBA_SPAWN_WAVE = 1
+    EVENT_MOBA_SPAWN_WAVE = 1,
+    // Camp spawns are EVENT_MOBA_SPAWN_CAMP_FIRST + index into _camps -- one
+    // id per camp, scheduled at doors-open (initial) and on camp wipe
+    // (respawn). Keep this the highest id: everything >= it is a camp index.
+    EVENT_MOBA_SPAWN_CAMP_FIRST = 100
 };
 
 enum BG_MOBA_Recall
@@ -90,6 +95,19 @@ struct MobaWaveComposition
     uint32 meleeEntry2 = 0;
     uint32 casterEntry = 0;
     uint32 siegeEntry = 0; // 0 = not configured, skip even on siege waves
+};
+
+// Runtime state of one neutral (jungle) camp: the static member list from
+// mod_moba_neutral_members plus the live summon GUIDs, rebuilt on every
+// (re)spawn. aliveCount hitting 0 schedules the camp's respawn event.
+struct MobaCampState
+{
+    uint32 campId = 0;
+    uint32 initialSpawnMs = 0;
+    uint32 respawnMs = 0;
+    std::vector<MobaNeutralMember> members;
+    std::vector<ObjectGuid> memberGuids;
+    uint32 aliveCount = 0;
 };
 
 // Per-player LoL-style respawn countdown, started on Release Spirit and ticked
@@ -146,6 +164,14 @@ public:
     // recipient (first player to aggro), this is the true last hit.
     void CreditCreepKill(Player* killer);
 
+    // League camp-link: called from npc_moba_neutral::JustEngagedWith so
+    // hitting one camp member pulls the rest onto the attacker.
+    void PullCampMates(Creature* member, Unit* attacker);
+
+    // Called from npc_moba_neutral::JustDied; starts the camp's respawn timer
+    // once its last member is down.
+    void NotifyNeutralDied(Creature* member);
+
     // Starts a player's respawn countdown (called from the OnPlayerReleasedGhost hook).
     void StartRespawnTimer(Player* player);
 
@@ -160,6 +186,8 @@ private:
     void PostUpdateImpl(uint32 diff) override;
     void SpawnWave(TeamId team, bool includeSiege);
     void SpawnCreep(uint32 entry);
+    void SpawnCamp(uint32 campIndex);
+    MobaCampState* FindCampOf(ObjectGuid guid);
     void FreezeAllCreeps();
     void UpdateRespawnTimers(uint32 diff);
     void RespawnAtBase(Player* player);
@@ -178,6 +206,7 @@ private:
     std::vector<MobaTowerState> _towers;
     MobaWaveComposition _waveComposition[2];
     std::vector<ObjectGuid> _spawnedCreeps;
+    std::vector<MobaCampState> _camps;
     uint32 _waveCount = 0;
     uint32 _matchElapsedMs = 0;   // time since doors opened (excludes prep phase)
     uint32 _hudResyncMs = 0;      // accumulates toward the next periodic HUD re-broadcast

@@ -28,10 +28,10 @@ Shipped:
 - [x] Enable cross-faction MOBA - via mod-cfbg (mixed-faction teams) + AllowTwoSide.Interaction.Group (cross-faction parties).
 - [x] Heal/shield allied minions — heals, HoTs, absorbs, and cleanses land on your own minions (cross-faction included); other buffs are rejected ("Invalid target") — stat buffs are inert on NPCs
 - [x] Last-hit kill credit — minion kills (CS) go to the player who landed the killing blow, not the first tapper; a friendly-creep last hit credits nobody
+- [x] Neutral minions — four jungle camps, hostile to both teams; camp-level aggro/leash/respawn config, whole-camp linking, League-style reset; last-hit CS and an on-death buff to the killing-blow player
 
 Next, in order:
 
-- [ ] Neutral Minions
 - [ ] Minion on-death drops infrastructure
 - [ ] Player on-death drops infrastructure
 - [ ] Gold / itemization mid-match

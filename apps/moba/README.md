@@ -14,6 +14,7 @@ what each config key means, and the lockfile rules.
 | Generator | Reads | Writes |
 |---|---|---|
 | `gen_creep_roster.py` | `maps/<mode>/creep_config.json` + source dumps in `sources/` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data` |
+| `gen_neutral_camps.py` | `maps/<mode>/neutral_config.json` + source dumps in `sources/` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior tables |
 | `gen_creep_paths.py` | `maps/<mode>/lane_config.json` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data` |
 | `gen_tower_data.py` | `maps/<mode>/tower_config.json` | `mod_moba_towers.sql` — `mod_moba_tower_data` |
 | `gen_base.py` | `maps/<mode>/base_config.json` | `mod_moba_base.sql` — `mod_moba_base`, plus the `game_graveyard` / `battleground_template` spawn wiring |
@@ -53,6 +54,15 @@ lockfile), its role, and its tuning — `attack_range` / `attack_interval_ms` /
 `attack_spell_id` for casters, plus modifiers, level, equipment, and display.
 Team 0 uses the slot's `forward` path, team 1 `reverse`. An optional per-creep
 `rank` overrides the source creature's (siege ships with 1 = elite).
+
+## `neutral_config.json` — human-owned
+
+Camps own placement, `respawn_ms`, and `aggro_range` / `leash_range`; mobs own
+stats, display, and `kill_buff_spell`. The ranges are denormalized per creature
+entry at generation time (proximity aggro is `creature_template.detection_range`
+— one value per entry), so a mob key placed in camps that disagree on ranges
+fails the run: give each camp its own keys. Mobs placed in no camp are skipped.
+Entry lockfile rules are identical to the creep lockfile above.
 
 ### The full-copy + override policy
 

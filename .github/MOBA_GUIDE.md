@@ -104,6 +104,32 @@ the two engine traps there.
 - **Creature stats** are full copies of a real source creature with a small
   override list, enforced by `gen_creep_roster.py` — see `apps/moba/README.md`.
 
+### Neutral camps (jungle)
+
+Camps hostile to both teams (faction 14), spawned by `BattlegroundMOBA` on a
+per-camp initial delay after doors, whole-camp respawn once the last member
+dies. Members are `TempSummon`s with `CORPSE_TIMED_DESPAWN` — the despawn type
+whose countdown only runs on a corpse, so a living camp never despawns. Camp
+state is `_camps` (`MobaCampState`); spawns/respawns are `_bgEvents` events
+(`EVENT_MOBA_SPAWN_CAMP_FIRST + camp index`).
+
+- **Aggro** is camp-configured: `aggro_range` 0 = pull-on-hit
+  (`REACT_DEFENSIVE`); >0 = proximity pull via
+  `creature_template.detection_range`, which is the exact radius at equal
+  levels. Camp-link (hit one, all attack) rides `DamageTaken`, not
+  `JustEngagedWith` — a one-shot kills before engagement ever starts.
+- **Leashing**, deliberately *unlike* creeps: stock evade (run home + full
+  heal) *is* the League camp reset, and home never drifts because no waypoint
+  generator runs. `leash_range` hard-caps the chase from the camp anchor
+  because the engine's leash is freshness-bypassed (see gotcha index).
+- **Kill rewards**: CS and the per-mob `kill_buff_spell` (classic BG powerup
+  auras as placeholders) go to the killing-blow player in
+  `npc_moba_neutral::JustDied` — the single choke point where on-death drops
+  will hook in later.
+- **End of match**: frozen by `FreezeAllCreeps()`; `PullCampMates` and the
+  `JustDied` rewards are status-guarded so a frozen camp can't be re-activated
+  or farmed.
+
 ### Respawn
 
 LoL-style individual respawn, replacing the stock shared-pulse graveyard
@@ -269,6 +295,26 @@ casters; not per-entry. C++ change.
 positive spells matching no allowed effect are rejected before mana/GCD are
 spent. C++ change.
 
+## Recipes: neutral camps
+
+**Move or add a camp** — `.gps` each member spot, edit `camps` in
+`maps/<mode>/neutral_config.json` (members reference mob keys; positions are
+absolute). Run `gen_neutral_camps.py`; deploy. `CampId` is positional in config
+order — safe, nothing external references it.
+
+**Tune aggro / leash / respawn / spawn timing** — all camp-level:
+`aggro_range`, `leash_range`, `respawn_ms`, and top-level `initial_spawn_ms` in
+`neutral_config.json`. Run `gen_neutral_camps.py`; deploy. A mob key shared by
+camps with different ranges fails the generator — use distinct keys.
+
+**Change a kill buff** — `kill_buff_spell` (+ optional `kill_buff_duration_ms`,
+0 = the spell's default) on the mob block, normally only the camp's large. Run
+`gen_neutral_camps.py`; deploy.
+
+**Add a mob type** — a block in `mobs`, like adding a creep; a new source dump
+only if the existing baseline doesn't fit (all current camp mobs share the
+creep melee source — identity is name + `display_id` + `display_scale`).
+
 ## Recipes: base (spawn, respawn, recall, fountain)
 
 All four live in one per-map bundle: `maps/<mode>/base_config.json` →
@@ -357,6 +403,11 @@ touching that area:
 - **An inlined evade must end with `EngagementOver()`** — omit it and the
   creature stays "engaged" forever and ignores every later enemy.
   → `npc_moba_creep.cpp`, `EnterEvadeMode`.
+  - **Camp-link must ride `DamageTaken`, not `JustEngagedWith`** — a one-shot
+  kills before engagement starts and the pull never fires (shipped as a real
+  bug). → `npc_moba_neutral.cpp`, `DamageTaken` comment.
+- **`CORPSE_TIMED_DESPAWN`'s countdown only runs on a corpse** — the trap for
+  lane creeps is load-bearing for camps. → `SpawnCamp` in `BattlegroundMOBA.cpp`.
 
 Traps with no single code home:
 
@@ -387,7 +438,7 @@ C++ or are allocation policy:
 | What | Value |
 |---|---|
 | BG map id (all content rows are tagged with it) | 566 (hijacked EotS) |
-| Custom DB entry range | 900000+ — towers 900000–900001, creeps 900010–900017 |
+| Custom DB entry range | 900000+ — towers 900000–900001, creeps 900010–900017, neutrals 900200–900207 |
 | Custom waypoint path ID range | 900100–900122 (base lanes + per-formation-slot paths) |
 | Graveyard DB IDs | 1103 (Alliance), 1104 (Horde) — reused vanilla EotS rows |
 | Wave cadence | every 30s; every 3rd wave adds siege (`BattlegroundMOBA.cpp`) |

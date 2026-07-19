@@ -18,6 +18,7 @@
 #include "BattlegroundMOBA.h"
 #include "BattlegroundMgr.h"
 #include "Creature.h"
+#include "CreatureAI.h"
 #include "GameGraveyard.h"
 #include "GameTime.h"
 #include "ObjectMgr.h"
@@ -30,6 +31,7 @@
 #include "MobaTowerData.h"
 #include "MobaCreepData.h"
 #include "MobaBaseData.h"
+#include "MobaNeutralData.h"
 #include "Chat.h"
 #include "StringFormat.h"
 #include "ObjectAccessor.h"
@@ -46,6 +48,7 @@ namespace
     // splits on the TAB into (prefix, payload) for the CHAT_MSG_ADDON event.
     constexpr char MOBA_HUD_ADDON_PREFIX[] = "MobaHUD";
     constexpr uint32 MOBA_HUD_RESYNC_MS    = 10000; // re-broadcast cadence for /reload + late joiners
+    constexpr uint32 MOBA_NEUTRAL_CORPSE_DESPAWN_MS = 15000; // camp-member corpse cleanup (see SpawnCamp)
 }
 
 void BattlegroundMOBAScore::BuildObjectivesBlock(WorldPacket& data)
@@ -73,18 +76,18 @@ void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
 
     _bgEvents.Update(diff);
     while (uint32 eventId = _bgEvents.ExecuteEvent())
-        switch (eventId)
+    {
+        if (eventId == EVENT_MOBA_SPAWN_WAVE)
         {
-            case EVENT_MOBA_SPAWN_WAVE:
-            {
-                ++_waveCount;
-                bool includeSiege = (_waveCount % 3 == 0);
-                SpawnWave(TEAM_ALLIANCE, includeSiege);
-                SpawnWave(TEAM_HORDE, includeSiege);
-                _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(30000));
-                break;
-            }
+            ++_waveCount;
+            bool includeSiege = (_waveCount % 3 == 0);
+            SpawnWave(TEAM_ALLIANCE, includeSiege);
+            SpawnWave(TEAM_HORDE, includeSiege);
+            _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(30000));
         }
+        else if (eventId >= EVENT_MOBA_SPAWN_CAMP_FIRST)
+            SpawnCamp(eventId - EVENT_MOBA_SPAWN_CAMP_FIRST);
+    }
 
     UpdateRespawnTimers(diff);
     UpdateFountainHealing(diff);
@@ -113,6 +116,9 @@ void BattlegroundMOBA::StartingEventOpenDoors()
     StartTimedAchievement(ACHIEVEMENT_TIMED_TYPE_EVENT, BG_MOBA_EVENT_START_BATTLE);
 
     _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(30000));
+
+    for (size_t i = 0; i < _camps.size(); ++i)
+        _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_CAMP_FIRST + static_cast<uint32>(i), Milliseconds(_camps[i].initialSpawnMs));
 
     // Match starts now (doors open): show the HUD bar at 0:00 with a zeroed scoreboard.
     BroadcastHudMessage("T:0");
@@ -243,6 +249,22 @@ bool BattlegroundMOBA::SetupBattleground()
         if (!_waveComposition[team].siegeEntry)
             LOG_WARN("sql.sql", "BattlegroundMOBA: map {} team {} has no siege entry in `mod_moba_creep_data` -- siege waves will be skipped for that team.", GetMapId(), team);
     }
+
+    // neutral camps (data-driven; see mod_moba_neutral_* / MobaNeutralData.h).
+    // Optional content: a map with no camps is legal, so warn rather than fail.
+    sMobaNeutralDataStore->LoadIfNeeded();
+    _camps.clear();
+    for (MobaNeutralCamp const& cfg : sMobaNeutralDataStore->GetCampsForMap(GetMapId()))
+    {
+        MobaCampState camp;
+        camp.campId = cfg.campId;
+        camp.initialSpawnMs = cfg.initialSpawnMs;
+        camp.respawnMs = cfg.respawnMs;
+        camp.members = cfg.members;
+        _camps.push_back(std::move(camp));
+    }
+    if (_camps.empty())
+        LOG_WARN("sql.sql", "BattlegroundMOBA: map {} has no rows in `mod_moba_neutral_camps` -- no jungle camps this match.", GetMapId());
 
     return true;
 }
@@ -380,6 +402,77 @@ void BattlegroundMOBA::SpawnCreep(uint32 entry)
     }
 }
 
+// Camp members are TempSummons for the same reason lane creeps are (see
+// SpawnCreep) but with CORPSE_TIMED_DESPAWN: that type's countdown only runs
+// once the creature is dead -- the trap documented above for creeps is the
+// point here. A living camp never despawns; a corpse vanishes shortly after
+// death, long before the respawn event re-summons the whole camp.
+void BattlegroundMOBA::SpawnCamp(uint32 campIndex)
+{
+    if (campIndex >= _camps.size())
+        return;
+
+    MobaCampState& camp = _camps[campIndex];
+    camp.memberGuids.clear();
+    camp.aliveCount = 0;
+
+    for (MobaNeutralMember const& member : camp.members)
+    {
+        Position pos(member.x, member.y, member.z, member.o);
+        if (TempSummon* summon = GetBgMap()->SummonCreature(member.entry, pos, nullptr, MOBA_NEUTRAL_CORPSE_DESPAWN_MS))
+        {
+            summon->SetTempSummonType(TEMPSUMMON_CORPSE_TIMED_DESPAWN);
+            camp.memberGuids.push_back(summon->GetGUID());
+            ++camp.aliveCount;
+        }
+    }
+}
+
+MobaCampState* BattlegroundMOBA::FindCampOf(ObjectGuid guid)
+{
+    for (MobaCampState& camp : _camps)
+        if (std::find(camp.memberGuids.begin(), camp.memberGuids.end(), guid) != camp.memberGuids.end())
+            return &camp;
+    return nullptr;
+}
+
+// League camp-link: the whole camp fights as one. AttackStart works on a
+// REACT_DEFENSIVE mate -- react states gate only self-initiated aggro. The
+// status guard matters: post-match camps are frozen passive, and DamageTaken
+// still fires on them, so without it poking a frozen camp would wake it.
+void BattlegroundMOBA::PullCampMates(Creature* member, Unit* attacker)
+{
+    if (GetStatus() != STATUS_IN_PROGRESS)
+        return;
+
+    MobaCampState* camp = FindCampOf(member->GetGUID());
+    if (!camp)
+        return;
+
+    for (ObjectGuid const& guid : camp->memberGuids)
+    {
+        if (guid == member->GetGUID())
+            continue;
+
+        Creature* mate = GetBgMap()->GetCreature(guid);
+        if (mate && mate->IsAlive() && !mate->IsEngaged() && mate->AI())
+            mate->AI()->AttackStart(attacker);
+    }
+}
+
+void BattlegroundMOBA::NotifyNeutralDied(Creature* member)
+{
+    MobaCampState* camp = FindCampOf(member->GetGUID());
+    if (!camp || !camp->aliveCount)
+        return;
+
+    if (--camp->aliveCount == 0 && GetStatus() == STATUS_IN_PROGRESS)
+    {
+        uint32 campIndex = static_cast<uint32>(camp - _camps.data());
+        _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_CAMP_FIRST + campIndex, Milliseconds(camp->respawnMs));
+    }
+}
+
 void BattlegroundMOBA::FreezeAllCreeps()
 {
     for (ObjectGuid const& guid : _spawnedCreeps)
@@ -392,6 +485,19 @@ void BattlegroundMOBA::FreezeAllCreeps()
         creep->SetReactState(REACT_PASSIVE);
         creep->GetMotionMaster()->MoveIdle();
     }
+
+    // Neutral camps freeze under the same end-of-match rules.
+    for (MobaCampState const& camp : _camps)
+        for (ObjectGuid const& guid : camp.memberGuids)
+        {
+            Creature* mob = GetBgMap()->GetCreature(guid);
+            if (!mob || !mob->IsAlive())
+                continue;
+
+            mob->CombatStop();
+            mob->SetReactState(REACT_PASSIVE);
+            mob->GetMotionMaster()->MoveIdle();
+        }
 }
 
 bool BattlegroundMOBA::UpdatePlayerScore(Player* player, uint32 type, uint32 value, bool doAddHonor)

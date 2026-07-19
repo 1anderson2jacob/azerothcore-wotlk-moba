@@ -20,6 +20,7 @@
 void AddSC_npc_moba_tower();
 void AddSC_moba_tower_aggro();
 void AddSC_npc_moba_creep();
+void AddSC_npc_moba_neutral();
 void AddSC_moba_respawn();
 void AddSC_moba_recall();
 void AddSC_moba_hud();
@@ -31,6 +32,7 @@ void AddCustomScripts()
     AddSC_npc_moba_tower();
     AddSC_moba_tower_aggro();
     AddSC_npc_moba_creep();
+    AddSC_npc_moba_neutral();
     AddSC_moba_respawn();
     AddSC_moba_recall();
     AddSC_moba_hud();
