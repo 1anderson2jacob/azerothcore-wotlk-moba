@@ -19,7 +19,7 @@ void MobaNeutralDataStore::LoadIfNeeded()
     _loaded = true;
 
     QueryResult result = WorldDatabase.Query(
-        "SELECT CreatureEntry, Map, AggroRange, LeashRange, KillBuffSpell, KillBuffDurationMs "
+        "SELECT CreatureEntry, Map, AggroRange, LeashRange "
         "FROM mod_moba_neutral_data ORDER BY CreatureEntry");
 
     if (!result)
@@ -35,12 +35,10 @@ void MobaNeutralDataStore::LoadIfNeeded()
         Field* fields = result->Fetch();
 
         MobaNeutralConfig cfg;
-        cfg.entry              = fields[0].Get<uint32>();
-        cfg.map                = fields[1].Get<uint32>();
-        cfg.aggroRange         = fields[2].Get<float>();
-        cfg.leashRange         = fields[3].Get<float>();
-        cfg.killBuffSpell      = fields[4].Get<uint32>();
-        cfg.killBuffDurationMs = fields[5].Get<uint32>();
+        cfg.entry      = fields[0].Get<uint32>();
+        cfg.map        = fields[1].Get<uint32>();
+        cfg.aggroRange = fields[2].Get<float>();
+        cfg.leashRange = fields[3].Get<float>();
 
         _configs.push_back(cfg);
     } while (result->NextRow());

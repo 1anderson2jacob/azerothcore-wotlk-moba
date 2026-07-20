@@ -13,8 +13,8 @@ what each config key means, and the lockfile rules.
 
 | Generator | Reads | Writes |
 |---|---|---|
-| `gen_creep_roster.py` | `maps/<mode>/creep_config.json` + source dumps in `sources/` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data` |
-| `gen_neutral_camps.py` | `maps/<mode>/neutral_config.json` + source dumps in `sources/` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior tables |
+| `gen_creep_roster.py` | `maps/<mode>/creep_config.json` + source dumps in `sources/` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data`, `mod_moba_creep_drops`, native `creature_loot_template` rows |
+| `gen_neutral_camps.py` | `maps/<mode>/neutral_config.json` + source dumps in `sources/` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior/drops tables, native `creature_loot_template` rows |
 | `gen_creep_paths.py` | `maps/<mode>/lane_config.json` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data` |
 | `gen_tower_data.py` | `maps/<mode>/tower_config.json` | `mod_moba_towers.sql` — `mod_moba_tower_data` |
 | `gen_base.py` | `maps/<mode>/base_config.json` | `mod_moba_base.sql` — `mod_moba_base`, plus the `game_graveyard` / `battleground_template` spawn wiring |
@@ -58,7 +58,7 @@ Team 0 uses the slot's `forward` path, team 1 `reverse`. An optional per-creep
 ## `neutral_config.json` — human-owned
 
 Camps own placement, `respawn_ms`, and `aggro_range` / `leash_range`; mobs own
-stats, display, and `kill_buff_spell`. The ranges are denormalized per creature
+stats, display, and `drops`. The ranges are denormalized per creature
 entry at generation time (proximity aggro is `creature_template.detection_range`
 — one value per entry), so a mob key placed in camps that disagree on ranges
 fails the run: give each camp its own keys. Mobs placed in no camp are skipped.
@@ -82,6 +82,26 @@ deviates from what `BattlegroundMOBA` expects — exactly 2 melee + 1 caster per
 team, siege optional.
 
 Source dumps live in `apps/moba/sources/` as committed, immutable reference data.
+
+## `drops` — on-death rewards (both configs)
+
+Any creep or mob block may carry a `drops` list. Each entry is one reward with
+an optional `chance` coefficient in (0, 1], default 1.0, rolled independently
+per kill:
+
+- `{ "type": "buff", "spell": id, "duration_ms": 0 }` — aura granted directly
+  to the killing-blow player; `duration_ms` 0 = the spell's own duration.
+- `{ "type": "gold", "copper": n }` — coins in the corpse loot window.
+- `{ "type": "item", "item": id, "count": n }` — native loot. The same item id
+  twice on one mob fails the run (`creature_loot_template` keys on
+  (Entry, Item)) — raise `count` instead.
+
+buff/gold rows land in `mod_moba_*_drops` and are rolled in C++ at the killing
+blow; item rows land in native `creature_loot_template` (the one shared native
+table the generators touch — deleted by entry, never dropped). Loot-bearing
+mobs also get `lootid = entry`, zeroed `mingold`/`maxgold`, and the
+`NO_PLAYER_DAMAGE_REQ` `flags_extra` bit; rationale in the generator's
+docstring and drops section.
 
 ## Lockfiles — machine-owned, committed, never hand-edited
 

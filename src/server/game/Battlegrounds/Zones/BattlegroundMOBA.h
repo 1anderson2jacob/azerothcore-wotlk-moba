@@ -164,6 +164,14 @@ public:
     // recipient (first player to aggro), this is the true last hit.
     void CreditCreepKill(Player* killer);
 
+    // On-death drops for any minion (lane creep or neutral), called from both
+    // JustDied choke points with the killing-blow player (nullptr = none, or
+    // rejected by the caller's own policy). Grants buff drops, injects gold
+    // into the corpse loot, and re-points native loot rights -- the tapper's
+    // group by default -- at the killer's team; with no rewarded killer it
+    // strips the corpse instead.
+    void GrantDeathDrops(Creature* victim, Player* killer);
+
     // League camp-link: called from npc_moba_neutral::JustEngagedWith so
     // hitting one camp member pulls the rest onto the attacker.
     void PullCampMates(Creature* member, Unit* attacker);

@@ -11,8 +11,6 @@ struct MobaNeutralConfig
     uint32 map = 0;
     float aggroRange = 0.0f;        // 0 = pull-on-hit (AI goes REACT_DEFENSIVE)
     float leashRange = 20.0f;       // hard evade cap from the camp anchor; 0 = engine leash only
-    uint32 killBuffSpell = 0;       // aura granted to the killing-blow player; 0 = none
-    uint32 killBuffDurationMs = 0;  // 0 = the spell's own duration
 };
 
 struct MobaNeutralMember

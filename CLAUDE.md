@@ -135,6 +135,7 @@ Neither is duplicated here. Read them when the task needs them.
 | Respawn, recall, fountain | `Zones/MobaBaseData.{h,cpp}`, `scripts/Custom/moba_respawn.cpp` + `moba_recall.cpp` | `base_config.json` → `gen_base.py` → `mod_moba_base.sql` |
 | HUD bar | `client/addons/MobaHUD/`, `scripts/Custom/moba_hud.cpp` | — (client addon; copy into `Interface/AddOns/`) |
 | Neutral camps | `Zones/MobaNeutralData.{h,cpp}`, `scripts/Custom/npc_moba_neutral.cpp` | `neutral_config.json` → `gen_neutral_camps.py` → `mod_moba_neutrals.sql` |
+| On-death drops | `Zones/MobaDropData.{h,cpp}`, `GrantDeathDrops` in `BattlegroundMOBA.cpp` | `drops` lists in creep/neutral configs → both generators |
 
 
 Per-map config bundles live in `apps/moba/maps/<mode>/`; generators in `apps/moba/` (see `apps/moba/README.md`). Adding a map/mode = dropping in a new `maps/<mode>/` bundle — every content table carries a `Map` column. Custom DB entries live at **900000+**. Custom SQL in data/sql/custom/db_world/ (+db_auth/db_characters) and vendored-module SQL auto-apply on worldserver boot (Updates.AutoSetup).

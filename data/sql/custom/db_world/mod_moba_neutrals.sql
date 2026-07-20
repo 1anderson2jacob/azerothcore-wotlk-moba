@@ -12,21 +12,21 @@ INSERT INTO `creature_template`
 (`entry`, `difficulty_entry_1`, `difficulty_entry_2`, `difficulty_entry_3`, `KillCredit1`, `KillCredit2`, `name`, `subname`, `IconName`, `gossip_menu_id`, `minlevel`, `maxlevel`, `exp`, `faction`, `npcflag`, `speed_walk`, `speed_run`, `speed_swim`, `speed_flight`, `detection_range`, `rank`, `dmgschool`, `DamageModifier`, `BaseAttackTime`, `RangeAttackTime`, `BaseVariance`, `RangeVariance`, `unit_class`, `unit_flags`, `unit_flags2`, `dynamicflags`, `family`, `type`, `type_flags`, `lootid`, `pickpocketloot`, `skinloot`, `PetSpellDataId`, `VehicleId`, `mingold`, `maxgold`, `AIName`, `MovementType`, `HoverHeight`, `HealthModifier`, `ManaModifier`, `ArmorModifier`, `ExperienceModifier`, `RacialLeader`, `movementId`, `RegenHealth`, `CreatureImmunitiesId`, `flags_extra`, `ScriptName`, `VerifiedBuild`)
 VALUES
 -- worg_large (from creature_template_2279.txt)
-(900200,0,0,0,0,0,'Ravenous Worg','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,0,'npc_moba_neutral',0),
+(900200,0,0,0,0,0,'Ravenous Worg','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- worg_small (from creature_template_2279.txt)
-(900201,0,0,0,0,0,'Worg Pup','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,0,'npc_moba_neutral',0),
+(900201,0,0,0,0,0,'Worg Pup','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- wyrm_large (from creature_template_2279.txt)
-(900202,0,0,0,0,0,'Greater Mana Wyrm','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,0,'npc_moba_neutral',0),
+(900202,0,0,0,0,0,'Greater Mana Wyrm','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- wyrm_small (from creature_template_2279.txt)
-(900203,0,0,0,0,0,'Mana Wyrmling','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,0,'npc_moba_neutral',0),
+(900203,0,0,0,0,0,'Mana Wyrmling','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- ray_large (from creature_template_2279.txt)
-(900204,0,0,0,0,0,'Nether Ray Matriarch','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,0,'npc_moba_neutral',0),
+(900204,0,0,0,0,0,'Nether Ray Matriarch','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- ray_small (from creature_template_2279.txt)
-(900205,0,0,0,0,0,'Nether Ray','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,0,'npc_moba_neutral',0),
+(900205,0,0,0,0,0,'Nether Ray','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- boar_large (from creature_template_2279.txt)
-(900206,0,0,0,0,0,'Thornfang Boar','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,0,'npc_moba_neutral',0),
+(900206,0,0,0,0,0,'Thornfang Boar','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- boar_small (from creature_template_2279.txt)
-(900207,0,0,0,0,0,'Young Boar','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,0,'npc_moba_neutral',0);
+(900207,0,0,0,0,0,'Young Boar','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0);
 
 DELETE FROM `creature_template_model` WHERE `CreatureID` IN (900200, 900201, 900202, 900203, 900204, 900205, 900206, 900207);
 INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)
@@ -110,33 +110,76 @@ VALUES
 -- stamped into creature_template.detection_range, giving exact-radius
 -- proximity aggro at equal levels. LeashRange is the hard evade cap
 -- measured from the camp anchor (0 = engine leash only).
--- KillBuffDurationMs 0 = the spell's default.
 DROP TABLE IF EXISTS `mod_moba_neutral_data`;
 CREATE TABLE `mod_moba_neutral_data` (
     `CreatureEntry`      INT UNSIGNED NOT NULL PRIMARY KEY,
     `Map`                INT UNSIGNED NOT NULL,
     `AggroRange`         FLOAT NOT NULL DEFAULT 0,
-    `LeashRange`         FLOAT NOT NULL DEFAULT 20,
-    `KillBuffSpell`      INT UNSIGNED NOT NULL DEFAULT 0,
-    `KillBuffDurationMs` INT UNSIGNED NOT NULL DEFAULT 0
+    `LeashRange`         FLOAT NOT NULL DEFAULT 20
 );
 
 INSERT INTO `mod_moba_neutral_data`
-(`CreatureEntry`, `Map`, `AggroRange`, `LeashRange`, `KillBuffSpell`, `KillBuffDurationMs`)
+(`CreatureEntry`, `Map`, `AggroRange`, `LeashRange`)
 VALUES
 -- worg_large
-(900200, 566, 8, 20, 23505, 0),
+(900200, 566, 8, 20),
 -- worg_small
-(900201, 566, 8, 20, 0, 0),
+(900201, 566, 8, 20),
 -- wyrm_large
-(900202, 566, 8, 20, 23493, 0),
+(900202, 566, 8, 20),
 -- wyrm_small
-(900203, 566, 8, 20, 0, 0),
+(900203, 566, 8, 20),
 -- ray_large
-(900204, 566, 8, 20, 23451, 0),
+(900204, 566, 8, 20),
 -- ray_small
-(900205, 566, 8, 20, 0, 0),
+(900205, 566, 8, 20),
 -- boar_large
-(900206, 566, 8, 20, 0, 0),
+(900206, 566, 8, 20),
 -- boar_small
-(900207, 566, 8, 20, 0, 0);
+(900207, 566, 8, 20);
+
+DELETE FROM `creature_loot_template` WHERE `Entry` IN (900200, 900201, 900202, 900203, 900204, 900205, 900206, 900207);
+
+-- Buff/gold drops, rolled and delivered by BattlegroundMOBA::
+-- GrantDeathDrops at the killing blow: Type 0 = buff (aura on the
+-- killer; DurationMs 0 = the spell's default), 1 = gold (Copper
+-- injected into the corpse loot). "item" drops are NOT here -- they
+-- are the native creature_loot_template rows above. Chance is a
+-- percent (config coefficient x 100).
+DROP TABLE IF EXISTS `mod_moba_neutral_drops`;
+CREATE TABLE `mod_moba_neutral_drops` (
+    `CreatureEntry` INT UNSIGNED NOT NULL,
+    `Idx`           TINYINT UNSIGNED NOT NULL,
+    `Type`          TINYINT UNSIGNED NOT NULL,
+    `Spell`         INT UNSIGNED NOT NULL DEFAULT 0,
+    `DurationMs`    INT UNSIGNED NOT NULL DEFAULT 0,
+    `Copper`        INT UNSIGNED NOT NULL DEFAULT 0,
+    `Chance`        FLOAT NOT NULL DEFAULT 100,
+    PRIMARY KEY (`CreatureEntry`, `Idx`)
+);
+
+INSERT INTO `mod_moba_neutral_drops`
+(`CreatureEntry`, `Idx`, `Type`, `Spell`, `DurationMs`, `Copper`, `Chance`)
+VALUES
+-- worg_large
+(900200, 0, 0, 23505, 0, 0, 100),
+-- worg_large
+(900200, 1, 1, 0, 0, 5000, 100),
+-- worg_small
+(900201, 0, 1, 0, 0, 5000, 100),
+-- wyrm_large
+(900202, 0, 0, 23493, 0, 0, 100),
+-- wyrm_large
+(900202, 1, 1, 0, 0, 5000, 100),
+-- wyrm_small
+(900203, 0, 1, 0, 0, 5000, 100),
+-- ray_large
+(900204, 0, 0, 23451, 0, 0, 100),
+-- ray_large
+(900204, 1, 1, 0, 0, 5000, 100),
+-- ray_small
+(900205, 0, 1, 0, 0, 5000, 100),
+-- boar_large
+(900206, 0, 1, 0, 0, 5000, 100),
+-- boar_small
+(900207, 0, 1, 0, 0, 5000, 100);

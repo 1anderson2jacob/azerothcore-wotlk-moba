@@ -4,7 +4,6 @@
 #include "BattlegroundMOBA.h"
 #include "Map.h"
 #include "MobaNeutralData.h"
-#include "SpellAuras.h"
 
 // Jungle-camp AI. Deliberately thin -- and deliberately NOT npc_moba_creep,
 // which exists to defeat the engine's evade (lane resume, no run-back).
@@ -80,27 +79,16 @@ struct npc_moba_neutral : public ScriptedAI
 
         moba->NotifyNeutralDied(me);
 
-        // Post-match the camps are frozen passive but still attackable -- no
-        // farming CS or buffs off the end screen.
-        if (moba->GetStatus() != STATUS_IN_PROGRESS)
-            return;
-
-        // Jungle CS + kill buff both go to the killing blow (a pet's blow
+        // Jungle CS + drops go to the killing-blow player (a pet's blow
         // credits its owner), same rationale as npc_moba_creep::JustDied. No
-        // team guard: either team can take any camp.
+        // team guard: either team can take any camp. GrantDeathDrops runs
+        // even with no rewarded player -- it must strip the tapper-owned
+        // native loot -- and is status-guarded inside like CreditCreepKill,
+        // so the frozen post-match camps stay farmproof.
         Player* p = killer ? killer->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
-        if (!p)
-            return;
-
-        moba->CreditCreepKill(p);
-
-        if (_cfg && _cfg->killBuffSpell)
-            if (Aura* aura = p->AddAura(_cfg->killBuffSpell, p))
-                if (_cfg->killBuffDurationMs)
-                {
-                    aura->SetMaxDuration(int32(_cfg->killBuffDurationMs));
-                    aura->SetDuration(int32(_cfg->killBuffDurationMs));
-                }
+        moba->GrantDeathDrops(me, p);
+        if (p)
+            moba->CreditCreepKill(p);
     }
 
 private:

@@ -26,13 +26,20 @@ Overrides ALWAYS enforced in code (the hard-won checklist from
 .github/MOBA_GUIDE.md, so it can't be forgotten): entry, name/subname,
 minlevel=maxlevel=level, faction from team (84/83), npcflag=0,
 difficulty_entry_1/2/3=0 (no heroic-counterpart references), IconName=NULL,
-lootid/pickpocketloot/skinloot=0, VehicleId=0, AIName='',
+pickpocketloot/skinloot=0, VehicleId=0, AIName='',
 ScriptName='npc_moba_creep', HealthModifier/ArmorModifier from config,
 RegenHealth=0 (LoL-style: damage persists), movementId=0,
-CreatureImmunitiesId=0, VerifiedBuild=0.
-...RegenHealth=0 (LoL-style: damage persists), movementId=0,
 CreatureImmunitiesId=0, VerifiedBuild=0. A per-creep "rank" field in the
 config optionally overrides the source creature's rank (0=normal, 1=elite).
+
+Loot columns are driven by the optional per-creature "drops" list (machinery
+shared with gen_neutral_camps.py): "item" drops become native
+creature_loot_template rows (and set lootid = entry); "buff"/"gold" drops
+become mod_moba_*_drops rows consumed by BattlegroundMOBA::GrantDeathDrops;
+mingold/maxgold are always 0 (gold is injected in C++ so it can carry a
+chance coefficient); flags_extra gains NO_PLAYER_DAMAGE_REQ on loot-bearing
+mobs so a pure last hit rewards loot. Attribution (killing blow, killer's
+team) is fixed up in the JustDied handlers, not here.
 
 
 Usage (from the repo root):
@@ -72,9 +79,10 @@ CREEP_UNIT_FLAG_PLAYER_CONTROLLED = 0x8
 # Columns the generator overrides -- must exist in every source dump.
 OVERRIDDEN_COLUMNS = ["entry", "name", "subname", "minlevel", "maxlevel", "faction",
                       "difficulty_entry_1", "difficulty_entry_2", "difficulty_entry_3", "IconName",
-                      "npcflag", "lootid", "pickpocketloot", "skinloot", "VehicleId",
-                      "AIName", "ScriptName", "HealthModifier", "ArmorModifier",
-                      "RegenHealth", "movementId", "CreatureImmunitiesId", "unit_flags", "type", "VerifiedBuild"]
+                      "npcflag", "lootid", "pickpocketloot", "skinloot", "mingold", "maxgold",
+                      "flags_extra", "VehicleId", "AIName", "ScriptName", "HealthModifier",
+                      "ArmorModifier", "RegenHealth", "movementId", "CreatureImmunitiesId",
+                      "unit_flags", "type", "VerifiedBuild"]
 
 
 def fail(msg):
@@ -120,7 +128,7 @@ def validate_config(cfg, path):
             fail(f'creep "{key}": "equip" must be [item1, item2, item3] (0 = empty slot)')
         if "rank" in creep and not isinstance(creep["rank"], int):
             fail(f'creep "{key}": "rank" must be an integer (0=normal, 1=elite)')
-
+        validate_drops(creep, f'creep "{key}"')
 
     warn_composition(creeps)
 
@@ -199,6 +207,128 @@ def get_entry(lock, key, used, id_range, assigned_log):
     assigned_log.append((key, candidate))
     return candidate, True
 
+# ------------------------------------------------------- on-death drops (shared)
+
+# Optional per-creature "drops" list, shared by the creep and neutral
+# generators. "buff"/"gold" are rolled and delivered in C++ at the killing
+# blow (mod_moba_*_drops -> GrantDeathDrops); "item" rides the native loot
+# system (creature_loot_template, whose Chance column the engine rolls).
+DROP_REQUIRED = {"buff": "spell", "gold": "copper", "item": "item"}
+DROP_TYPE_IDS = {"buff": 0, "gold": 1}
+
+# CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ: without it, loot/rewards require
+# players to have dealt half the mob's health (Creature::
+# IsDamageEnoughForLootingAndReward) -- and lane creeps take most of their
+# damage from other creeps, so a pure last hit would find an unlootable
+# corpse. isAllowedToLoot re-runs the same gate at corpse-open time, so the
+# C++ fixup alone can't cover it.
+NO_PLAYER_DAMAGE_REQ = 0x00200000
+
+
+def validate_drops(block, label):
+    drops = block.get("drops", [])
+    if not isinstance(drops, list):
+        fail(f'{label}: "drops" must be a list')
+    item_ids = set()
+    for i, drop in enumerate(drops):
+        where = f"{label} drops[{i}]"
+        if not isinstance(drop, dict) or drop.get("type") not in DROP_REQUIRED:
+            fail(f'{where}: "type" must be one of {sorted(DROP_REQUIRED)}')
+        field = DROP_REQUIRED[drop["type"]]
+        if not isinstance(drop.get(field), int) or drop[field] <= 0:
+            fail(f'{where}: {drop["type"]} drops need an integer "{field}" > 0')
+        chance = drop.get("chance", 1.0)
+        if not isinstance(chance, (int, float)) or not 0 < chance <= 1:
+            fail(f'{where}: "chance" must be in (0, 1] -- a coefficient, not a percent')
+        if drop["type"] == "buff" and not isinstance(drop.get("duration_ms", 0), int):
+            fail(f'{where}: "duration_ms" must be an integer (0 = the spell\'s default)')
+        if drop["type"] == "item":
+            if not isinstance(drop.get("count", 1), int) or drop.get("count", 1) < 1:
+                fail(f'{where}: "count" must be an integer >= 1')
+            if drop["item"] in item_ids:
+                fail(f'{where}: duplicate item {drop["item"]} -- creature_loot_template '
+                     f'keys on (Entry, Item); raise "count" instead')
+            item_ids.add(drop["item"])
+
+
+def apply_loot_overrides(row, entry, source_cols, drops):
+    """Loot-column overrides driven by the "drops" list; call after the
+    generator's own overrides so these always win."""
+    row["lootid"] = str(entry) if any(d["type"] == "item" for d in drops) else "0"
+    row["mingold"] = "0"
+    row["maxgold"] = "0"
+    flags = int(source_cols["flags_extra"])
+    if any(d["type"] in ("item", "gold") for d in drops):
+        flags |= NO_PLAYER_DAMAGE_REQ
+    row["flags_extra"] = str(flags)
+
+
+def build_drop_rows(key, entry, drops):
+    """One creature's drops -> (mod_moba_*_drops rows, creature_loot_template rows)."""
+    grant, loot = [], []
+    for drop in drops:
+        chance = f"{drop.get('chance', 1.0) * 100:g}"
+        if drop["type"] == "item":
+            count = drop.get("count", 1)
+            loot.append(f"({entry}, {drop['item']}, 0, {chance}, 0, 1, 0, "
+                        f"{count}, {count}, '{key} (moba drop)')")
+        else:
+            grant.append(f"-- {key}\n({entry}, {len(grant)}, {DROP_TYPE_IDS[drop['type']]}, "
+                         f"{drop.get('spell', 0)}, {drop.get('duration_ms', 0)}, "
+                         f"{drop.get('copper', 0)}, {chance})")
+    return grant, loot
+
+
+def emit_loot_template_sql(entries_csv, loot_rows):
+    # creature_loot_template is a NATIVE shared table, unlike every mod_moba_*
+    # table: delete only our own entries, never DROP/CREATE. The DELETE covers
+    # every generated creature (not just item-droppers) so removing a drop
+    # from config removes its rows on the next apply.
+    lines = [
+        "",
+        f"DELETE FROM `creature_loot_template` WHERE `Entry` IN ({entries_csv});",
+    ]
+    if loot_rows:
+        lines += [
+            "INSERT INTO `creature_loot_template`",
+            "(`Entry`, `Item`, `Reference`, `Chance`, `QuestRequired`, `LootMode`, `GroupId`, `MinCount`, `MaxCount`, `Comment`)",
+            "VALUES",
+            ",\n".join(loot_rows) + ";",
+        ]
+    return lines
+
+
+def emit_drops_table_sql(table, grant_rows):
+    lines = [
+        "",
+        "-- Buff/gold drops, rolled and delivered by BattlegroundMOBA::",
+        "-- GrantDeathDrops at the killing blow: Type 0 = buff (aura on the",
+        "-- killer; DurationMs 0 = the spell's default), 1 = gold (Copper",
+        "-- injected into the corpse loot). \"item\" drops are NOT here -- they",
+        "-- are the native creature_loot_template rows above. Chance is a",
+        "-- percent (config coefficient x 100).",
+        f"DROP TABLE IF EXISTS `{table}`;",
+        f"CREATE TABLE `{table}` (",
+        "    `CreatureEntry` INT UNSIGNED NOT NULL,",
+        "    `Idx`           TINYINT UNSIGNED NOT NULL,",
+        "    `Type`          TINYINT UNSIGNED NOT NULL,",
+        "    `Spell`         INT UNSIGNED NOT NULL DEFAULT 0,",
+        "    `DurationMs`    INT UNSIGNED NOT NULL DEFAULT 0,",
+        "    `Copper`        INT UNSIGNED NOT NULL DEFAULT 0,",
+        "    `Chance`        FLOAT NOT NULL DEFAULT 100,",
+        "    PRIMARY KEY (`CreatureEntry`, `Idx`)",
+        ");",
+    ]
+    if grant_rows:
+        lines += [
+            "",
+            f"INSERT INTO `{table}`",
+            "(`CreatureEntry`, `Idx`, `Type`, `Spell`, `DurationMs`, `Copper`, `Chance`)",
+            "VALUES",
+            ",\n".join(grant_rows) + ";",
+        ]
+    return lines
+
 
 # ------------------------------------------------------------------ sql emit
 
@@ -227,7 +357,6 @@ def build_template_row(creep, entry, source_cols):
         "difficulty_entry_2": "0",
         "difficulty_entry_3": "0",
         "IconName": "NULL",
-        "lootid": "0",
         "pickpocketloot": "0",
         "skinloot": "0",
         "VehicleId": "0",
@@ -248,6 +377,7 @@ def build_template_row(creep, entry, source_cols):
     # Optional per-creep overrides (default: source creature's value)
     if "rank" in creep:
         row["rank"] = str(creep["rank"])
+    apply_loot_overrides(row, entry, source_cols, creep.get("drops", []))
     return row
 
 
@@ -325,6 +455,14 @@ def emit_sql(roster, column_order):
             f"{creep.get('attack_range', 20)}, {creep.get('attack_interval_ms', 2000)}, "
             f"{creep.get('attack_spell_id', 0)}, {creep['_path_id']}, {creep['despawn_ms']})")
     lines.append(",\n".join(data_rows) + ";")
+
+    grant_rows, loot_rows = [], []
+    for creep, entry, _ in roster:
+        grant, loot = build_drop_rows(creep["key"], entry, creep.get("drops", []))
+        grant_rows += grant
+        loot_rows += loot
+    lines += emit_loot_template_sql(entries, loot_rows)
+    lines += emit_drops_table_sql("mod_moba_creep_drops", grant_rows)
     return "\n".join(lines) + "\n"
 
 

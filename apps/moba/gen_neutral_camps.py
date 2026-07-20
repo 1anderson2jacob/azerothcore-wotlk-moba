@@ -12,7 +12,13 @@ and three data tables:
 
     mod_moba_neutral_camps    -- per camp: spawn timing
     mod_moba_neutral_members  -- per placement: camp, entry, position
-    mod_moba_neutral_data     -- per entry: behavior (aggro, leash, kill buff)
+    mod_moba_neutral_camps    -- per camp: spawn timing
+    mod_moba_neutral_members  -- per placement: camp, entry, position
+    mod_moba_neutral_data     -- per entry: behavior (aggro, leash)
+    mod_moba_neutral_drops    -- per entry: on-death buff/gold drops
+
+"item" drops additionally emit native creature_loot_template rows -- the
+drops machinery is shared with gen_creep_roster.py; see its docstring.
 
 aggro_range / leash_range are authored on the CAMP and denormalized onto each
 member's per-entry rows here, because proximity aggro lives in
@@ -46,11 +52,13 @@ Usage (from the repo root):
 import json
 from pathlib import Path
 
-# Shared machinery: dump parsing, SQL quoting, entry locking. Note
+# Shared machinery: dump parsing, SQL quoting, entry locking, drops. Note
 # parse_vertical_dump validates the CREEP generator's override columns; the
 # extra columns this generator stamps are checked in build_template_row.
-from gen_creep_roster import (collect_used_entries, fail, get_entry, note,
-                              parse_vertical_dump, sql_value)
+from gen_creep_roster import (apply_loot_overrides, build_drop_rows,
+                              collect_used_entries, emit_drops_table_sql,
+                              emit_loot_template_sql, fail, get_entry, note,
+                              parse_vertical_dump, sql_value, validate_drops)
 
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_neutrals.sql")
@@ -58,7 +66,7 @@ ID_RANGE = [900200, 900249]  # towers 900000+, creeps 900010+, waypoints 900100+
 SCAN_SQL_DIRS = ["data/sql/custom/db_world"]
 
 MOB_REQUIRED = ["key", "name", "subname", "source", "display_id", "display_scale",
-                "level", "health_modifier", "armor_modifier", "kill_buff_spell"]
+                "level", "health_modifier", "armor_modifier"]
 CAMP_REQUIRED = ["key", "respawn_ms", "aggro_range", "leash_range", "members"]
 
 
@@ -82,8 +90,7 @@ def validate_config(cfg, path):
         for field in MOB_REQUIRED:
             if field not in mob:
                 fail(f'mob "{key}": missing "{field}"')
-        if not isinstance(mob["kill_buff_spell"], int):
-            fail(f'mob "{key}": "kill_buff_spell" must be a spell id (0 = none)')
+        validate_drops(mob, f'mob "{key}"')
         if "equip" in mob:
             equip = mob["equip"]
             if (not isinstance(equip, list) or len(equip) != 3
@@ -170,7 +177,6 @@ def build_template_row(mob, entry, source_cols):
         "difficulty_entry_2": "0",
         "difficulty_entry_3": "0",
         "IconName": "NULL",
-        "lootid": "0",
         "pickpocketloot": "0",
         "skinloot": "0",
         "VehicleId": "0",
@@ -187,6 +193,7 @@ def build_template_row(mob, entry, source_cols):
     })
     if "rank" in mob:
         row["rank"] = str(mob["rank"])
+    apply_loot_overrides(row, entry, source_cols, mob.get("drops", []))
     return row
 
 
@@ -282,27 +289,31 @@ def emit_sql(roster, camps, column_order):
         "-- stamped into creature_template.detection_range, giving exact-radius",
         "-- proximity aggro at equal levels. LeashRange is the hard evade cap",
         "-- measured from the camp anchor (0 = engine leash only).",
-        "-- KillBuffDurationMs 0 = the spell's default.",
         "DROP TABLE IF EXISTS `mod_moba_neutral_data`;",
         "CREATE TABLE `mod_moba_neutral_data` (",
         "    `CreatureEntry`      INT UNSIGNED NOT NULL PRIMARY KEY,",
         "    `Map`                INT UNSIGNED NOT NULL,",
         "    `AggroRange`         FLOAT NOT NULL DEFAULT 0,",
-        "    `LeashRange`         FLOAT NOT NULL DEFAULT 20,",
-        "    `KillBuffSpell`      INT UNSIGNED NOT NULL DEFAULT 0,",
-        "    `KillBuffDurationMs` INT UNSIGNED NOT NULL DEFAULT 0",
+        "    `LeashRange`         FLOAT NOT NULL DEFAULT 20",
         ");",
         "",
         "INSERT INTO `mod_moba_neutral_data`",
-        "(`CreatureEntry`, `Map`, `AggroRange`, `LeashRange`, `KillBuffSpell`, `KillBuffDurationMs`)",
+        "(`CreatureEntry`, `Map`, `AggroRange`, `LeashRange`)",
         "VALUES",
     ]
     data_rows = []
     for mob, entry, _ in roster:
         data_rows.append(f"-- {mob['key']}\n"
-                         f"({entry}, {mob['_map']}, {mob['_aggro_range']}, {mob['_leash_range']}, "
-                         f"{mob['kill_buff_spell']}, {mob.get('kill_buff_duration_ms', 0)})")
+                         f"({entry}, {mob['_map']}, {mob['_aggro_range']}, {mob['_leash_range']})")
     lines.append(",\n".join(data_rows) + ";")
+
+    grant_rows, loot_rows = [], []
+    for mob, entry, _ in roster:
+        grant, loot = build_drop_rows(mob["key"], entry, mob.get("drops", []))
+        grant_rows += grant
+        loot_rows += loot
+    lines += emit_loot_template_sql(entries, loot_rows)
+    lines += emit_drops_table_sql("mod_moba_neutral_drops", grant_rows)
     return "\n".join(lines) + "\n"
 
 

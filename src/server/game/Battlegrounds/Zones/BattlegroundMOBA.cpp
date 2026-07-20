@@ -32,6 +32,9 @@
 #include "MobaCreepData.h"
 #include "MobaBaseData.h"
 #include "MobaNeutralData.h"
+#include "MobaDropData.h"
+#include "Random.h"
+#include "SpellAuras.h"
 #include "Chat.h"
 #include "StringFormat.h"
 #include "ObjectAccessor.h"
@@ -165,6 +168,7 @@ bool BattlegroundMOBA::SetupBattleground()
 {
     sMobaTowerDataStore->LoadIfNeeded();
     sMobaBaseDataStore->LoadIfNeeded();
+    sMobaDropDataStore->LoadIfNeeded();
     std::vector<MobaTowerConfig> towerConfigs = sMobaTowerDataStore->GetForMap(GetMapId());
     if (towerConfigs.empty())
     {
@@ -316,6 +320,54 @@ void BattlegroundMOBA::CreditCreepKill(Player* killer)
         static_cast<BattlegroundMOBAScore*>(itr->second)->CreepKills++;
         SendScoreboard(killer); // CS is shown only to its owner -> refresh just them
     }
+}
+
+void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer)
+{
+    // LoL rule: no last hit, no reward. The engine already filled native loot
+    // for the first TAPPER's group (Unit::Kill runs before JustDied), so a
+    // creep-finished or post-match kill must strip the corpse, not just skip.
+    if (!killer || GetStatus() != STATUS_IN_PROGRESS)
+    {
+        victim->loot.clear();
+        victim->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
+        victim->SetLootRecipient(nullptr);
+        return;
+    }
+
+    // Native loot rights follow the tapper's group; ours follow the killing
+    // blow. Re-point rights at the killer + their BG raid (= the whole team)
+    // and clear the round-robin looter: BG raids default to GROUP_LOOT, whose
+    // pre-picked round-robin looter may not even be on the killer's team
+    // after the re-point, which would lock the corpse for everyone.
+    victim->SetLootRecipient(killer);
+    victim->loot.roundRobinPlayer.Clear();
+
+    if (std::vector<MobaDropInfo> const* drops = sMobaDropDataStore->GetDrops(victim->GetEntry()))
+        for (MobaDropInfo const& drop : *drops)
+        {
+            if (!roll_chance_f(drop.chance))
+                continue;
+
+            if (drop.type == MOBA_DROP_BUFF)
+            {
+                if (Aura* aura = killer->AddAura(drop.spell, killer))
+                    if (drop.durationMs)
+                    {
+                        aura->SetMaxDuration(int32(drop.durationMs));
+                        aura->SetDuration(int32(drop.durationMs));
+                    }
+            }
+            else if (drop.type == MOBA_DROP_GOLD)
+                victim->loot.gold += drop.copper;
+        }
+
+    // Gold-only minions have lootid 0, so Unit::Kill saw empty loot and never
+    // flagged the corpse lootable (it marked it fully-looted instead); flag it
+    // now that gold was injected. Item drops that all missed their roll stay
+    // unflagged -- native behavior for an empty corpse.
+    if (!victim->loot.isLooted())
+        victim->SetDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
 }
 
 void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId)

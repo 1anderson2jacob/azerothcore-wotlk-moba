@@ -29,11 +29,12 @@ Shipped:
 - [x] Heal/shield allied minions — heals, HoTs, absorbs, and cleanses land on your own minions (cross-faction included); other buffs are rejected ("Invalid target") — stat buffs are inert on NPCs
 - [x] Last-hit kill credit — minion kills (CS) go to the player who landed the killing blow, not the first tapper; a friendly-creep last hit credits nobody
 - [x] Neutral minions — four jungle camps, hostile to both teams; camp-level aggro/leash/respawn config, whole-camp linking, League-style reset; last-hit CS and an on-death buff to the killing-blow player
+- [x] Minion on-death drops infrastructure
 
 Next, in order:
 
-- [ ] Minion on-death drops infrastructure
 - [ ] Player on-death drops infrastructure
+- [ ] Change config file type to yaml - json doesn't allow comments, add helpful example comments to configs after switching
 - [ ] Gold / itemization mid-match
 - [ ] Super minions — a reinforced minion variant
 - [ ] Custom map/terrain — move onto the Twisted Treeline map (WMO route, ADT fallback; see `MOBA_MAP_WMO_PLAN.md`)

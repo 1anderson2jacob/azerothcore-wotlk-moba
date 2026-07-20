@@ -122,13 +122,35 @@ state is `_camps` (`MobaCampState`); spawns/respawns are `_bgEvents` events
   heal) *is* the League camp reset, and home never drifts because no waypoint
   generator runs. `leash_range` hard-caps the chase from the camp anchor
   because the engine's leash is freshness-bypassed (see gotcha index).
-- **Kill rewards**: CS and the per-mob `kill_buff_spell` (classic BG powerup
-  auras as placeholders) go to the killing-blow player in
-  `npc_moba_neutral::JustDied` — the single choke point where on-death drops
-  will hook in later.
+- **Kill rewards**: CS and on-death drops go to the killing-blow player in
+  `npc_moba_neutral::JustDied` via `GrantDeathDrops` — see "On-death drops".
 - **End of match**: frozen by `FreezeAllCreeps()`; `PullCampMates` and the
   `JustDied` rewards are status-guarded so a frozen camp can't be re-activated
   or farmed.
+
+### On-death drops
+
+One choke point for both minion kinds: `JustDied` (creep + neutral AIs)
+resolves the killing-blow player — pet blows credit the owner, the creep AI
+team-guards — and calls `BattlegroundMOBA::GrantDeathDrops` (status-guarded, so
+frozen post-match minions can't be farmed). Configured per mob as a `drops`
+list in `creep_config.json` / `neutral_config.json`; fields and types in
+`apps/moba/README.md`.
+
+- **Presentation is native WoW loot** (sparkle, right-click, loot window, gold
+  auto-split among nearby teammates, enemies see nothing), but the rules are
+  ours: `buff` grants the aura instantly; `gold` is injected into the corpse's
+  loot by `GrantDeathDrops` so it can carry a chance (template
+  `mingold`/`maxgold` can't); `item` rides native `creature_loot_template`
+  rows the engine rolls itself.
+- **The engine's loot rules fight last-hit attribution** in two places, both
+  deliberately defeated: loot rights follow the first *tapper's* group —
+  `GrantDeathDrops` re-points them at the killer's team, or strips the corpse
+  when no player landed the blow (no last hit, no loot; its comments cover the
+  GROUP_LOOT round-robin trap) — and reward eligibility normally requires half
+  the mob's health in player damage, so the generators stamp
+  `CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ` on loot-bearing mobs (comment in
+  `gen_creep_roster.py`).
 
 ### Respawn
 
@@ -307,9 +329,10 @@ order — safe, nothing external references it.
 `neutral_config.json`. Run `gen_neutral_camps.py`; deploy. A mob key shared by
 camps with different ranges fails the generator — use distinct keys.
 
-**Change a kill buff** — `kill_buff_spell` (+ optional `kill_buff_duration_ms`,
-0 = the spell's default) on the mob block, normally only the camp's large. Run
-`gen_neutral_camps.py`; deploy.
+**Add or change an on-death drop** — edit the mob's `drops` list in
+`maps/<mode>/creep_config.json` or `neutral_config.json` (types and fields:
+`apps/moba/README.md`). Run that config's generator; deploy — full restart,
+drops load once per process. Buffs normally only on a camp's large.
 
 **Add a mob type** — a block in `mobs`, like adding a creep; a new source dump
 only if the existing baseline doesn't fit (all current camp mobs share the
