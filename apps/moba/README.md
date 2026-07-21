@@ -18,6 +18,7 @@ what each config key means, and the lockfile rules.
 | `gen_creep_paths.py` | `maps/<mode>/lane_config.json` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data` |
 | `gen_tower_data.py` | `maps/<mode>/tower_config.json` | `mod_moba_towers.sql` — `mod_moba_tower_data` |
 | `gen_base.py` | `maps/<mode>/base_config.json` | `mod_moba_base.sql` — `mod_moba_base`, plus the `game_graveyard` / `battleground_template` spawn wiring |
+| `gen_player_drops.py` | `maps/<mode>/player_config.json` | `mod_moba_player_drops.sql` — the `Map`-keyed `mod_moba_player_drops` table, granted directly to the killer (no native loot) |
 
 Pipeline constants (output paths, id ranges, scanned SQL dirs) live in the
 generators, not the configs — each generator globs `maps/*/<name>_config.json`, so
@@ -83,7 +84,7 @@ team, siege optional.
 
 Source dumps live in `apps/moba/sources/` as committed, immutable reference data.
 
-## `drops` — on-death rewards (both configs)
+## `drops` — on-death rewards (minion + player configs)
 
 Any creep or mob block may carry a `drops` list. Each entry is one reward with
 an optional `chance` coefficient in (0, 1], default 1.0, rolled independently
@@ -102,6 +103,11 @@ table the generators touch — deleted by entry, never dropped). Loot-bearing
 mobs also get `lootid = entry`, zeroed `mingold`/`maxgold`, and the
 `NO_PLAYER_DAMAGE_REQ` `flags_extra` bit; rationale in the generator's
 docstring and drops section.
+
+Player kill drops (`player_config.json`) reuse this exact schema but skip native
+loot entirely — `item` is a rolled `AddItem` grant too, landing in
+`mod_moba_player_drops` alongside buff/gold instead of `creature_loot_template`.
+Delivered by `GrantPlayerKillDrops` at the resolved kill.
 
 ## Lockfiles — machine-owned, committed, never hand-edited
 

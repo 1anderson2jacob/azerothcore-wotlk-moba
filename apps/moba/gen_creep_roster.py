@@ -214,7 +214,7 @@ def get_entry(lock, key, used, id_range, assigned_log):
 # blow (mod_moba_*_drops -> GrantDeathDrops); "item" rides the native loot
 # system (creature_loot_template, whose Chance column the engine rolls).
 DROP_REQUIRED = {"buff": "spell", "gold": "copper", "item": "item"}
-DROP_TYPE_IDS = {"buff": 0, "gold": 1}
+DROP_TYPE_IDS = {"buff": 0, "gold": 1, "item": 2}
 
 # CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ: without it, loot/rewards require
 # players to have dealt half the mob's health (Creature::

@@ -36,7 +36,7 @@ void MobaBaseDataStore::LoadIfNeeded()
 
     QueryResult result = WorldDatabase.Query(
         "SELECT Map, RespawnBaseMs, RespawnPerMinMs, RespawnCapMs, RecallCastMs, RecallEmpoweredCastMs, "
-        "FountainTickMs, FountainHpPct, FountainManaPct FROM mod_moba_base");
+        "FountainTickMs, FountainHpPct, FountainManaPct, KillCreditWindowMs, AssistWindowMs, AssistBuffMaxDurationMs FROM mod_moba_base");
 
     if (!result)
     {
@@ -58,6 +58,9 @@ void MobaBaseDataStore::LoadIfNeeded()
         cfg.fountainTickMs        = fields[6].Get<uint32>();
         cfg.fountainHpPct         = fields[7].Get<uint32>();
         cfg.fountainManaPct       = fields[8].Get<uint32>();
+        cfg.killCreditWindowMs      = fields[9].Get<uint32>();
+        cfg.assistWindowMs          = fields[10].Get<uint32>();
+        cfg.assistBuffMaxDurationMs = fields[11].Get<uint32>();
 
         _byMap[cfg.map] = cfg;
     } while (result->NextRow());

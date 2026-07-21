@@ -18,12 +18,15 @@ CREATE TABLE `mod_moba_base` (
     `RecallEmpoweredCastMs` INT UNSIGNED NOT NULL DEFAULT 0,  -- empowered recall cast time (ms); 0 = fall back to normal
     `FountainTickMs`  INT UNSIGNED NOT NULL DEFAULT 0,        -- fountain heal cadence (ms); 0 = fountain healing off
     `FountainHpPct`   INT UNSIGNED NOT NULL DEFAULT 0,        -- % of max health restored per tick
-    `FountainManaPct` INT UNSIGNED NOT NULL DEFAULT 0         -- % of max mana restored per tick (mana users only)
+    `FountainManaPct` INT UNSIGNED NOT NULL DEFAULT 0,        -- % of max mana restored per tick (mana users only)
+    `KillCreditWindowMs` INT UNSIGNED NOT NULL DEFAULT 15000,  -- window after enemy-player damage/debuff in which a death still credits that player (0 = off)
+    `AssistWindowMs` INT UNSIGNED NOT NULL DEFAULT 10000,      -- window before a death in which damage/debuff/support earns an assist (0 = off)
+    `AssistBuffMaxDurationMs` INT UNSIGNED NOT NULL DEFAULT 60000 -- max buff/shield duration (ms) counting as a fight buff for assists; longer = maintenance buff, ignored
 );
 
-INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`)
+INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`)
 VALUES
-(566, 10000, 1500, 60000, 9000, 4500, 1000, 10, 10);
+(566, 10000, 1500, 60000, 9000, 4500, 1000, 10, 10, 15000, 10000, 60000);
 
 -- Spawn wiring for map 566 (eye_of_the_storm)
 -- StartMaxDist is the base bubble: the core's prep-phase leash AND the fountain heal zone.

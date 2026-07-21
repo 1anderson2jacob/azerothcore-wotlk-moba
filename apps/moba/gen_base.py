@@ -42,6 +42,15 @@ def validate(cfg, path):
         fail(f'{path}: "map" must be an integer map id')
     if not isinstance(cfg.get("battleground_template_id"), int):
         fail(f'{path}: "battleground_template_id" must be an integer')
+    window = cfg.get("kill_credit_window_ms")
+    if window is not None and (not isinstance(window, int) or window < 0):
+        fail(f'{path}: "kill_credit_window_ms" must be a non-negative integer (ms; 0 = disabled)')
+    aw = cfg.get("assist_window_ms")
+    if aw is not None and (not isinstance(aw, int) or aw < 0):
+        fail(f'{path}: "assist_window_ms" must be a non-negative integer (ms; 0 = disabled)')
+    abd = cfg.get("assist_buff_max_duration_ms")
+    if abd is not None and (not isinstance(abd, int) or abd < 0):
+        fail(f'{path}: "assist_buff_max_duration_ms" must be a non-negative integer (ms)')
     respawn = cfg.get("respawn")
     if not isinstance(respawn, dict) or any(k not in respawn for k in REQUIRED_RESPAWN):
         fail(f'{path}: "respawn" must contain {REQUIRED_RESPAWN}')
@@ -104,10 +113,13 @@ def emit(configs):
         "    `RecallEmpoweredCastMs` INT UNSIGNED NOT NULL DEFAULT 0,  -- empowered recall cast time (ms); 0 = fall back to normal",
         "    `FountainTickMs`  INT UNSIGNED NOT NULL DEFAULT 0,        -- fountain heal cadence (ms); 0 = fountain healing off",
         "    `FountainHpPct`   INT UNSIGNED NOT NULL DEFAULT 0,        -- % of max health restored per tick",
-        "    `FountainManaPct` INT UNSIGNED NOT NULL DEFAULT 0         -- % of max mana restored per tick (mana users only)",
+        "    `FountainManaPct` INT UNSIGNED NOT NULL DEFAULT 0,        -- % of max mana restored per tick (mana users only)",
+        "    `KillCreditWindowMs` INT UNSIGNED NOT NULL DEFAULT 15000,  -- window after enemy-player damage/debuff in which a death still credits that player (0 = off)",
+        "    `AssistWindowMs` INT UNSIGNED NOT NULL DEFAULT 10000,      -- window before a death in which damage/debuff/support earns an assist (0 = off)",
+        "    `AssistBuffMaxDurationMs` INT UNSIGNED NOT NULL DEFAULT 60000 -- max buff/shield duration (ms) counting as a fight buff for assists; longer = maintenance buff, ignored",
         ");",
         "",
-        "INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`)",
+        "INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`)",
         "VALUES",
     ]
     rows = []
@@ -119,7 +131,10 @@ def emit(configs):
         f = cfg.get("fountain") or {}
         rows.append(
             f"({cfg['map']}, {t['base_ms']}, {t['per_min_ms']}, {t['cap_ms']}, {recall_ms}, {recall_emp_ms}, "
-            f"{f.get('tick_ms', 0)}, {f.get('hp_pct', 0)}, {f.get('mana_pct', 0)})")
+            f"{f.get('tick_ms', 0)}, {f.get('hp_pct', 0)}, {f.get('mana_pct', 0)}, "
+            f"{cfg.get('kill_credit_window_ms', 15000)}, "
+            f"{cfg.get('assist_window_ms', 10000)}, "
+            f"{cfg.get('assist_buff_max_duration_ms', 60000)})")
     lines.append(",\n".join(rows) + ";")
 
     for path, cfg in configs:

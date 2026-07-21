@@ -30,16 +30,20 @@ Shipped:
 - [x] Last-hit kill credit — minion kills (CS) go to the player who landed the killing blow, not the first tapper; a friendly-creep last hit credits nobody
 - [x] Neutral minions — four jungle camps, hostile to both teams; camp-level aggro/leash/respawn config, whole-camp linking, League-style reset; last-hit CS and an on-death buff to the killing-blow player
 - [x] Minion on-death drops infrastructure
+- [x] Player on-death drops infrastructure — player kills grant configurable gold/buff/item to the killer via direct grant (no corpse loot); per-map `player_config.json`
+- [x] Kill credit window — a death within a configured window of enemy-player damage/debuff still credits that player, even when a creep/tower/environment lands the blow; deaths to non-players now score
+- [x] Contribution-based assists — damage/debuff/heal/short-buff within the assist window earns an assist via a fixed-point support chain (replaces proximity); duration-gated so combat buffs count and maintenance buffs don't
+
 
 Next, in order:
 
-- [ ] Player on-death drops infrastructure
 - [ ] Change config file type to yaml - json doesn't allow comments, add helpful example comments to configs after switching
+- [ ] More HUD work - revive countdown and player kill messages
 - [ ] Gold / itemization mid-match
-- [ ] Super minions — a reinforced minion variant
+- [ ] Inhibs / Super minions
 - [ ] Custom map/terrain — move onto the Twisted Treeline map (WMO route, ADT fallback; see `MOBA_MAP_WMO_PLAN.md`)
 - [ ] Standalone battleground ID via `BattlemasterList.dbc` patch (client MPQ distributed to players) — bundles with the custom-map work
-- [ ] Player kill rewards and bounties
+- [ ] Player kill rewards and bounties — gold values, bounty scaling, and assist-gold split on top of the shipped kill/assist attribution
 - [ ] Client-patch bundle - recall tooltip / animation, fountain heal visuals, custom battle sounds, music
 
 ## Housekeeping

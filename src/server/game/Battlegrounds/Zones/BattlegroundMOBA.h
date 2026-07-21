@@ -24,6 +24,7 @@
 #include "WorldStateDefines.h"
 #include "ObjectGuid.h"
 #include "MobaNeutralData.h"
+#include "MobaPlayerDropData.h"
 #include <vector>
 #include <unordered_map>
 #include <string>
@@ -172,6 +173,22 @@ public:
     // strips the corpse instead.
     void GrantDeathDrops(Creature* victim, Player* killer);
 
+    // Grant a resolved kill's drops directly to the killer (buff/gold/item) --
+    // no corpse, no native loot, unlike GrantDeathDrops. Called from
+    // HandlePlayerDeath once the effective killer is known.
+    void GrantPlayerKillDrops(Player* killer);
+
+    // Kill-credit + assist tracking, driven by the moba_kill_credit UnitScript:
+    //   RecordPlayerDamage -- an enemy player damaged/debuffed the victim (kill credit + direct assist).
+    //   RecordAllyHeal     -- a teammate healed an ally (assist-chain link; no duration gate, overheal counts).
+    //   RecordAllyBuff     -- a teammate applied a short combat buff/shield to an ally (assist-chain link).
+    //   HandlePlayerDeath  -- victim died (to anything); tally the death, credit the kill, and
+    //                         resolve contribution-based assists (fixed-point support chain, see .cpp).
+    void RecordPlayerDamage(Player* victim, Player* attacker);
+    void RecordAllyHeal(Player* ally, Player* healer);
+    void RecordAllyBuff(Player* ally, Player* buffer, int32 buffMaxDurationMs);
+    void HandlePlayerDeath(Player* victim, Unit* killer);
+
     // League camp-link: called from npc_moba_neutral::JustEngagedWith so
     // hitting one camp member pulls the rest onto the attacker.
     void PullCampMates(Creature* member, Unit* attacker);
@@ -200,6 +217,10 @@ private:
     void UpdateRespawnTimers(uint32 diff);
     void RespawnAtBase(Player* player);
     void UpdateFountainHealing(uint32 diff);
+    Player* ResolveKillCredit(Player* victim, Unit* killer);
+    uint32 GetKillCreditWindowMs() const;
+    uint32 GetAssistWindowMs() const;
+    uint32 GetAssistBuffMaxDurationMs() const;
 
     // MobaHUD addon feed (client/addons/MobaHUD). `body` is the payload after the
     // "MobaHUD\t" prefix: "T:<sec>" clock start/sync, "E" hide the bar,
@@ -220,6 +241,16 @@ private:
     uint32 _hudResyncMs = 0;      // accumulates toward the next periodic HUD re-broadcast
     uint32 _fountainTickMs = 0;   // accumulates toward the next fountain heal tick
     uint32 _teamPlayerKills[2] = {0, 0}; // enemy-player kills per team (the "X vs Y" score)
+    // victim GUID -> (enemy-attacker GUID -> last damage/debuff time, ms). Per life:
+    // cleared on the victim's death and when they leave. Keeps every recent attacker
+    // (not just the latest) so assist-split and bounties can read it later.
+    std::unordered_map<ObjectGuid, std::unordered_map<ObjectGuid, uint32>> _recentAttackers;
+
+    // ally GUID -> (supporter GUID -> last heal/short-buff time, ms). Feeds the LoL
+    // assist chain: healing or a short combat buff on a kill participant links the
+    // supporter to the kill. Same per-life lifetime as _recentAttackers.
+    std::unordered_map<ObjectGuid, std::unordered_map<ObjectGuid, uint32>> _allySupport;
+
     std::unordered_map<ObjectGuid, MobaRespawnState> _respawnTimers;
 
 };

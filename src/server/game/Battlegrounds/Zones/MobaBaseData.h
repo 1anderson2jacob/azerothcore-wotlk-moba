@@ -41,6 +41,9 @@ struct MobaBaseConfig
     uint32 fountainTickMs = 0;      // 0 = fountain healing off
     uint32 fountainHpPct = 0;
     uint32 fountainManaPct = 0;
+    uint32 killCreditWindowMs = 15000;  // ms after enemy-player damage/debuff a death still credits them; 0 = off
+    uint32 assistWindowMs = 10000;          // ms before a death in which contribution earns an assist; 0 = off
+    uint32 assistBuffMaxDurationMs = 60000; // max buff/shield duration (ms) counting as a fight buff for assists
 };
 
 // Loads data/sql/custom/mod_moba_base.sql's `mod_moba_base` table once, keyed

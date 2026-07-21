@@ -1,6 +1,9 @@
 {
   "map": 566,
   "battleground_template_id": 7,
+  "kill_credit_window_ms": 15000,
+  "assist_window_ms": 10000,
+  "assist_buff_max_duration_ms": 60000,
   "respawn": { "base_ms": 10000, "per_min_ms": 1500, "cap_ms": 60000 },
   "recall": { "cast_time_ms": 9000, "empowered_cast_time_ms": 4500 },
   "fountain": { "tick_ms": 1000, "hp_pct": 10, "mana_pct": 10 },

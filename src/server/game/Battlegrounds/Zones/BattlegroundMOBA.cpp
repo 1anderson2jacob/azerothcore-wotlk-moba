@@ -33,6 +33,7 @@
 #include "MobaBaseData.h"
 #include "MobaNeutralData.h"
 #include "MobaDropData.h"
+#include "Timer.h"
 #include "Random.h"
 #include "SpellAuras.h"
 #include "Chat.h"
@@ -43,6 +44,7 @@
 #include "MotionMaster.h"
 #include <algorithm>
 #include "Opcodes.h"
+#include <unordered_set>
 
 namespace
 {
@@ -156,6 +158,12 @@ void BattlegroundMOBA::RemovePlayer(Player* player)
     // Hide the HUD bar for anyone leaving the match early (Leave button, logout, GM
     // removal). The normal win-condition path hides it via EndBattleground.
     SendHudMessage(player, "E");
+
+    if (player)
+    {
+        _recentAttackers.erase(player->GetGUID());
+        _allySupport.erase(player->GetGUID());
+    }
 }
 
 void BattlegroundMOBA::HandleAreaTrigger(Player* player, uint32 trigger)
@@ -169,6 +177,7 @@ bool BattlegroundMOBA::SetupBattleground()
     sMobaTowerDataStore->LoadIfNeeded();
     sMobaBaseDataStore->LoadIfNeeded();
     sMobaDropDataStore->LoadIfNeeded();
+    sMobaPlayerDropDataStore->LoadIfNeeded();
     std::vector<MobaTowerConfig> towerConfigs = sMobaTowerDataStore->GetForMap(GetMapId());
     if (towerConfigs.empty())
     {
@@ -281,19 +290,14 @@ void BattlegroundMOBA::Init()
     _waveCount = 0;
 }
 
-void BattlegroundMOBA::HandleKillPlayer(Player* player, Player* killer)
+void BattlegroundMOBA::HandleKillPlayer(Player* /*player*/, Player* /*killer*/)
 {
-    if (GetStatus() != STATUS_IN_PROGRESS)
-        return;
-
-    Battleground::HandleKillPlayer(player, killer); // updates deaths / killing blows / honorable kills
-
-    // Team kill score (the "X vs Y" segment).
-    if (killer && killer != player)
-        ++_teamPlayerKills[killer->GetBgTeamId()];
-
-    // Team score plus several players' K/D/A changed -> refresh everyone.
-    BroadcastScoreboard();
+    // Intentionally empty. The engine only calls this on a player/pet killing
+    // blow, but MOBA deaths are just as often finished by a creep, tower, or the
+    // environment -- so ALL kill crediting and death tallying is centralized in
+    // HandlePlayerDeath, driven by the moba_kill_credit UnitScript's OnUnitDeath
+    // (which fires for every death regardless of killer). Scoring here too would
+    // double-count the player-blow case.
 }
 
 void BattlegroundMOBA::HandleKillUnit(Creature* creature, Player* killer)
@@ -368,6 +372,220 @@ void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer)
     // unflagged -- native behavior for an empty corpse.
     if (!victim->loot.isLooted())
         victim->SetDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
+}
+
+void BattlegroundMOBA::GrantPlayerKillDrops(Player* killer)
+{
+    std::vector<MobaPlayerDropInfo> const* drops = sMobaPlayerDropDataStore->GetDrops(GetMapId());
+    if (!drops)
+        return;
+
+    for (MobaPlayerDropInfo const& drop : *drops)
+    {
+        if (!roll_chance_f(drop.chance))
+            continue;
+
+        switch (drop.type)
+        {
+            case MOBA_PLAYER_DROP_BUFF:
+                if (Aura* aura = killer->AddAura(drop.spell, killer))
+                    if (drop.durationMs)
+                    {
+                        aura->SetMaxDuration(int32(drop.durationMs));
+                        aura->SetDuration(int32(drop.durationMs));
+                    }
+                break;
+            case MOBA_PLAYER_DROP_GOLD:
+                killer->ModifyMoney(int32(drop.copper));
+                break;
+            case MOBA_PLAYER_DROP_ITEM:
+                killer->AddItem(drop.item, drop.count);
+                break;
+        }
+    }
+}
+
+void BattlegroundMOBA::RecordPlayerDamage(Player* victim, Player* attacker)
+{
+    if (GetStatus() != STATUS_IN_PROGRESS || !victim || !attacker
+        || attacker == victim || attacker->GetBgTeamId() == victim->GetBgTeamId())
+        return;
+
+    _recentAttackers[victim->GetGUID()][attacker->GetGUID()] = GameTime::GetGameTimeMS().count();
+}
+
+void BattlegroundMOBA::RecordAllyHeal(Player* ally, Player* healer)
+{
+    // Healing (direct or HoT tick) links the healer to any fight the healed ally
+    // is in -- no duration gate, and overheal counts (OnHeal fires regardless of
+    // effective healing; LoL credits the attempt).
+    if (GetStatus() != STATUS_IN_PROGRESS || !ally || !healer
+        || ally == healer || ally->GetBgTeamId() != healer->GetBgTeamId())
+        return;
+
+    _allySupport[ally->GetGUID()][healer->GetGUID()] = GameTime::GetGameTimeMS().count();
+}
+
+void BattlegroundMOBA::RecordAllyBuff(Player* ally, Player* buffer, int32 buffMaxDurationMs)
+{
+    if (GetStatus() != STATUS_IN_PROGRESS || !ally || !buffer
+        || ally == buffer || ally->GetBgTeamId() != buffer->GetBgTeamId())
+        return;
+
+    // Only a SHORT buff/shield counts as a fight buff -- a combat cooldown (Power
+    // Infusion, Bloodlust, Power Word: Shield), not a maintenance buff (Fortitude,
+    // Blessing of Wisdom). Permanent auras report -1. Threshold is per-map config.
+    uint32 const maxDur = GetAssistBuffMaxDurationMs();
+    if (buffMaxDurationMs <= 0 || uint32(buffMaxDurationMs) > maxDur)
+        return;
+
+    _allySupport[ally->GetGUID()][buffer->GetGUID()] = GameTime::GetGameTimeMS().count();
+}
+
+uint32 BattlegroundMOBA::GetAssistWindowMs() const
+{
+    if (MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId()))
+        return cfg->assistWindowMs;
+    return 0;
+}
+
+uint32 BattlegroundMOBA::GetAssistBuffMaxDurationMs() const
+{
+    if (MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId()))
+        return cfg->assistBuffMaxDurationMs;
+    return 0;
+}
+
+uint32 BattlegroundMOBA::GetKillCreditWindowMs() const
+{
+    if (MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId()))
+        return cfg->killCreditWindowMs;
+    return 0;
+}
+
+Player* BattlegroundMOBA::ResolveKillCredit(Player* victim, Unit* killer)
+{
+    // The true blow-lander, resolved to its controlling player (pets/totems
+    // credit the owner). If that's an enemy player still in the match, it wins
+    // outright -- the window only matters when no crediting player finished it.
+    Player* direct = killer ? killer->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
+    if (direct && direct != victim && direct->GetBgTeamId() != victim->GetBgTeamId()
+        && IsPlayerInBattleground(direct->GetGUID()))
+        return direct;
+
+    auto itr = _recentAttackers.find(victim->GetGUID());
+    if (itr == _recentAttackers.end())
+        return nullptr;
+
+    // Otherwise (creep/tower/environment/suicide): the most recent enemy player
+    // who damaged or debuffed the victim within the window. getMSTimeDiff is
+    // wraparound-safe; "most recent" = smallest elapsed.
+    uint32 const windowMs = GetKillCreditWindowMs();
+    uint32 const now = GameTime::GetGameTimeMS().count();
+    Player* best = nullptr;
+    uint32 bestElapsed = windowMs + 1;
+
+    for (auto const& rec : itr->second)
+    {
+        uint32 elapsed = getMSTimeDiff(rec.second, now);
+        if (elapsed > windowMs)
+            continue;
+
+        Player* attacker = ObjectAccessor::FindPlayer(rec.first);
+        if (!attacker || attacker == victim || attacker->GetBgTeamId() == victim->GetBgTeamId()
+            || !IsPlayerInBattleground(attacker->GetGUID()))
+            continue;
+
+        if (elapsed < bestElapsed)
+        {
+            best = attacker;
+            bestElapsed = elapsed;
+        }
+    }
+    return best;
+}
+
+void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
+{
+    if (!victim || GetStatus() != STATUS_IN_PROGRESS)
+        return;
+
+    // Death always counts, whatever landed the blow -- the engine scores deaths
+    // only through HandleKillPlayer, which we no-op'd, so the tally lives here.
+    UpdatePlayerScore(victim, SCORE_DEATHS, 1);
+
+    Player* creditKiller = ResolveKillCredit(victim, killer);
+    if (creditKiller && creditKiller != victim)
+    {
+        UpdatePlayerScore(creditKiller, SCORE_HONORABLE_KILLS, 1);
+        UpdatePlayerScore(creditKiller, SCORE_KILLING_BLOWS, 1);
+
+        // Contribution-based assists (LoL-style), replacing proximity. Build the
+        // set of kill participants on the killer's team: the killer, plus everyone
+        // who damaged/debuffed the victim within the assist window, then -- expanded
+        // to a fixed point -- everyone who healed or short-buffed a participant
+        // within the window. Each pass adds only distinct players, so the fixed
+        // point can't exceed team size: that's the "up to N hops" chain, self-bounding.
+        TeamId const team = creditKiller->GetBgTeamId();
+        uint32 const windowMs = GetAssistWindowMs();
+        uint32 const now = GameTime::GetGameTimeMS().count();
+
+        auto inWindow = [&](uint32 t) { return getMSTimeDiff(t, now) <= windowMs; };
+        auto teammateInBg = [&](ObjectGuid guid) -> Player*
+        {
+            Player* p = ObjectAccessor::FindPlayer(guid);
+            return (p && p->GetBgTeamId() == team && IsPlayerInBattleground(guid)) ? p : nullptr;
+        };
+
+        std::unordered_set<ObjectGuid> participants;
+        participants.insert(creditKiller->GetGUID());
+
+        // Direct damage/debuff assistors.
+        if (auto itr = _recentAttackers.find(victim->GetGUID()); itr != _recentAttackers.end())
+            for (auto const& rec : itr->second)
+                if (inWindow(rec.second))
+                    if (Player* a = teammateInBg(rec.first))
+                        participants.insert(a->GetGUID());
+
+        // Support chain: add anyone who healed/short-buffed a participant, repeat
+        // until the set stops growing (bounded by team size).
+        bool grew = true;
+        while (grew)
+        {
+            grew = false;
+            std::vector<ObjectGuid> const current(participants.begin(), participants.end());
+            for (ObjectGuid const& supported : current)
+            {
+                auto itr = _allySupport.find(supported);
+                if (itr == _allySupport.end())
+                    continue;
+                for (auto const& rec : itr->second)
+                {
+                    if (!inWindow(rec.second) || participants.count(rec.first))
+                        continue;
+                    if (Player* s = teammateInBg(rec.first))
+                        if (participants.insert(s->GetGUID()).second)
+                            grew = true;
+                }
+            }
+        }
+
+        // Everyone but the killer gets an assist (honorable kill); the killer
+        // already has both HK and KB above, so their assist column stays 0.
+        for (ObjectGuid const& guid : participants)
+            if (guid != creditKiller->GetGUID())
+                if (Player* p = ObjectAccessor::FindPlayer(guid))
+                    UpdatePlayerScore(p, SCORE_HONORABLE_KILLS, 1);
+
+        ++_teamPlayerKills[team];
+        GrantPlayerKillDrops(creditKiller);
+    }
+
+    // Both tracking lists are per-life; the victim is dead now.
+    _recentAttackers.erase(victim->GetGUID());
+    _allySupport.erase(victim->GetGUID());
+
+    BroadcastScoreboard();
 }
 
 void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId)

@@ -152,6 +152,40 @@ list in `creep_config.json` / `neutral_config.json`; fields and types in
   `CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ` on loot-bearing mobs (comment in
   `gen_creep_roster.py`).
 
+### Player kill drops
+
+Player kills reward the killer directly — no corpse, no native loot, unlike the
+minion `GrantDeathDrops` above. `BattlegroundMOBA::GrantPlayerKillDrops` grants
+`buff`/`gold`/`item` straight to the credited killer (`AddAura` / `ModifyMoney` /
+`AddItem`): a player has no creature entry to hang loot on, and a lootable player
+corpse has only one `lootRecipient`, which couldn't extend to assists or bounties.
+Configured per-map (no per-mob home) in `player_config.json` — same `drops` schema
+as the minion configs (fields in `apps/moba/README.md`), but every type is a
+rolled-and-delivered grant.
+
+### Kill credit and assists
+
+One choke point: `HandlePlayerDeath`, called from the `moba_kill_credit`
+UnitScript's `OnUnitDeath` (which fires for *every* death — creep, tower, fall, or
+player — unlike `HandleKillPlayer`, a deliberate no-op; see gotcha index). It owns
+the death tally too, so deaths to non-players finally score.
+
+- **Kill credit window.** A player who damaged or debuffed an enemy (`OnDamage` /
+  negative `OnAuraApply`, tracked in `_recentAttackers`) still gets the kill if that
+  enemy dies to anything within `kill_credit_window_ms` and no crediting player
+  landed the blow. A real enemy killing blow always wins over the fallback.
+- **Contribution assists**, replacing proximity. At death the credited killer plus
+  everyone who damaged/debuffed the victim within `assist_window_ms` are the direct
+  participants; then anyone who healed (`OnHeal`) or applied a *short* buff/shield to
+  a participant is added, expanded to a fixed point — the "up to N hops" support
+  chain, bounded by team size. Attribution only; assist gold is deferred to the
+  bounty pass.
+- **The buff duration gate** (`assist_buff_max_duration_ms`) separates a combat
+  cooldown (Power Infusion, Bloodlust, Power Word: Shield — count) from a maintenance
+  buff (Fortitude, Blessing of Wisdom — don't). Healing has no gate; overheal counts.
+
+Windows and the gate are per-map config (`base_config.json` → `mod_moba_base`).
+
 ### Respawn
 
 LoL-style individual respawn, replacing the stock shared-pulse graveyard
@@ -431,6 +465,10 @@ touching that area:
   bug). → `npc_moba_neutral.cpp`, `DamageTaken` comment.
 - **`CORPSE_TIMED_DESPAWN`'s countdown only runs on a corpse** — the trap for
   lane creeps is load-bearing for camps. → `SpawnCamp` in `BattlegroundMOBA.cpp`.
+- **`HandleKillPlayer` is intentionally empty** — the engine only calls it on a
+  player/pet killing blow, but MOBA deaths are as often finished by a creep, tower,
+  or environment, so all crediting + death tallying lives in `HandlePlayerDeath` via
+  `OnUnitDeath`. → `BattlegroundMOBA.cpp`, `HandleKillPlayer` / `HandlePlayerDeath`.
 
 Traps with no single code home:
 
@@ -451,6 +489,13 @@ Traps with no single code home:
   sources expand.
 - **`WorldSafeLocs.dbc`** still backs `AllianceStartLoc`/`HordeStartLoc` — the
   generator writes the `game_graveyard` row, but the DBC id must exist.
+- **Adding a column to a generated SQL table is a two-part trap.** The C++ store's
+  `SELECT` names the new column, so a *stale* generated `.sql` (which recreates the
+  old schema on boot) fails the whole query — silently zeroing every field that store
+  feeds (a missing `mod_moba_base` column takes down respawn/recall/fountain, not
+  just the new one). Re-run the generator. And the new column shifts the
+  trailing-comma: the previously-last DDL line needs a comma, the new last line must
+  not. Cost two boots.
 
 ## Reference: values that live in code
 
