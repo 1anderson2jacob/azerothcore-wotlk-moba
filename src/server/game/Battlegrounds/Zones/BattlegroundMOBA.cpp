@@ -966,8 +966,8 @@ std::string BattlegroundMOBA::BuildScoreboardBody(Player* player) const
         BattlegroundMOBAScore* score = static_cast<BattlegroundMOBAScore*>(itr->second);
         k  = score->GetKillingBlows();
         d  = score->GetDeaths();
-        uint32 hk = score->GetHonorableKills();   // credited kills (own + proximity)
-        a  = hk > k ? hk - k : 0;                  // proximity assist = credited minus own killing blows
+        uint32 hk = score->GetHonorableKills();   // credited kills (own killing blows + assists)
+        a  = hk > k ? hk - k : 0;                  // assists = credited kills minus own killing blows
         cs = score->CreepKills;
     }
 
