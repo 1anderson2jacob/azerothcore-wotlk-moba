@@ -33,12 +33,11 @@ Shipped:
 - [x] Player on-death drops infrastructure — player kills grant configurable gold/buff/item to the killer via direct grant (no corpse loot); per-map `player_config.json`
 - [x] Kill credit window — a death within a configured window of enemy-player damage/debuff still credits that player, even when a creep/tower/environment lands the blow; deaths to non-players now score
 - [x] Contribution-based assists — damage/debuff/heal/short-buff within the assist window earns an assist via a fixed-point support chain (replaces proximity); duration-gated so combat buffs count and maintenance buffs don't
-
+- [x] HUD revive countdown + kill feed — center-screen respawn countdown (client-ticked, re-synced on `/reload` while dead); transient feed for player kills (per-POV text, team-relative colours, class emblems) and non-player deaths (creep/tower/neutral/environment, category label + icon)
 
 Next, in order:
 
 - [ ] Change config file type to yaml - json doesn't allow comments, add helpful example comments to configs after switching
-- [ ] More HUD work - revive countdown and player kill messages
 - [ ] Gold / itemization mid-match
 - [ ] Inhibs / Super minions
 - [ ] Custom map/terrain — move onto the Twisted Treeline map (WMO route, ADT fallback; see `MOBA_MAP_WMO_PLAN.md`)
@@ -62,7 +61,7 @@ Code/doc chores — cleanups, audits, convention passes — that don't change ga
 | `src/server/game/Battlegrounds/Zones/BattlegroundMOBA.{h,cpp}` | New battleground class (cloned from EotS, being reshaped) |
 | `src/server/game/Battlegrounds/BattlegroundMgr.cpp` | `BATTLEGROUND_EY` factory entries point to `BattlegroundMOBA` |
 | `src/server/game/Movement/MotionMaster.{h,cpp}` | Added public `MoveWaypoint(WaypointPath&, bool)` overload (mid-route path resume for lane creeps) |
-| `client/addons/MobaHUD/` | Client addon: on-screen HUD bar (KDA, CS, match clock), fed by server `LANG_ADDON` messages |
+| `client/addons/MobaHUD/` | Client addon: HUD bar (KDA, CS, clock), revive countdown, and kill/death feed — fed by server `LANG_ADDON` messages |
 | `src/server/scripts/Custom/moba_hud.cpp` | Answers the addon's "ready" ping with current HUD state (group-chat `OnPlayerCanUseChat` hook) |
 
 ## Building (macOS, Apple Silicon)

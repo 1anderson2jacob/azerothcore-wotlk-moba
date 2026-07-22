@@ -113,10 +113,10 @@ struct MobaCampState
 
 // Per-player LoL-style respawn countdown, started on Release Spirit and ticked
 // down in PostUpdateImpl. remainingMs hits 0 -> teleport to team start + revive.
+// The remaining time is mirrored on the client HUD via the "R:" payload.
 struct MobaRespawnState
 {
     uint32 remainingMs = 0;
-    uint32 lastAnnouncedSec = 0;
 };
 
 struct BattlegroundMOBAScore final : public BattlegroundScore
@@ -224,9 +224,15 @@ private:
 
     // MobaHUD addon feed (client/addons/MobaHUD). `body` is the payload after the
     // "MobaHUD\t" prefix: "T:<sec>" clock start/sync, "E" hide the bar,
-    // "S:<ally>,<enemy>,<k>,<d>,<a>,<cs>" scoreboard update (values are team-relative).
+    // "S:<ally>,<enemy>,<k>,<d>,<a>,<cs>" scoreboard, "R:<sec>" revive-countdown
+    // start (0 = hide), "K:<pov>,<killer>,<kClass>,<kSide>,<victim>,<vClass>,<vSide>"
+    // a player kill line, "D:<pov>,<vSide>,<vClass>,<victim>,<cat>" a non-player death
+    // line (cat 0=env 1=tower 2=creep 3=neutral). K:/D: are built per recipient.
     void SendHudMessage(Player* player, std::string const& body);
     void BroadcastHudMessage(std::string const& body);
+    void BroadcastKillFeed(Player* killer, Player* victim);
+    void BroadcastNonPlayerDeath(Player* victim, Unit* killer);
+    uint32 ClassifyKiller(Unit* killer) const;   // 0 env, 1 tower, 2 lane creep, 3 neutral
     void SendScoreboard(Player* player);
     void BroadcastScoreboard();
     std::string BuildScoreboardBody(Player* player) const;

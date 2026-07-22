@@ -579,6 +579,12 @@ void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
 
         ++_teamPlayerKills[team];
         GrantPlayerKillDrops(creditKiller);
+        BroadcastKillFeed(creditKiller, victim);
+    }
+    else
+    {
+        // No enemy player credited: creep / tower / neutral / environment / suicide.
+        BroadcastNonPlayerDeath(victim, killer);
     }
 
     // Both tracking lists are per-life; the victim is dead now.
@@ -824,8 +830,9 @@ void BattlegroundMOBA::StartRespawnTimer(Player* player)
     state.remainingMs = waitMs;
     _respawnTimers[player->GetGUID()] = state;
 
-    ChatHandler(player->GetSession()).SendSysMessage(
-        Acore::StringFormat("You have died. Respawning in {} seconds.", (waitMs + 999) / 1000).c_str());
+    // Seed the client-side revive countdown; the addon ticks it down locally
+    // (like the T: clock) and shows the center-screen number.
+    SendHudMessage(player, Acore::StringFormat("R:{}", (waitMs + 999) / 1000));
 }
 
 void BattlegroundMOBA::UpdateRespawnTimers(uint32 diff)
@@ -848,16 +855,6 @@ void BattlegroundMOBA::UpdateRespawnTimers(uint32 diff)
         }
 
         state.remainingMs -= diff;
-
-        uint32 secondsLeft = (state.remainingMs + 999) / 1000;
-        if (secondsLeft != state.lastAnnouncedSec &&
-            (secondsLeft == 5 || secondsLeft == 3 || secondsLeft == 2 || secondsLeft == 1))
-        {
-            state.lastAnnouncedSec = secondsLeft;
-            ChatHandler(player->GetSession()).SendSysMessage(
-                Acore::StringFormat("Respawning in {}...", secondsLeft).c_str());
-        }
-
         ++itr;
     }
 }
@@ -873,6 +870,10 @@ void BattlegroundMOBA::RespawnAtBase(Player* player)
     player->CastSpell(player, 6962, true);   // full health
     player->CastSpell(player, 44535, true);  // full mana
     player->SpawnCorpseBones(false);
+
+    // Dismiss the client countdown (it self-hides at 0, but nail it here in case
+    // the local tick hasn't quite reached 0 at the moment of revive).
+    SendHudMessage(player, "R:0");
 }
 
 // Fountain heal: players inside their own base bubble regain a % of max
@@ -998,6 +999,100 @@ void BattlegroundMOBA::SendHudStateTo(Player* player)
     // until StartingEventOpenDoors sends T:0.
     if (GetStatus() == STATUS_IN_PROGRESS)
         SendHudMessage(player, Acore::StringFormat("T:{}", _matchElapsedMs / 1000));
+
+    // Re-arm the revive countdown for a player who reloaded / rejoined while dead.
+    // Persistent per-player state, unlike the transient kill feed (never re-sent).
+    auto itr = _respawnTimers.find(player->GetGUID());
+    if (itr != _respawnTimers.end())
+        SendHudMessage(player, Acore::StringFormat("R:{}", (itr->second.remainingMs + 999) / 1000));
+}
+
+// Emit a transient kill-feed line to every player, tailored per recipient: a POV
+// flag (you got the kill / you died / bystander) and team-relative sides so the
+// addon colours names blue/red without guessing factions (CFBG-safe). Player
+// kills only -- called from HandlePlayerDeath with a resolved killer.
+void BattlegroundMOBA::BroadcastKillFeed(Player* killer, Player* victim)
+{
+    if (!killer || !victim)
+        return;
+
+    TeamId killerTeam = killer->GetBgTeamId();
+    TeamId victimTeam = victim->GetBgTeamId();
+    std::string killerName = killer->GetName();
+    std::string victimName = victim->GetName();
+    // uint32 (not uint8) on purpose: fmt renders uint8 as a character.
+    uint32 killerClass = killer->getClass();
+    uint32 victimClass = victim->getClass();
+
+    for (auto const& itr : GetPlayers())
+    {
+        Player* recipient = itr.second;
+        if (!recipient)
+            continue;
+
+        TeamId team = recipient->GetBgTeamId();
+        uint32 pov = 2; // bystander
+        if (recipient->GetGUID() == killer->GetGUID())
+            pov = 0;
+        else if (recipient->GetGUID() == victim->GetGUID())
+            pov = 1;
+
+        uint32 killerSide = (killerTeam == team) ? 0u : 1u; // 0 = recipient's team (blue)
+        uint32 victimSide = (victimTeam == team) ? 0u : 1u;
+
+        SendHudMessage(recipient, Acore::StringFormat("K:{},{},{},{},{},{},{}",
+            pov, killerName, killerClass, killerSide, victimName, victimClass, victimSide));
+    }
+}
+
+// Classify a non-player killer into a HUD category, using the BG's own guid state
+// (a pet-landed blow never reaches here -- ResolveKillCredit credits its owner).
+uint32 BattlegroundMOBA::ClassifyKiller(Unit* killer) const
+{
+    if (!killer)
+        return 0; // environment (fall, fatigue, suicide)
+
+    ObjectGuid guid = killer->GetGUID();
+
+    for (MobaTowerState const& t : _towers)
+        if (t.guid == guid)
+            return 1; // tower
+
+    if (std::find(_spawnedCreeps.begin(), _spawnedCreeps.end(), guid) != _spawnedCreeps.end())
+        return 2; // lane creep
+
+    for (MobaCampState const& c : _camps)
+        if (std::find(c.memberGuids.begin(), c.memberGuids.end(), guid) != c.memberGuids.end())
+            return 3; // neutral camp
+
+    return 0; // unknown creature -> fall back to "the environment"
+}
+
+// Transient feed line for a death with no crediting enemy player. Broadcast to all,
+// tailored per recipient (POV + team-relative victim colour); the source category is
+// resolved once. The addon owns the label text and icon for each category.
+void BattlegroundMOBA::BroadcastNonPlayerDeath(Player* victim, Unit* killer)
+{
+    if (!victim)
+        return;
+
+    TeamId victimTeam = victim->GetBgTeamId();
+    std::string victimName = victim->GetName();
+    uint32 victimClass = victim->getClass(); // uint32: fmt renders uint8 as a character
+    uint32 cat = ClassifyKiller(killer);
+
+    for (auto const& itr : GetPlayers())
+    {
+        Player* recipient = itr.second;
+        if (!recipient)
+            continue;
+
+        uint32 pov   = (recipient->GetGUID() == victim->GetGUID()) ? 0u : 1u;
+        uint32 vSide = (victimTeam == recipient->GetBgTeamId()) ? 0u : 1u;
+
+        SendHudMessage(recipient, Acore::StringFormat("D:{},{},{},{},{}",
+            pov, vSide, victimClass, victimName, cat));
+    }
 }
 
 uint32 BattlegroundMOBA::GetRecallCastTimeMs(Player* player)

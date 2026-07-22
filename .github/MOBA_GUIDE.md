@@ -237,17 +237,23 @@ the 3.3.5a client splits the message on a TAB into `(prefix, payload)`.
 
 - **Payloads**: `T:<seconds>` starts/syncs the clock (the addon counts up locally
   between messages), `S:<ally>,<enemy>,<k>,<d>,<a>,<cs>` updates the scoreboard,
-  `E` hides the bar. `S:` is built **per recipient** (`BuildScoreboardBody`) so
-  ally/enemy are team-relative and the addon stays dumb.
+  `R:<seconds>` starts the revive countdown (client ticks down; `R:0` hides it),
+  `K:…` a player-kill feed line, `D:…` a non-player death feed line, `E` hides the
+  bar. `S:`/`K:`/`D:` are built **per recipient** (`BuildScoreboardBody`,
+  `BroadcastKillFeed`, `BroadcastNonPlayerDeath`) so team side and POV are
+  server-resolved; the addon owns only presentation (text, colours, icons). Full
+  field layouts live in the header comment of `MobaHUD.lua`.
 - **Numbers**: team kills from `_teamPlayerKills` (`HandleKillPlayer`); K/D from
   the stock `SCORE_KILLING_BLOWS`/`SCORE_DEATHS` fields; A derived free as
   `HonorableKills − KillingBlows`, since WoW already credits an honorable kill to
   every teammate near the victim; CS from `BattlegroundMOBAScore::CreepKills`
   (`HandleKillUnit`, lane creeps only — towers aren't in the creep store, so they
   naturally don't count).
-- **When it sends**: doors-open, on every player kill, to the killer on a creep
-  last-hit, every 10s (`MOBA_HUD_RESYNC_MS`) as a resync, and `E` on match end
-  and early leave.
+- **When it sends**: doors-open, on every player kill (`K:` + scoreboard), to the
+  killer on a creep last-hit, on a non-player death (`D:`), a per-player `R:` on
+  Release Spirit, every 10s (`MOBA_HUD_RESYNC_MS`) as a resync, and `E` on match
+  end and early leave. Transient feed lines (`K:`/`D:`) are never re-sent; the
+  countdown `R:` is re-sent by `SendHudStateTo`, so it survives a `/reload` while dead.
 - **The ready ping**: pushing state from `AddPlayer` does **not** work — the
   packet leaves while the client is still loading and is lost. The addon pings
   once on `PLAYER_ENTERING_WORLD` and `moba_hud.cpp` answers with
@@ -412,8 +418,8 @@ open"). Changing it moves both — check both after.
 namespace in `BattlegroundMOBA.cpp`, default 10000); it's only a safety net now
 that the ping handles joins, so lower it only if you see drift. New payloads: add
 a sender beside `SendHudMessage`, extend `BuildScoreboardBody`, handle it in the
-addon's `HandlePayload`. Icons and layout are constants at the top of
-`MobaHUD.lua` plus `Render()` — pure client, `/reload` only.
+addon's `HandlePayload`. `MobaHUD.lua` plus `RenderStatic()`/`RenderClock()` — 
+pure client, `/reload` only.
 
 **Move the HUD on screen** — `/mobahud unlock`, drag, `/mobahud lock`. Position
 and lock persist per character (`MobaHUDDB`); `/mobahud reset` recenters.
