@@ -1,6 +1,6 @@
 -- ============================================================
 -- GENERATED FILE -- do not hand-edit.
--- Produced by apps/moba/gen_tower_data.py from apps/moba/maps/*/tower_config.json.
+-- Produced by apps/moba/gen_tower_data.py from apps/moba/maps/*/tower_config.yaml.
 -- Tower CREATURES (creature_template/model/health) are shared and
 -- hand-written in mod_moba_tower_defs.sql; this is only the per-map rows.
 -- GuardedByEntry = 0 means always vulnerable; otherwise the tower spawns

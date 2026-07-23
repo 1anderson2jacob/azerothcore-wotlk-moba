@@ -1,0 +1,36 @@
+# Tower placements for Eye of the Storm. Tower CREATURES (template/model/health)
+# are shared and hand-written in mod_moba_tower_defs.sql; this file is only the
+# per-map rows written into mod_moba_tower_data.
+#
+#   team                0 = Alliance, 1 = Horde
+#   guarded_by_entry    0 = always vulnerable; else the entry that must die first
+#   attack_range        yards
+#   attack_interval_ms  ms between shots
+#   attack_spell_id     projectile spell
+
+map: 566
+
+towers:
+  - entry: 900000
+    team: 0
+    tier: 0
+    guarded_by_entry: 0
+    x: 2285.5596
+    y: 1587.9965
+    z: 1165.4397
+    o: 3.2774656
+    attack_range: 40
+    attack_interval_ms: 1500
+    attack_spell_id: 9053
+
+  - entry: 900001
+    team: 1
+    tier: 0
+    guarded_by_entry: 0
+    x: 2056.0195
+    y: 1547.1702
+    z: 1162.6882
+    o: 0.21284086
+    attack_range: 40
+    attack_interval_ms: 1500
+    attack_spell_id: 9053

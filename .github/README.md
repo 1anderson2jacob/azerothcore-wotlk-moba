@@ -30,20 +30,22 @@ Shipped:
 - [x] Last-hit kill credit — minion kills (CS) go to the player who landed the killing blow, not the first tapper; a friendly-creep last hit credits nobody
 - [x] Neutral minions — four jungle camps, hostile to both teams; camp-level aggro/leash/respawn config, whole-camp linking, League-style reset; last-hit CS and an on-death buff to the killing-blow player
 - [x] Minion on-death drops infrastructure
-- [x] Player on-death drops infrastructure — player kills grant configurable gold/buff/item to the killer via direct grant (no corpse loot); per-map `player_config.json`
+- [x] Player on-death drops infrastructure — player kills grant configurable gold/buff/item to the killer via direct grant (no corpse loot); per-map `player_config.yaml`
 - [x] Kill credit window — a death within a configured window of enemy-player damage/debuff still credits that player, even when a creep/tower/environment lands the blow; deaths to non-players now score
 - [x] Contribution-based assists — damage/debuff/heal/short-buff within the assist window earns an assist via a fixed-point support chain (replaces proximity); duration-gated so combat buffs count and maintenance buffs don't
 - [x] HUD revive countdown + kill feed — center-screen respawn countdown (client-ticked, re-synced on `/reload` while dead); transient feed for player kills (per-POV text, team-relative colours, class emblems) and non-player deaths (creep/tower/neutral/environment, category label + icon)
+- [x] YAML content configs — per-map generator configs migrated from JSON to commented YAML (inline field docs); generators read via PyYAML, generated SQL byte-identical
 
 Next, in order:
 
-- [ ] Change config file type to yaml - json doesn't allow comments, add helpful example comments to configs after switching
-- [ ] Gold / itemization mid-match
 - [ ] Inhibs / Super minions
+- [ ] Gear and items infrastructure
 - [ ] Custom map/terrain — move onto the Twisted Treeline map (WMO route, ADT fallback; see `MOBA_MAP_WMO_PLAN.md`)
 - [ ] Standalone battleground ID via `BattlemasterList.dbc` patch (client MPQ distributed to players) — bundles with the custom-map work
-- [ ] Player kill rewards and bounties — gold values, bounty scaling, and assist-gold split on top of the shipped kill/assist attribution
 - [ ] Client-patch bundle - recall tooltip / animation, fountain heal visuals, custom battle sounds, music
+- [ ] Lane mob and neutral mob gold pass
+- [ ] Player kill rewards and bounties — gold values, bounty scaling, and assist-gold split on top of the shipped kill/assist attribution
+- [ ] Itemization pass
 
 ## Housekeeping
 

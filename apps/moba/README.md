@@ -2,10 +2,12 @@
 
 Generators and per-map config for the battleground's data-driven content. Each
 map/mode is a self-contained bundle under `apps/moba/maps/<mode>/` (e.g.
-`maps/eye_of_the_storm/`) holding that map's `*_config.json`; the generators glob
+`maps/eye_of_the_storm/`) holding that map's `*_config.yaml`; the generators glob
 those and emit one combined SQL file per content type into
 `data/sql/custom/db_world/` (auto-applied on worldserver boot), each carrying a
 "GENERATED — do not hand-edit" header.
+
+> **Requires PyYAML** (configs are YAML): `pip3 install pyyaml`.
 
 **Workflows live in `.github/MOBA_GUIDE.md`** — walking a lane, adding a creep,
 moving a tower. This file is the field-level reference those recipes point at:
@@ -13,20 +15,20 @@ what each config key means, and the lockfile rules.
 
 | Generator | Reads | Writes |
 |---|---|---|
-| `gen_creep_roster.py` | `maps/<mode>/creep_config.json` + source dumps in `sources/` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data`, `mod_moba_creep_drops`, native `creature_loot_template` rows |
-| `gen_neutral_camps.py` | `maps/<mode>/neutral_config.json` + source dumps in `sources/` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior/drops tables, native `creature_loot_template` rows |
-| `gen_creep_paths.py` | `maps/<mode>/lane_config.json` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data` |
-| `gen_tower_data.py` | `maps/<mode>/tower_config.json` | `mod_moba_towers.sql` — `mod_moba_tower_data` |
-| `gen_base.py` | `maps/<mode>/base_config.json` | `mod_moba_base.sql` — `mod_moba_base`, plus the `game_graveyard` / `battleground_template` spawn wiring |
-| `gen_player_drops.py` | `maps/<mode>/player_config.json` | `mod_moba_player_drops.sql` — the `Map`-keyed `mod_moba_player_drops` table, granted directly to the killer (no native loot) |
+| `gen_creep_roster.py` | `maps/<mode>/creep_config.yaml` + source dumps in `sources/` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data`, `mod_moba_creep_drops`, native `creature_loot_template` rows |
+| `gen_neutral_camps.py` | `maps/<mode>/neutral_config.yaml` + source dumps in `sources/` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior/drops tables, native `creature_loot_template` rows |
+| `gen_creep_paths.py` | `maps/<mode>/lane_config.yaml` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data` |
+| `gen_tower_data.py` | `maps/<mode>/tower_config.yaml` | `mod_moba_towers.sql` — `mod_moba_tower_data` |
+| `gen_base.py` | `maps/<mode>/base_config.yaml` | `mod_moba_base.sql` — `mod_moba_base`, plus the `game_graveyard` / `battleground_template` spawn wiring |
+| `gen_player_drops.py` | `maps/<mode>/player_config.yaml` | `mod_moba_player_drops.sql` — the `Map`-keyed `mod_moba_player_drops` table, granted directly to the killer (no native loot) |
 
 Pipeline constants (output paths, id ranges, scanned SQL dirs) live in the
-generators, not the configs — each generator globs `maps/*/<name>_config.json`, so
-the per-map JSON holds only that map's content. Tower *creatures* are the exception
+generators, not the configs — each generator globs `maps/*/<name>_config.yaml`, so
+the per-map YAML holds only that map's content. Tower *creatures* are the exception
 to the generated rule: shared and hand-written in
 `data/sql/custom/db_world/mod_moba_tower_defs.sql`.
 
-## `lane_config.json` — human-owned, edit freely
+## `lane_config.yaml` — human-owned, edit freely
 
 - `id_range` — pool for auto-assigned `waypoint_data` IDs (`[low, high]`).
 - `max_spacing` — max yards between generated nodes. **Keep at ~5.** Sparser
@@ -47,7 +49,7 @@ Direction naming: `forward` = the direction the points were walked (the team
 spawning at the first point uses it); `reverse` is generated for the other team.
 Only walk each lane once.
 
-## `creep_config.json` — human-owned
+## `creep_config.yaml` — human-owned
 
 All creeps in a file inherit its top-level `map` and spawn only on that map. Each
 creep block names its `lane`/`slot` (both must already exist in the lane
@@ -56,7 +58,7 @@ lockfile), its role, and its tuning — `attack_range` / `attack_interval_ms` /
 Team 0 uses the slot's `forward` path, team 1 `reverse`. An optional per-creep
 `rank` overrides the source creature's (siege ships with 1 = elite).
 
-## `neutral_config.json` — human-owned
+## `neutral_config.yaml` — human-owned
 
 Camps own placement, `respawn_ms`, and `aggro_range` / `leash_range`; mobs own
 stats, display, and `drops`. The ranges are denormalized per creature
@@ -90,10 +92,10 @@ Any creep or mob block may carry a `drops` list. Each entry is one reward with
 an optional `chance` coefficient in (0, 1], default 1.0, rolled independently
 per kill:
 
-- `{ "type": "buff", "spell": id, "duration_ms": 0 }` — aura granted directly
+- `{type: buff, spell: id, duration_ms: 0}` — aura granted directly
   to the killing-blow player; `duration_ms` 0 = the spell's own duration.
-- `{ "type": "gold", "copper": n }` — coins in the corpse loot window.
-- `{ "type": "item", "item": id, "count": n }` — native loot. The same item id
+- `{type: gold, copper: n}` — coins in the corpse loot window.
+- `{type: item, item: id, count: n}` — native loot. The same item id
   twice on one mob fails the run (`creature_loot_template` keys on
   (Entry, Item)) — raise `count` instead.
 
@@ -104,7 +106,7 @@ mobs also get `lootid = entry`, zeroed `mingold`/`maxgold`, and the
 `NO_PLAYER_DAMAGE_REQ` `flags_extra` bit; rationale in the generator's
 docstring and drops section.
 
-Player kill drops (`player_config.json`) reuse this exact schema but skip native
+Player kill drops (`player_config.yaml`) reuse this exact schema but skip native
 loot entirely — `item` is a rolled `AddItem` grant too, landing in
 `mod_moba_player_drops` alongside buff/gold instead of `creature_loot_template`.
 Delivered by `GrantPlayerKillDrops` at the resolved kill.
@@ -124,7 +126,8 @@ orphans every reference already in the DB. Don't.
 
 ## Reusing `gen_creep_paths.py` elsewhere
 
-Copy `lane_config.example.json` into a map bundle as `maps/<mode>/lane_config.json`,
-adjust `id_range` / `max_spacing` / `slots`, and fill in real lanes. Output path and
-scanned-SQL dirs are generator constants now, not config fields. The lockfile is
-created next to the config on first run.
+Copy an existing `lane_config.yaml` into a new map bundle as
+`maps/<mode>/lane_config.yaml`, adjust `id_range` / `max_spacing` / `slots`, and
+replace the lanes with real ones. Output path and scanned-SQL dirs are generator
+constants now, not config fields. The lockfile is created next to the config on
+first run.

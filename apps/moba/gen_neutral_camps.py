@@ -50,6 +50,7 @@ Usage (from the repo root):
 """
 
 import json
+import yaml
 from pathlib import Path
 
 # Shared machinery: dump parsing, SQL quoting, entry locking, drops. Note
@@ -202,7 +203,7 @@ def emit_sql(roster, camps, column_order):
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE -- do not hand-edit.",
-        "-- Produced by apps/moba/gen_neutral_camps.py from apps/moba/maps/*/neutral_config.json.",
+        "-- Produced by apps/moba/gen_neutral_camps.py from apps/moba/maps/*/neutral_config.yaml.",
         "-- Stats are full copies of real source creatures with a fixed override",
         "-- list enforced in code -- see the generator's docstring.",
         "-- ============================================================",
@@ -320,9 +321,9 @@ def emit_sql(roster, camps, column_order):
 # ---------------------------------------------------------------------- main
 
 def main():
-    configs = sorted(MAPS_DIR.glob("*/neutral_config.json"))
+    configs = sorted(MAPS_DIR.glob("*/neutral_config.yaml"))
     if not configs:
-        fail(f"no neutral configs found under {MAPS_DIR}/*/neutral_config.json")
+        fail(f"no neutral configs found under {MAPS_DIR}/*/neutral_config.yaml")
 
     used = collect_used_entries(SCAN_SQL_DIRS)
     locks = {}
@@ -336,7 +337,7 @@ def main():
     camps_out = []
     column_order = None
     for cp in configs:
-        cfg = json.loads(cp.read_text())
+        cfg = yaml.safe_load(cp.read_text())
         validate_config(cfg, cp)
         ranges = resolve_camp_ranges(cfg)
         lock = locks[cp]

@@ -1,0 +1,33 @@
+# Lane centerlines + creep formation for Eye of the Storm. gen_creep_paths.py
+# densifies each lane and generates one offset path per slot per direction.
+# `forward` = the order the points are walked (team 0 uses it); `reverse` is
+# auto-generated for team 1. Walk each lane exactly once.
+
+id_range: [900100, 900499]   # pool for auto-assigned waypoint_data IDs [low, high]
+max_spacing: 5.0             # max yards between generated nodes; KEEP ~5 --
+                            # sparser nodes break creep re-aggro (see README)
+
+# Default formation, one entry per creep path per team. `lateral_offset`: yards
+# sideways from the centerline, positive = the creep's own LEFT (mirrored
+# automatically for the other team). `longitudinal_offset`: yards along travel,
+# positive = ahead (also staggers the formation at spawn).
+slots:
+  - {name: melee_left,  lateral_offset:  3.0, longitudinal_offset:  6.0}
+  - {name: melee_right, lateral_offset: -3.0, longitudinal_offset:  6.0}
+  - {name: caster,      lateral_offset:  0.0, longitudinal_offset:  0.0}
+  - {name: siege,       lateral_offset:  0.0, longitudinal_offset: -6.0}
+
+# One entry per lane: `name`, `points` (walked centerline as [x, y, z] triples in
+# walk order), and optionally its own `slots` overriding the default above.
+lanes:
+  - name: mid
+    points:
+      - [2284.1414, 1587.9543, 1165.2423]
+      - [2261.1958, 1584.4493, 1163.3425]
+      - [2222.7446, 1574.2345, 1158.2905]
+      - [2204.7146, 1575.0002, 1158.7102]
+      - [2174.586,  1570.7351, 1159.9272]
+      - [2148.8135, 1555.8337, 1158.4066]
+      - [2104.891,  1557.5983, 1155.9646]
+      - [2070.4463, 1547.5792, 1161.2843]
+      - [2063.4924, 1546.4669, 1162.0603]

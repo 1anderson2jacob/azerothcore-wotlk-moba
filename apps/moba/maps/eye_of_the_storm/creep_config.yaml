@@ -1,0 +1,171 @@
+# Lane creeps for Eye of the Storm. All creeps inherit the top-level `map` and
+# spawn only there. Team 0 walks its slot's forward path, team 1 the reverse.
+# Field reference (units/ranges) lives in apps/moba/README.md; legend below is
+# the quick version.
+#
+#   team            0 = Alliance, 1 = Horde
+#   role            melee | caster | siege  (caster needs the attack_* fields)
+#   lane / slot     must already exist in lane_config.lock.json
+#   rank            optional; overrides source rank (siege uses 1 = elite)
+#   *_modifier      multiplier on the source creature's stat (0.15 = 15%)
+#   attack_range    yards; caster-only
+#   attack_*_ms     milliseconds
+#   despawn_ms      corpse despawn after death
+#   drops[].chance  optional, (0, 1], default 1.0; rolled per kill
+
+map: 566
+
+creeps:
+  - key: alliance_melee_right
+    name: Alliance Footman
+    subname: MOBA Minion
+    team: 0
+    role: melee
+    lane: mid
+    slot: melee_right
+    source: apps/moba/sources/creature_template_2279.txt
+    display_id: 164
+    display_scale: 1.0
+    level: 80
+    health_modifier: 0.15
+    armor_modifier: 0.25
+    equip: [1899, 143, 0]
+    despawn_ms: 60000
+    drops:
+      - {type: gold, copper: 5000}
+      - {type: item, item: 33470, count: 1, chance: 0.5}
+
+  - key: alliance_melee_left
+    name: Alliance Footman
+    subname: MOBA Minion
+    team: 0
+    role: melee
+    lane: mid
+    slot: melee_left
+    source: apps/moba/sources/creature_template_2279.txt
+    display_id: 164
+    display_scale: 1.0
+    level: 80
+    health_modifier: 0.15
+    armor_modifier: 0.25
+    equip: [1899, 143, 0]
+    despawn_ms: 60000
+    drops:
+      - {type: gold, copper: 5000}
+
+  - key: horde_melee_right
+    name: Horde Grunt
+    subname: MOBA Minion
+    team: 1
+    role: melee
+    lane: mid
+    slot: melee_right
+    source: apps/moba/sources/creature_template_2279.txt
+    display_id: 496
+    display_scale: 1.0
+    level: 80
+    health_modifier: 0.15
+    armor_modifier: 0.25
+    equip: [2183, 2051, 0]
+    despawn_ms: 60000
+    drops:
+      - {type: gold, copper: 5000}
+      - {type: item, item: 33470, count: 1, chance: 0.5}
+
+  - key: horde_melee_left
+    name: Horde Grunt
+    subname: MOBA Minion
+    team: 1
+    role: melee
+    lane: mid
+    slot: melee_left
+    source: apps/moba/sources/creature_template_2279.txt
+    display_id: 496
+    display_scale: 1.0
+    level: 80
+    health_modifier: 0.15
+    armor_modifier: 0.25
+    equip: [2183, 2051, 0]
+    despawn_ms: 60000
+    drops:
+      - {type: gold, copper: 5000}
+
+  - key: alliance_caster
+    name: Alliance Mage
+    subname: MOBA Minion
+    team: 0
+    role: caster
+    lane: mid
+    slot: caster
+    source: apps/moba/sources/creature_template_1914.txt
+    display_id: 3559
+    display_scale: 1.0
+    level: 80
+    health_modifier: 0.15
+    armor_modifier: 0.25
+    attack_range: 20
+    attack_interval_ms: 2000
+    attack_spell_id: 20793
+    equip: [2177, 0, 0]
+    despawn_ms: 60000
+    drops:
+      - {type: gold, copper: 5000}
+
+  - key: horde_caster
+    name: Horde Shaman
+    subname: MOBA Minion
+    team: 1
+    role: caster
+    lane: mid
+    slot: caster
+    source: apps/moba/sources/creature_template_11683.txt
+    display_id: 11865
+    display_scale: 1.0
+    level: 80
+    health_modifier: 0.15
+    armor_modifier: 0.25
+    attack_range: 20
+    attack_interval_ms: 2000
+    attack_spell_id: 20805
+    equip: [5303, 0, 0]
+    despawn_ms: 60000
+    drops:
+      - {type: gold, copper: 5000}
+
+  - key: alliance_siege
+    name: Alliance Demolisher
+    subname: MOBA Minion
+    team: 0
+    role: siege
+    lane: mid
+    slot: siege
+    source: apps/moba/sources/creature_template_34775.txt
+    display_id: 27658
+    display_scale: 1.0
+    level: 80
+    rank: 1
+    health_modifier: 0.3
+    armor_modifier: 0.25
+    equip: [0, 0, 0]
+    despawn_ms: 60000
+    drops:
+      - {type: gold, copper: 5000}
+
+  - key: horde_siege
+    name: Horde Demolisher
+    subname: MOBA Minion
+    team: 1
+    role: siege
+    lane: mid
+    slot: siege
+    source: apps/moba/sources/creature_template_34775.txt
+    display_id: 27658
+    display_scale: 1.0
+    level: 80
+    rank: 1
+    health_modifier: 0.3
+    armor_modifier: 0.25
+    equip: [0, 0, 0]
+    despawn_ms: 60000
+    drops:
+      - {type: gold, copper: 5000}

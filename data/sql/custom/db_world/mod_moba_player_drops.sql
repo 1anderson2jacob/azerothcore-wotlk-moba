@@ -1,6 +1,6 @@
 -- ============================================================
 -- GENERATED FILE -- do not hand-edit.
--- Produced by apps/moba/gen_player_drops.py from apps/moba/maps/*/player_config.json.
+-- Produced by apps/moba/gen_player_drops.py from apps/moba/maps/*/player_config.yaml.
 -- Rolled and delivered by BattlegroundMOBA::GrantPlayerKillDrops at the
 -- killing blow, straight to the killer -- no corpse, no native loot.
 -- Type 0 = buff (aura on the killer; DurationMs 0 = the spell's

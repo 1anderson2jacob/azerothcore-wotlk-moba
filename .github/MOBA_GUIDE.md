@@ -39,7 +39,7 @@ Then in-game: `.debug bg` (**required after every restart**, or the solo queue
 won't pop), queue for EotS, confirm.
 
 **Ad-hoc `UPDATE`s** on `mod_moba_*` are fine for live experimentation, but fold
-the final values back into `apps/moba/maps/<mode>/*.json` — the generated SQL is
+the final values back into `apps/moba/maps/<mode>/*.yaml` — the generated SQL is
 the source of truth and the next apply reverts anything not recorded there.
 
 ---
@@ -134,7 +134,7 @@ One choke point for both minion kinds: `JustDied` (creep + neutral AIs)
 resolves the killing-blow player — pet blows credit the owner, the creep AI
 team-guards — and calls `BattlegroundMOBA::GrantDeathDrops` (status-guarded, so
 frozen post-match minions can't be farmed). Configured per mob as a `drops`
-list in `creep_config.json` / `neutral_config.json`; fields and types in
+list in `creep_config.yaml` / `neutral_config.yaml`; fields and types in
 `apps/moba/README.md`.
 
 - **Presentation is native WoW loot** (sparkle, right-click, loot window, gold
@@ -159,7 +159,7 @@ minion `GrantDeathDrops` above. `BattlegroundMOBA::GrantPlayerKillDrops` grants
 `buff`/`gold`/`item` straight to the credited killer (`AddAura` / `ModifyMoney` /
 `AddItem`): a player has no creature entry to hang loot on, and a lootable player
 corpse has only one `lootRecipient`, which couldn't extend to assists or bounties.
-Configured per-map (no per-mob home) in `player_config.json` — same `drops` schema
+Configured per-map (no per-mob home) in `player_config.yaml` — same `drops` schema
 as the minion configs (fields in `apps/moba/README.md`), but every type is a
 rolled-and-delivered grant.
 
@@ -184,7 +184,7 @@ the death tally too, so deaths to non-players finally score.
   cooldown (Power Infusion, Bloodlust, Power Word: Shield — count) from a maintenance
   buff (Fortitude, Blessing of Wisdom — don't). Healing has no gate; overheal counts.
 
-Windows and the gate are per-map config (`base_config.json` → `mod_moba_base`).
+Windows and the gate are per-map config (`base_config.yaml` → `mod_moba_base`).
 
 ### Respawn
 
@@ -206,7 +206,7 @@ resurrection. No core engine edits.
 
 ### Recall and fountain
 
-Both are anchored to the team's base and configured from `base_config.json`.
+Both are anchored to the team's base and configured from `base_config.yaml`.
 
 - **Recall hijacks Hearthstone** (item 6948 / spell 8690). `moba_recall.cpp`
   prevents the home-bind teleport, sends the player to `GetTeamStartPosition`,
@@ -269,13 +269,13 @@ the 3.3.5a client splits the message on a TAB into `(prefix, payload)`.
 ## Recipes: towers
 
 **Move a tower** — `.gps` at the new spot; edit `x`/`y`/`z`/`o` for that tower in
-`maps/<mode>/tower_config.json`; `python3 apps/moba/gen_tower_data.py`; deploy.
+`maps/<mode>/tower_config.yaml`; `python3 apps/moba/gen_tower_data.py`; deploy.
 
 **Add a tower** — if it needs a new creature (different model/faction), add
 `creature_template` + `creature_template_model` to
 `data/sql/custom/db_world/mod_moba_tower_defs.sql`, copying an existing tower's block with
 `ScriptName = 'npc_moba_tower'`. Then add a block to the map's
-`tower_config.json` `towers` list: `entry`, `team`, `tier`, `guarded_by_entry`,
+`tower_config.yaml` `towers` list: `entry`, `team`, `tier`, `guarded_by_entry`,
 `.gps` coords, `attack_range`/`attack_interval_ms`/`attack_spell_id`. Run
 `gen_tower_data.py`; deploy. No C++ changes — the registry and slot count are
 data-driven.
@@ -286,9 +286,9 @@ automatically. Verify it can't be targeted initially, then becomes attackable an
 fires once its guard dies.
 
 **Change attack range or tick rate** — `attack_range` / `attack_interval_ms` in
-`tower_config.json`; `gen_tower_data.py`; deploy.
+`tower_config.yaml`; `gen_tower_data.py`; deploy.
 
-**Change the projectile/spell** — `attack_spell_id` in `tower_config.json`.
+**Change the projectile/spell** — `attack_spell_id` in `tower_config.yaml`.
 Tower damage isn't an independent stat; it's entirely whatever the spell deals.
 To retune damage without changing the look, use a different rank of the same
 spell family, or change `attack_interval_ms`. The current default (9053, a
@@ -314,23 +314,23 @@ A judgment call — revisit if the trigger feels loose or tight in play.
 curves and over bumps; node Z is interpolated linearly). Save the console
 scrollback, then `python3 apps/moba/gen_creep_paths.py --extract scrollback.txt`
 prints the points array. Paste it into that lane's `points` in
-`lmaps/<mode>/lane_config.json`. **Order matters** — the team on the `forward` path IDs
+`lmaps/<mode>/lane_config.yaml`. **Order matters** — the team on the `forward` path IDs
 (currently Alliance) spawns at the FIRST point; reverse the array if you walked
 the other way. Run `gen_creep_paths.py`; deploy. Path IDs come from the lockfile,
 so re-walking an existing lane needs no `mod_moba_creep_data` changes. Full field
 and lockfile reference: `apps/moba/README.md`.
 
 **Add a creep type** — dump the source creature to `apps/moba/sources/`, add a
-block to `creep_config.json` (copy a similar role's, including equipment item IDs
+block to `creep_config.yaml` (copy a similar role's, including equipment item IDs
 from its `creature_equip_template` row — weapons aren't in `creature_template`
 and melee swing unarmed without them). A new formation slot must be added to
-`lmaps/<mode>/lane_config.json` and `gen_creep_paths.py` run first. Then
+`lmaps/<mode>/lane_config.yaml` and `gen_creep_paths.py` run first. Then
 `gen_creep_roster.py`; deploy. Full field reference: `apps/moba/README.md`.
 `BattlegroundMOBA` expects exactly 2 melee + 1 caster per team (siege optional);
 the generator warns otherwise.
 
 **Change a creep's attack range/interval/spell** — `attack_range` /
-`attack_interval_ms` / `attack_spell_id` in `creep_config.json` (casters only;
+`attack_interval_ms` / `attack_spell_id` in `creep_config.yaml` (casters only;
 melee and siege attack speed comes from the source creature's `BaseAttackTime`).
 Run `gen_creep_roster.py`; deploy.
 
@@ -360,17 +360,17 @@ spent. C++ change.
 ## Recipes: neutral camps
 
 **Move or add a camp** — `.gps` each member spot, edit `camps` in
-`maps/<mode>/neutral_config.json` (members reference mob keys; positions are
+`maps/<mode>/neutral_config.yaml` (members reference mob keys; positions are
 absolute). Run `gen_neutral_camps.py`; deploy. `CampId` is positional in config
 order — safe, nothing external references it.
 
 **Tune aggro / leash / respawn / spawn timing** — all camp-level:
 `aggro_range`, `leash_range`, `respawn_ms`, and top-level `initial_spawn_ms` in
-`neutral_config.json`. Run `gen_neutral_camps.py`; deploy. A mob key shared by
+`neutral_config.yaml`. Run `gen_neutral_camps.py`; deploy. A mob key shared by
 camps with different ranges fails the generator — use distinct keys.
 
 **Add or change an on-death drop** — edit the mob's `drops` list in
-`maps/<mode>/creep_config.json` or `neutral_config.json` (types and fields:
+`maps/<mode>/creep_config.yaml` or `neutral_config.yaml` (types and fields:
 `apps/moba/README.md`). Run that config's generator; deploy — full restart,
 drops load once per process. Buffs normally only on a camp's large.
 
@@ -380,7 +380,7 @@ creep melee source — identity is name + `display_id` + `display_scale`).
 
 ## Recipes: base (spawn, respawn, recall, fountain)
 
-All four live in one per-map bundle: `maps/<mode>/base_config.json` →
+All four live in one per-map bundle: `maps/<mode>/base_config.yaml` →
 `gen_base.py` → `mod_moba_base.sql`.
 
 **Move the spawn / respawn / graveyard point** — `game_graveyard` 1103/1104 drive
@@ -505,7 +505,7 @@ Traps with no single code home:
 
 ## Reference: values that live in code
 
-Positions, timings, ranges, and spells are all in `apps/moba/maps/<mode>/*.json`
+Positions, timings, ranges, and spells are all in `apps/moba/maps/<mode>/*.yaml`
 and the SQL it generates — **read those, not a table here**. Only these live in
 C++ or are allocation policy:
 

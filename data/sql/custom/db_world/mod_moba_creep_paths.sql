@@ -1,6 +1,6 @@
 -- ============================================================
 -- GENERATED FILE — do not hand-edit.
--- Produced by apps/moba/gen_creep_paths.py from apps/moba/maps/*/lane_config.json.
+-- Produced by apps/moba/gen_creep_paths.py from apps/moba/maps/*/lane_config.yaml.
 -- Re-running recreates this file with the same path IDs (persisted in
 -- each map bundle's lane_config.lock.json).
 -- ============================================================

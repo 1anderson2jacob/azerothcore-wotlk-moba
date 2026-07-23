@@ -1,0 +1,139 @@
+# Neutral (jungle) camps for Eye of the Storm. Camps own placement + respawn +
+# aggro/leash ranges; mobs own stats/display/drops. A `members` entry references
+# a mob `key`; `pos` is [x, y, z, orientation]. A mob placed in no camp is
+# skipped. Ranges/lockfile rules: apps/moba/README.md.
+#
+#   respawn_ms / initial_spawn_ms  milliseconds
+#   aggro_range / leash_range      yards
+#   *_modifier                     multiplier on the source creature's stat
+#   drops[].type                   buff | gold | item
+
+map: 566
+initial_spawn_ms: 30000
+
+camps:
+  - key: fel_reaver
+    respawn_ms: 30000
+    aggro_range: 8
+    leash_range: 20
+    members:
+      - {mob: worg_large, pos: [2019.2444, 1754.3961, 1197.6388, 5.222894]}
+      - {mob: worg_small, pos: [2030.1154, 1745.2213, 1193.3864, 5.5291996]}
+      - {mob: worg_small, pos: [2018.3785, 1736.9833, 1196.4192, 5.7805276]}
+  - key: mage_tower
+    respawn_ms: 30000
+    aggro_range: 8
+    leash_range: 20
+    members:
+      - {mob: wyrm_large, pos: [2280.5337, 1769.0176, 1189.7069, 4.801135]}
+      - {mob: wyrm_small, pos: [2286.0017, 1758.9531, 1189.7069, 4.827841]}
+      - {mob: wyrm_small, pos: [2277.8892, 1758.643,  1189.7069, 4.7257395]}
+  - key: draenei_ruins
+    respawn_ms: 30000
+    aggro_range: 8
+    leash_range: 20
+    members:
+      - {mob: ray_large, pos: [2256.3613, 1354.0717, 1195.7981, 0.7586918]}
+      - {mob: ray_small, pos: [2271.488,  1361.0706, 1195.8077, 0.96211]}
+      - {mob: ray_small, pos: [2265.256,  1366.9736, 1195.808,  0.8081719]}
+  - key: blood_elf
+    respawn_ms: 30000
+    aggro_range: 8
+    leash_range: 20
+    members:
+      - {mob: boar_large, pos: [2051.1995, 1366.716,  1194.5392, 1.6556144]}
+      - {mob: boar_small, pos: [2046.6493, 1371.3636, 1194.5441, 1.7294422]}
+      - {mob: boar_small, pos: [2053.9358, 1372.2905, 1194.548,  1.7467208]}
+
+mobs:
+  - key: worg_large
+    name: Ravenous Worg
+    subname: MOBA Jungle
+    source: apps/moba/sources/creature_template_2279.txt
+    display_id: 9563
+    display_scale: 1.8
+    level: 80
+    health_modifier: 0.6
+    armor_modifier: 0.25
+    drops:
+      - {type: buff, spell: 23505}
+      - {type: gold, copper: 5000}
+  - key: worg_small
+    name: Worg Pup
+    subname: MOBA Jungle
+    source: apps/moba/sources/creature_template_2279.txt
+    display_id: 9572
+    display_scale: 1.0
+    level: 80
+    health_modifier: 0.2
+    armor_modifier: 0.25
+    drops:
+      - {type: gold, copper: 5000}
+  - key: wyrm_large
+    name: Greater Mana Wyrm
+    subname: MOBA Jungle
+    source: apps/moba/sources/creature_template_2279.txt
+    display_id: 16217
+    display_scale: 1.5
+    level: 80
+    health_modifier: 0.6
+    armor_modifier: 0.25
+    drops:
+      - {type: buff, spell: 23493}
+      - {type: gold, copper: 5000}
+  - key: wyrm_small
+    name: Mana Wyrmling
+    subname: MOBA Jungle
+    source: apps/moba/sources/creature_template_2279.txt
+    display_id: 16217
+    display_scale: 1.0
+    level: 80
+    health_modifier: 0.2
+    armor_modifier: 0.25
+    drops:
+      - {type: gold, copper: 5000}
+  - key: ray_large
+    name: Nether Ray Matriarch
+    subname: MOBA Jungle
+    source: apps/moba/sources/creature_template_2279.txt
+    display_id: 19407
+    display_scale: 1.5
+    level: 80
+    health_modifier: 0.6
+    armor_modifier: 0.25
+    drops:
+      - {type: buff, spell: 23451}
+      - {type: gold, copper: 5000}
+  - key: ray_small
+    name: Nether Ray
+    subname: MOBA Jungle
+    source: apps/moba/sources/creature_template_2279.txt
+    display_id: 19407
+    display_scale: 1.0
+    level: 80
+    health_modifier: 0.2
+    armor_modifier: 0.25
+    drops:
+      - {type: gold, copper: 5000}
+  - key: boar_large
+    name: Thornfang Boar
+    subname: MOBA Jungle
+    source: apps/moba/sources/creature_template_2279.txt
+    display_id: 193
+    display_scale: 1.5
+    level: 80
+    health_modifier: 0.6
+    armor_modifier: 0.25
+    drops:
+      - {type: gold, copper: 5000}
+  - key: boar_small
+    name: Young Boar
+    subname: MOBA Jungle
+    source: apps/moba/sources/creature_template_2279.txt
+    display_id: 193
+    display_scale: 1.0
+    level: 80
+    health_modifier: 0.2
+    armor_modifier: 0.25
+    drops:
+      - {type: gold, copper: 5000}

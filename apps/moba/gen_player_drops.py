@@ -2,7 +2,7 @@
 """
 MOBA player-kill-drops generator.
 
-Reads per-map player configs (apps/moba/maps/<mode>/player_config.json) and
+Reads per-map player configs (apps/moba/maps/<mode>/player_config.yaml) and
 generates data/sql/custom/db_world/mod_moba_player_drops.sql: the
 Map-keyed mod_moba_player_drops table, rolled and delivered directly to the
 killer by BattlegroundMOBA::GrantPlayerKillDrops at the killing blow.
@@ -20,7 +20,7 @@ Usage (from the repo root):
     python3 apps/moba/gen_player_drops.py
 """
 
-import json
+import yaml
 import sys
 from pathlib import Path
 
@@ -38,14 +38,14 @@ def fail(msg):
 
 def load_configs():
     configs = []
-    for path in sorted(MAPS_DIR.glob("*/player_config.json")):
-        cfg = json.loads(path.read_text())
+    for path in sorted(MAPS_DIR.glob("*/player_config.yaml")):
+        cfg = yaml.safe_load(path.read_text())
         if not isinstance(cfg.get("map"), int):
             fail(f'{path}: "map" must be an integer map id')
         validate_drops(cfg, f'"{path}"')
         configs.append((path, cfg))
     if not configs:
-        fail(f"no player configs found under {MAPS_DIR}/*/player_config.json")
+        fail(f"no player configs found under {MAPS_DIR}/*/player_config.yaml")
     return configs
 
 
@@ -64,7 +64,7 @@ def emit(configs):
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE -- do not hand-edit.",
-        "-- Produced by apps/moba/gen_player_drops.py from apps/moba/maps/*/player_config.json.",
+        "-- Produced by apps/moba/gen_player_drops.py from apps/moba/maps/*/player_config.yaml.",
         "-- Rolled and delivered by BattlegroundMOBA::GrantPlayerKillDrops at the",
         "-- killing blow, straight to the killer -- no corpse, no native loot.",
         "-- Type 0 = buff (aura on the killer; DurationMs 0 = the spell's",

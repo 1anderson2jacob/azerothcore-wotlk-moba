@@ -47,6 +47,7 @@ Usage (from the repo root):
 """
 
 import json
+import yaml
 import re
 import sys
 from pathlib import Path
@@ -386,7 +387,7 @@ def emit_sql(roster, column_order):
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE -- do not hand-edit.",
-        f"-- Produced by apps/moba/gen_creep_roster.py from apps/moba/maps/*/creep_config.json.",
+        f"-- Produced by apps/moba/gen_creep_roster.py from apps/moba/maps/*/creep_config.yaml.",
         "-- Stats are full copies of real source creatures (see the config's",
         "-- \"source\" fields) with a fixed override list enforced in code --",
         "-- see the generator's docstring for the list and rationale.",
@@ -469,9 +470,9 @@ def emit_sql(roster, column_order):
 # ---------------------------------------------------------------------- main
 
 def main():
-    configs = sorted(MAPS_DIR.glob("*/creep_config.json"))
+    configs = sorted(MAPS_DIR.glob("*/creep_config.yaml"))
     if not configs:
-        fail(f"no creep configs found under {MAPS_DIR}/*/creep_config.json")
+        fail(f"no creep configs found under {MAPS_DIR}/*/creep_config.yaml")
 
     # Gather every already-used entry (existing SQL + all per-map lockfiles) so
     # entries never collide across maps.
@@ -486,7 +487,7 @@ def main():
     roster = []  # (creep, entry, template_row); creep carries _map / _path_id
     column_order = None
     for cp in configs:
-        cfg = json.loads(cp.read_text())
+        cfg = yaml.safe_load(cp.read_text())
         validate_config(cfg, cp)
         lock = locks[cp]
 

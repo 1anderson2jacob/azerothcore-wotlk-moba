@@ -1,6 +1,6 @@
 -- ============================================================
 -- GENERATED FILE -- do not hand-edit.
--- Produced by apps/moba/gen_creep_roster.py from apps/moba/maps/*/creep_config.json.
+-- Produced by apps/moba/gen_creep_roster.py from apps/moba/maps/*/creep_config.yaml.
 -- Stats are full copies of real source creatures (see the config's
 -- "source" fields) with a fixed override list enforced in code --
 -- see the generator's docstring for the list and rationale.

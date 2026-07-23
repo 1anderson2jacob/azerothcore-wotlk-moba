@@ -1,6 +1,6 @@
 -- ============================================================
 -- GENERATED FILE -- do not hand-edit.
--- Produced by apps/moba/gen_base.py from apps/moba/maps/*/base_config.json.
+-- Produced by apps/moba/gen_base.py from apps/moba/maps/*/base_config.yaml.
 -- Tunables live in mod_moba_base; the base LOCATION and RADIUS are written
 -- into game_graveyard / battleground_template (read at runtime via
 -- GetTeamStartPosition / GetClosestGraveyard / GetStartMaxDist).

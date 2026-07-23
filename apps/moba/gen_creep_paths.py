@@ -2,7 +2,7 @@
 """
 MOBA lane waypoint-path generator.
 
-Reads per-map lane configs (apps/moba/maps/<mode>/lane_config.json: walked
+Reads per-map lane configs (apps/moba/maps/<mode>/lane_config.yaml: walked
 centerline points + formation slot offsets), densifies each lane to a max
 node spacing, generates one offset path per formation slot per direction, and
 emits one combined idempotent DELETE+INSERT SQL file for `waypoint_data`
@@ -25,6 +25,7 @@ See apps/moba/README.md for the full workflow and config field reference.
 """
 
 import json
+import yaml
 import math
 import re
 import sys
@@ -222,7 +223,7 @@ def emit_sql(generated):
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE — do not hand-edit.",
-        "-- Produced by apps/moba/gen_creep_paths.py from apps/moba/maps/*/lane_config.json.",
+        "-- Produced by apps/moba/gen_creep_paths.py from apps/moba/maps/*/lane_config.yaml.",
         "-- Re-running recreates this file with the same path IDs (persisted in",
         "-- each map bundle's lane_config.lock.json).",
         "-- ============================================================",
@@ -257,9 +258,9 @@ def main():
         print(json.dumps(points))
         return
 
-    configs = sorted(MAPS_DIR.glob("*/lane_config.json"))
+    configs = sorted(MAPS_DIR.glob("*/lane_config.yaml"))
     if not configs:
-        fail(f"no lane configs found under {MAPS_DIR}/*/lane_config.json")
+        fail(f"no lane configs found under {MAPS_DIR}/*/lane_config.yaml")
 
     # Pre-load every lockfile and gather all used IDs (existing SQL + all
     # per-map lockfiles) so freshly allocated IDs never collide across maps.
@@ -275,7 +276,7 @@ def main():
     assigned_log = []
     generated = []  # (path_id, label, points)
     for cp in configs:
-        cfg = json.loads(cp.read_text())
+        cfg = yaml.safe_load(cp.read_text())
         validate_config(cfg, cp)
         lock = locks[cp]
 

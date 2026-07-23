@@ -2,7 +2,7 @@
 """
 MOBA tower generator.
 
-Reads per-map tower configs (apps/moba/maps/<mode>/tower_config.json) and
+Reads per-map tower configs (apps/moba/maps/<mode>/tower_config.yaml) and
 generates data/sql/custom/db_world/mod_moba_towers.sql: the map-keyed mod_moba_tower_data
 table (spawn position, tier/guard dependency, per-tower AI config).
 
@@ -15,7 +15,7 @@ Usage (from the repo root):
     python3 apps/moba/gen_tower_data.py
 """
 
-import json
+import yaml
 import sys
 from pathlib import Path
 
@@ -47,12 +47,12 @@ def validate(cfg, path):
 
 def load_configs():
     configs = []
-    for path in sorted(MAPS_DIR.glob("*/tower_config.json")):
-        cfg = json.loads(path.read_text())
+    for path in sorted(MAPS_DIR.glob("*/tower_config.yaml")):
+        cfg = yaml.safe_load(path.read_text())
         validate(cfg, path)
         configs.append((path, cfg))
     if not configs:
-        fail(f"no tower configs found under {MAPS_DIR}/*/tower_config.json")
+        fail(f"no tower configs found under {MAPS_DIR}/*/tower_config.yaml")
     return configs
 
 
@@ -60,7 +60,7 @@ def emit(configs):
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE -- do not hand-edit.",
-        "-- Produced by apps/moba/gen_tower_data.py from apps/moba/maps/*/tower_config.json.",
+        "-- Produced by apps/moba/gen_tower_data.py from apps/moba/maps/*/tower_config.yaml.",
         "-- Tower CREATURES (creature_template/model/health) are shared and",
         "-- hand-written in mod_moba_tower_defs.sql; this is only the per-map rows.",
         "-- GuardedByEntry = 0 means always vulnerable; otherwise the tower spawns",

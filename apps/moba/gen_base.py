@@ -2,7 +2,7 @@
 """
 MOBA base generator.
 
-Reads per-map base configs (apps/moba/maps/<mode>/base_config.json) and
+Reads per-map base configs (apps/moba/maps/<mode>/base_config.yaml) and
 generates data/sql/custom/db_world/mod_moba_base.sql: the map-keyed mod_moba_base table
 (respawn timing, recall cast times, fountain healing), plus the per-map spawn
 wiring (game_graveyard coordinates, and the battleground_template
@@ -21,7 +21,7 @@ Usage (from the repo root):
     python3 apps/moba/gen_base.py
 """
 
-import json
+import yaml
 import sys
 from pathlib import Path
 
@@ -82,12 +82,12 @@ def validate(cfg, path):
 
 def load_configs():
     configs = []
-    for path in sorted(MAPS_DIR.glob("*/base_config.json")):
-        cfg = json.loads(path.read_text())
+    for path in sorted(MAPS_DIR.glob("*/base_config.yaml")):
+        cfg = yaml.safe_load(path.read_text())
         validate(cfg, path)
         configs.append((path, cfg))
     if not configs:
-        fail(f"no base configs found under {MAPS_DIR}/*/base_config.json")
+        fail(f"no base configs found under {MAPS_DIR}/*/base_config.yaml")
     return configs
 
 
@@ -95,7 +95,7 @@ def emit(configs):
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE -- do not hand-edit.",
-        "-- Produced by apps/moba/gen_base.py from apps/moba/maps/*/base_config.json.",
+        "-- Produced by apps/moba/gen_base.py from apps/moba/maps/*/base_config.yaml.",
         "-- Tunables live in mod_moba_base; the base LOCATION and RADIUS are written",
         "-- into game_graveyard / battleground_template (read at runtime via",
         "-- GetTeamStartPosition / GetClosestGraveyard / GetStartMaxDist).",
