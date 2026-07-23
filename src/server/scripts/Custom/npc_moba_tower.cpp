@@ -27,9 +27,15 @@ struct npc_moba_tower : public ScriptedAI
         _lockedTarget.Clear();
         _isAggroLocked = false;
 
-        me->SetReactState(REACT_PASSIVE); // tower drives its own targeting, not core aggro/threat
+        me->SetReactState(REACT_PASSIVE); // structures drive their own targeting (or none), not core aggro/threat
         me->SetCombatMovement(false); // stops core's MoveBackwardsChecks/MoveCircleChecks from repositioning a "stationary" NPC
         scheduler.CancelAll();
+
+        // Inhibitors and cores gate progression and die, but never shoot. Only
+        // towers run the attack tick.
+        if (_cfg->kind != MOBA_STRUCTURE_TOWER)
+            return;
+
         scheduler.Schedule(std::chrono::milliseconds(_cfg->intervalMs), [this](TaskContext context)
         {
             Tick(context);

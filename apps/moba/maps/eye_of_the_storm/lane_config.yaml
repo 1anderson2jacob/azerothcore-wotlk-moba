@@ -19,10 +19,14 @@ slots:
 
 # One entry per lane: `name`, `points` (walked centerline as [x, y, z] triples in
 # walk order), and optionally its own `slots` overriding the default above.
+# Runs base-to-base: team 0 spawns at the Alliance base (first point) and walks
+# to the Horde base (last point); team 1 walks the reverse.
 lanes:
   - name: mid
     points:
-      - [2284.1414, 1587.9543, 1165.2423]
+      - [2354.7302, 1587.6167, 1171.2659]   # Alliance base
+      - [2320.745,  1584.3153, 1169.2806]   # Alliance inhibitor
+      - [2284.1414, 1587.9543, 1165.2423]   # Alliance tower
       - [2261.1958, 1584.4493, 1163.3425]
       - [2222.7446, 1574.2345, 1158.2905]
       - [2204.7146, 1575.0002, 1158.7102]
@@ -30,4 +34,6 @@ lanes:
       - [2148.8135, 1555.8337, 1158.4066]
       - [2104.891,  1557.5983, 1155.9646]
       - [2070.4463, 1547.5792, 1161.2843]
-      - [2063.4924, 1546.4669, 1162.0603]
+      - [2063.4924, 1546.4669, 1162.0603]   # Horde tower
+      - [2018.5479, 1549.687,  1168.0171]   # Horde inhibitor
+      - [1983.9092, 1547.2158, 1170.3706]   # Horde base

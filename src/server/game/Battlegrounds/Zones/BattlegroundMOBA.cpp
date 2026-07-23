@@ -90,6 +90,8 @@ void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
             SpawnWave(TEAM_HORDE, includeSiege);
             _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(30000));
         }
+        else if (eventId >= EVENT_MOBA_RESPAWN_INHIB_FIRST)
+            RespawnInhibitor(eventId - EVENT_MOBA_RESPAWN_INHIB_FIRST);
         else if (eventId >= EVENT_MOBA_SPAWN_CAMP_FIRST)
             SpawnCamp(eventId - EVENT_MOBA_SPAWN_CAMP_FIRST);
     }
@@ -206,6 +208,8 @@ bool BattlegroundMOBA::SetupBattleground()
         state.team = cfg.team;
         state.tier = cfg.tier;
         state.guardedByEntry = cfg.guardedByEntry;
+        state.kind = cfg.kind;
+        state.respawnMs = cfg.respawnMs;
 
         if (Creature* creature = GetBGCreature(slot))
         {
@@ -248,8 +252,14 @@ bool BattlegroundMOBA::SetupBattleground()
                 break;
             case MOBA_CREEP_ROLE_CASTER: comp.casterEntry = cfg.entry; break;
             case MOBA_CREEP_ROLE_SIEGE:  comp.siegeEntry  = cfg.entry; break;
+            case MOBA_CREEP_ROLE_SUPER:  comp.superEntry  = cfg.entry; break;
         }
     }
+
+    bool hasInhibitor[2] = {false, false};
+    for (MobaTowerConfig const& cfg : towerConfigs)
+        if (cfg.kind == MOBA_STRUCTURE_INHIBITOR && cfg.team < 2)
+            hasInhibitor[cfg.team] = true;
 
     for (uint32 team = 0; team < 2; ++team)
     {
@@ -261,6 +271,9 @@ bool BattlegroundMOBA::SetupBattleground()
 
         if (!_waveComposition[team].siegeEntry)
             LOG_WARN("sql.sql", "BattlegroundMOBA: map {} team {} has no siege entry in `mod_moba_creep_data` -- siege waves will be skipped for that team.", GetMapId(), team);
+
+        if (hasInhibitor[team] && !_waveComposition[team].superEntry)
+            LOG_WARN("sql.sql", "BattlegroundMOBA: map {} team {} has an inhibitor but no super creep (role=super) in `mod_moba_creep_data` -- taking that inhibitor will field no super minions.", GetMapId(), team);
     }
 
     // neutral camps (data-driven; see mod_moba_neutral_* / MobaNeutralData.h).
@@ -288,6 +301,8 @@ void BattlegroundMOBA::Init()
 
     _bgEvents.Reset();
     _waveCount = 0;
+    _superMinionsActive[0] = false;
+    _superMinionsActive[1] = false;
 }
 
 void BattlegroundMOBA::HandleKillPlayer(Player* /*player*/, Player* /*killer*/)
@@ -609,7 +624,7 @@ void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId)
 
     itr->destroyed = true;
 
-    // Unlock any towers this one was guarding.
+    // Unlock any structures this one was guarding (the next tier becomes attackable).
     for (MobaTowerState& other : _towers)
     {
         if (other.guardedByEntry != itr->entry || other.destroyed)
@@ -623,17 +638,58 @@ void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId)
     UpdateWorldState(winnerTeamId == TEAM_ALLIANCE ? WORLD_STATE_BATTLEGROUND_EY_ALLIANCE_RESOURCES : WORLD_STATE_BATTLEGROUND_EY_HORDE_RESOURCES,
         static_cast<uint32>(m_TeamScores[winnerTeamId]));
 
-    TeamId loserTeamId = itr->team;
-    bool anyTowersRemaining = std::any_of(_towers.begin(), _towers.end(), [loserTeamId](MobaTowerState const& t)
-    {
-        return t.team == loserTeamId && !t.destroyed;
-    });
-
-    if (!anyTowersRemaining)
+    // Destroying the enemy base (core) ends the match.
+    if (itr->kind == MOBA_STRUCTURE_CORE)
     {
         FreezeAllCreeps();
         EndBattleground(winnerTeamId);
+        return;
     }
+
+    // Destroying an inhibitor: the killer team fields super minions until this
+    // inhibitor respawns, and the inhibitor schedules its own return. winnerTeamId
+    // is the destroyer -- i.e. the enemy of itr->team, so it is the beneficiary.
+    if (itr->kind == MOBA_STRUCTURE_INHIBITOR)
+    {
+        _superMinionsActive[winnerTeamId] = true;
+
+        if (itr->respawnMs)
+        {
+            uint32 towerIndex = static_cast<uint32>(std::distance(_towers.begin(), itr));
+            _bgEvents.ScheduleEvent(EVENT_MOBA_RESPAWN_INHIB_FIRST + towerIndex, Milliseconds(itr->respawnMs));
+        }
+    }
+}
+
+// Inhibitor respawn (scheduled by OnTowerDestroyed). Brings the structure back,
+// re-locks the base it guards, and ends the beneficiary team's super minions.
+void BattlegroundMOBA::RespawnInhibitor(uint32 towerIndex)
+{
+    if (GetStatus() != STATUS_IN_PROGRESS || towerIndex >= _towers.size())
+        return;
+
+    MobaTowerState& inhib = _towers[towerIndex];
+    inhib.destroyed = false;
+
+    if (Creature* creature = GetBgMap()->GetCreature(inhib.guid))
+    {
+        creature->Respawn(true);
+        creature->SetFullHealth();
+    }
+
+    // Re-lock the base behind it: attackable again only after another inhibitor kill.
+    for (MobaTowerState& other : _towers)
+    {
+        if (other.guardedByEntry != inhib.entry || other.destroyed)
+            continue;
+
+        if (Creature* guarded = GetBgMap()->GetCreature(other.guid))
+            guarded->SetUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE));
+    }
+
+    // Super minions stop for the team that had knocked this inhibitor down (the enemy of its team).
+    TeamId beneficiary = (inhib.team == TEAM_ALLIANCE) ? TEAM_HORDE : TEAM_ALLIANCE;
+    _superMinionsActive[beneficiary] = false;
 }
 
 void BattlegroundMOBA::SpawnWave(TeamId team, bool includeSiege)
@@ -646,6 +702,10 @@ void BattlegroundMOBA::SpawnWave(TeamId team, bool includeSiege)
 
     if (includeSiege && comp.siegeEntry)
         SpawnCreep(comp.siegeEntry);
+
+    // While the enemy inhibitor is down, this team fields a super minion each wave.
+    if (_superMinionsActive[team] && comp.superEntry)
+        SpawnCreep(comp.superEntry);
 }
 
 // Creeps are TempSummons, not Battleground::AddCreature/BgCreatures -- that

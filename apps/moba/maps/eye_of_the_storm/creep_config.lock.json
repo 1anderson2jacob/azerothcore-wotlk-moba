@@ -5,9 +5,11 @@
     "alliance_melee_left": 900016,
     "alliance_melee_right": 900010,
     "alliance_siege": 900014,
+    "alliance_super": 900018,
     "horde_caster": 900013,
     "horde_melee_left": 900017,
     "horde_melee_right": 900011,
-    "horde_siege": 900015
+    "horde_siege": 900015,
+    "horde_super": 900019
   }
 }

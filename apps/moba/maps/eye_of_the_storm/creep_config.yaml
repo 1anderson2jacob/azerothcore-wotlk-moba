@@ -169,3 +169,41 @@ creeps:
     despawn_ms: 60000
     drops:
       - {type: gold, copper: 5000}
+
+  - key: alliance_super
+    name: Alliance Super Minion
+    subname: MOBA Minion
+    team: 0
+    role: super
+    lane: mid
+    slot: siege
+    source: apps/moba/sources/creature_template_34775.txt
+    display_id: 8395
+    display_scale: 1.5
+    level: 80
+    rank: 1
+    health_modifier: 0.6
+    armor_modifier: 0.5
+    equip: [0, 0, 0]
+    despawn_ms: 60000
+    drops:
+      - {type: gold, copper: 8000}
+
+  - key: horde_super
+    name: Horde Super Minion
+    subname: MOBA Minion
+    team: 1
+    role: super
+    lane: mid
+    slot: siege
+    source: apps/moba/sources/creature_template_34775.txt
+    display_id: 12818
+    display_scale: 1.5
+    level: 80
+    rank: 1
+    health_modifier: 0.6
+    armor_modifier: 0.5
+    equip: [0, 0, 0]
+    despawn_ms: 60000
+    drops:
+      - {type: gold, copper: 8000}

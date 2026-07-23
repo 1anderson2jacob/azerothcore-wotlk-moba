@@ -35,10 +35,10 @@ Shipped:
 - [x] Contribution-based assists — damage/debuff/heal/short-buff within the assist window earns an assist via a fixed-point support chain (replaces proximity); duration-gated so combat buffs count and maintenance buffs don't
 - [x] HUD revive countdown + kill feed — center-screen respawn countdown (client-ticked, re-synced on `/reload` while dead); transient feed for player kills (per-POV text, team-relative colours, class emblems) and non-player deaths (creep/tower/neutral/environment, category label + icon)
 - [x] YAML content configs — per-map generator configs migrated from JSON to commented YAML (inline field docs); generators read via PyYAML, generated SQL byte-identical
+- [x] Inhibitors + super minions — a passive inhibitor gates each base behind the tower; taking it fields stronger "super minion" waves for the attacker until it respawns, then the base re-locks. The base (core) is now the win condition — destroy the enemy base to win.
 
 Next, in order:
 
-- [ ] Inhibs / Super minions
 - [ ] Gear and items infrastructure
 - [ ] Custom map/terrain — move onto the Twisted Treeline map (WMO route, ADT fallback; see `MOBA_MAP_WMO_PLAN.md`)
 - [ ] Standalone battleground ID via `BattlemasterList.dbc` patch (client MPQ distributed to players) — bundles with the custom-map work

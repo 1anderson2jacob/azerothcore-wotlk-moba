@@ -1,20 +1,40 @@
-# Tower placements for Eye of the Storm. Tower CREATURES (template/model/health)
-# are shared and hand-written in mod_moba_tower_defs.sql; this file is only the
-# per-map rows written into mod_moba_tower_data.
+# Structures for Eye of the Storm: towers, inhibitors, and the base (core).
+# gen_tower_data.py turns this into data/sql/custom/db_world/mod_moba_towers.sql --
+# both the shared structure creatures (creature_template + creature_template_model)
+# AND their per-map placement (mod_moba_tower_data). There is no hand-written
+# defs file: everything a designer tunes lives here.
 #
-#   team                0 = Alliance, 1 = Horde
+#   team                0 = Alliance, 1 = Horde (also picks faction 84/83)
+#   kind                tower | inhibitor | core   (default tower)
+#                         tower     -- attacks; unlocks what it guards on death
+#                         inhibitor -- passive; on death gives the enemy super
+#                                      minions and respawns after respawn_ms
+#                         core      -- the base; destroying it wins the match
 #   guarded_by_entry    0 = always vulnerable; else the entry that must die first
-#   attack_range        yards
-#   attack_interval_ms  ms between shots
-#   attack_spell_id     projectile spell
+#   respawn_ms          inhibitor respawn delay (ms); omit / 0 = never respawns
+#   name                creature name (subname defaults to "MOBA Objective")
+#   display_id          creature model; display_scale multiplies its size
+#   health_modifier     x the level-80 baseline HP (armor_modifier optional, def 5)
+#   attack_range        yards            (inert for passive kinds)
+#   attack_interval_ms  ms between shots  (inert for passive kinds)
+#   attack_spell_id     projectile spell  (0 / inert for passive kinds)
+#
+# Kill order per side: tower -> inhibitor -> base. Positions are .gps-captured
+# in-game; temporary until the mid-lane layout is finalized.
 
 map: 566
 
 towers:
+  # --- Alliance side (high X; spawn door ~2387) ---
   - entry: 900000
     team: 0
+    kind: tower
     tier: 0
     guarded_by_entry: 0
+    name: Alliance Tower
+    display_id: 27101
+    display_scale: 3.0
+    health_modifier: 8
     x: 2285.5596
     y: 1587.9965
     z: 1165.4397
@@ -23,10 +43,51 @@ towers:
     attack_interval_ms: 1500
     attack_spell_id: 9053
 
+  - entry: 900002
+    team: 0
+    kind: inhibitor
+    tier: 1
+    guarded_by_entry: 900000
+    respawn_ms: 120000
+    name: Alliance Inhibitor
+    display_id: 1460
+    display_scale: 0.75
+    health_modifier: 10
+    x: 2320.745
+    y: 1584.3153
+    z: 1169.2806
+    o: 4.106839
+    attack_range: 0
+    attack_interval_ms: 1500
+    attack_spell_id: 0
+
+  - entry: 900004
+    team: 0
+    kind: core
+    tier: 2
+    guarded_by_entry: 900002
+    name: Alliance Base
+    display_id: 11659
+    display_scale: 2.0
+    health_modifier: 15
+    x: 2354.7302
+    y: 1587.6167
+    z: 1171.2659
+    o: 0.89613223
+    attack_range: 0
+    attack_interval_ms: 1500
+    attack_spell_id: 0
+
+  # --- Horde side (low X; spawn door ~1942) ---
   - entry: 900001
     team: 1
+    kind: tower
     tier: 0
     guarded_by_entry: 0
+    name: Horde Tower
+    display_id: 18505
+    display_scale: 2.0
+    health_modifier: 8
     x: 2056.0195
     y: 1547.1702
     z: 1162.6882
@@ -34,3 +95,38 @@ towers:
     attack_range: 40
     attack_interval_ms: 1500
     attack_spell_id: 9053
+
+  - entry: 900003
+    team: 1
+    kind: inhibitor
+    tier: 1
+    guarded_by_entry: 900001
+    respawn_ms: 120000
+    name: Horde Inhibitor
+    display_id: 1461
+    display_scale: 0.75
+    health_modifier: 10
+    x: 2018.5479
+    y: 1549.687
+    z: 1168.0171
+    o: 0.04476848
+    attack_range: 0
+    attack_interval_ms: 1500
+    attack_spell_id: 0
+
+  - entry: 900005
+    team: 1
+    kind: core
+    tier: 2
+    guarded_by_entry: 900003
+    name: Horde Base
+    display_id: 11659
+    display_scale: 2.0
+    health_modifier: 15
+    x: 1983.9092
+    y: 1547.2158
+    z: 1170.3706
+    o: 5.8048787
+    attack_range: 0
+    attack_interval_ms: 1500
+    attack_spell_id: 0

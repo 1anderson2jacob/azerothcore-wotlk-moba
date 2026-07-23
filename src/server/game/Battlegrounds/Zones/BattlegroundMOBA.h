@@ -24,6 +24,7 @@
 #include "WorldStateDefines.h"
 #include "ObjectGuid.h"
 #include "MobaNeutralData.h"
+#include "MobaTowerData.h"
 #include "MobaPlayerDropData.h"
 #include <vector>
 #include <unordered_map>
@@ -62,10 +63,13 @@ enum BG_MOBA_Score
 enum BG_MOBA_Events
 {
     EVENT_MOBA_SPAWN_WAVE = 1,
-    // Camp spawns are EVENT_MOBA_SPAWN_CAMP_FIRST + index into _camps -- one
-    // id per camp, scheduled at doors-open (initial) and on camp wipe
-    // (respawn). Keep this the highest id: everything >= it is a camp index.
-    EVENT_MOBA_SPAWN_CAMP_FIRST = 100
+    // Two ranges keyed by a small container index:
+    //   EVENT_MOBA_SPAWN_CAMP_FIRST + camp index (into _camps)   -- jungle camp (re)spawn.
+    //   EVENT_MOBA_RESPAWN_INHIB_FIRST + tower index (into _towers) -- inhibitor return.
+    // PostUpdateImpl dispatches by threshold, so keep the two bases far apart and
+    // above any realistic camp/tower count.
+    EVENT_MOBA_SPAWN_CAMP_FIRST    = 100,
+    EVENT_MOBA_RESPAWN_INHIB_FIRST = 1000
 };
 
 enum BG_MOBA_Recall
@@ -76,8 +80,8 @@ enum BG_MOBA_Recall
 };
 
 // Tracks a spawned tower's registry data: which team it belongs to, its
-// tier/guard dependency, and whether it's been destroyed. Populated from
-// `mod_moba_tower_data` (see MobaTowerData.h) in SetupBattleground().
+// tier/guard dependency, its structure kind, and whether it's been destroyed.
+// Populated from `mod_moba_tower_data` (see MobaTowerData.h) in SetupBattleground().
 struct MobaTowerState
 {
     ObjectGuid guid;
@@ -85,6 +89,8 @@ struct MobaTowerState
     TeamId team = TEAM_ALLIANCE;
     uint8 tier = 0;
     uint32 guardedByEntry = 0;
+    uint8 kind = MOBA_STRUCTURE_TOWER;
+    uint32 respawnMs = 0;
     bool destroyed = false;
 };
 
@@ -96,6 +102,7 @@ struct MobaWaveComposition
     uint32 meleeEntry2 = 0;
     uint32 casterEntry = 0;
     uint32 siegeEntry = 0; // 0 = not configured, skip even on siege waves
+    uint32 superEntry = 0; // 0 = none; spawned per wave while the enemy inhibitor is down
 };
 
 // Runtime state of one neutral (jungle) camp: the static member list from
@@ -211,6 +218,7 @@ private:
     void PostUpdateImpl(uint32 diff) override;
     void SpawnWave(TeamId team, bool includeSiege);
     void SpawnCreep(uint32 entry);
+    void RespawnInhibitor(uint32 towerIndex);
     void SpawnCamp(uint32 campIndex);
     MobaCampState* FindCampOf(ObjectGuid guid);
     void FreezeAllCreeps();
@@ -240,6 +248,7 @@ private:
     EventMap _bgEvents;
     std::vector<MobaTowerState> _towers;
     MobaWaveComposition _waveComposition[2];
+    bool _superMinionsActive[2] = {false, false}; // per beneficiary team: enemy inhibitor down -> super minions in waves
     std::vector<ObjectGuid> _spawnedCreeps;
     std::vector<MobaCampState> _camps;
     uint32 _waveCount = 0;

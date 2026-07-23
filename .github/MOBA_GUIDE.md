@@ -53,13 +53,18 @@ guard dependency, destroyed flag), built in `SetupBattleground()` from
 `mod_moba_tower_data`. The slot count is runtime-sized from the row count —
 no per-tower enum.
 
-- **Win condition**: `OnTowerDestroyed` marks the tower destroyed, unlocks
-  whatever it guarded, updates the worldstate counter, and ends the battleground
-  once a team has no towers left. Two callers: `HandleKillUnit` (player kills)
-  and `npc_moba_tower::JustDied` (creep kills).
-- **Guard/tier**: a tower with `GuardedByEntry` spawns unattackable and
-  unselectable, and its AI skips its tick, until its guard tower dies.
-  `GuardedByEntry` is a single FK — linear lanes only, no multi-guard AND-gating.
+- **Structure kinds** (`Kind` in `mod_moba_tower_data`): `tower` attacks;
+  `inhibitor` and `core` are passive (the AI skips its tick). On death,
+  `OnTowerDestroyed` always unlocks whatever the structure guarded and bumps the
+  worldstate counter, then branches on kind: a **core** (the base) ends the
+  battleground — that's the win condition; an **inhibitor** fields super minions
+  for the killer's team and schedules its own respawn (`RespawnMs`), which
+  re-locks the base and stops the super minions. Two callers: `HandleKillUnit`
+  (player kills) and `npc_moba_tower::JustDied` (creep kills).
+- **Guard/tier**: a structure with `GuardedByEntry` spawns unattackable and
+  unselectable until its guard dies (an attacking tower also skips its tick while
+  inert). `GuardedByEntry` is a single FK — linear chains only (tower → inhibitor
+  → base), no multi-guard AND-gating.
 - **Targeting** (`npc_moba_tower.cpp`), deliberately *unlike* creeps:
   `REACT_PASSIVE` plus fully manual targeting, immune to taunt and kiting.
   Nearest hostile non-player in range, else nearest hostile player; never another
@@ -266,19 +271,22 @@ the 3.3.5a client splits the message on a TAB into `(prefix, payload)`.
 
 ---
 
-## Recipes: towers
+## Recipes: structures (towers, inhibitors, base)
 
 **Move a tower** — `.gps` at the new spot; edit `x`/`y`/`z`/`o` for that tower in
 `maps/<mode>/tower_config.yaml`; `python3 apps/moba/gen_tower_data.py`; deploy.
 
-**Add a tower** — if it needs a new creature (different model/faction), add
-`creature_template` + `creature_template_model` to
-`data/sql/custom/db_world/mod_moba_tower_defs.sql`, copying an existing tower's block with
-`ScriptName = 'npc_moba_tower'`. Then add a block to the map's
-`tower_config.yaml` `towers` list: `entry`, `team`, `tier`, `guarded_by_entry`,
-`.gps` coords, `attack_range`/`attack_interval_ms`/`attack_spell_id`. Run
-`gen_tower_data.py`; deploy. No C++ changes — the registry and slot count are
-data-driven.
+**Add a structure (tower, inhibitor, or base)** — add a block to the map's
+`tower_config.yaml` `towers` list; `gen_tower_data.py` generates the creature
+(`creature_template` + `creature_template_model`) and the placement row together,
+so there's no separate SQL to touch. Fields: `entry` (900000+, globally unique),
+`team`, `kind` (`tower`/`inhibitor`/`core`), `tier`, `guarded_by_entry`, `name`,
+`display_id`, `display_scale`, `health_modifier`, `.gps` coords, and the
+`attack_*` fields (inert for passive kinds). For an inhibitor also set
+`respawn_ms` and make sure the map has a `role: super` creep in
+`creep_config.yaml` — otherwise taking the inhibitor fields no super minions (the
+BG warns at boot). Run `gen_tower_data.py`; deploy. No C++ changes — the registry
+and slot count are data-driven.
 
 **Add a tier/guard dependency** — set `guarded_by_entry` to the entry that must
 die first. The guarded tower spawns inert and `OnTowerDestroyed` unlocks it
@@ -297,9 +305,10 @@ doesn't render on these prop-style display models (likely no bone attachment
 point). Towers cast `triggered = true` — deliberately instant and free, matching
 a turret.
 
-**Change tower health** — `HealthModifier` for that entry in
-`mod_moba_tower_defs.sql`. It's a multiplier on level-based base health, not an
-absolute value, and is map-agnostic.
+**Change structure model, scale, or health** — `display_id` / `display_scale` /
+`health_modifier` for that structure in `tower_config.yaml`; `gen_tower_data.py`;
+deploy. `health_modifier` is a multiplier on level-based base health, not an
+absolute value.
 
 **Change what counts as hard CC for aggro override** — edit
 `MOBA_HARD_CC_MECHANIC_MASK` at the top of `moba_tower_aggro.cpp`. Currently the

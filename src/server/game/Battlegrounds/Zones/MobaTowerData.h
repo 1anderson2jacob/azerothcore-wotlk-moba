@@ -23,6 +23,19 @@
 #include <unordered_map>
 #include <vector>
 
+// A structure's role in the MOBA push. Towers attack; inhibitors and cores are
+// passive (npc_moba_tower skips the attack tick for them). What differs is what
+// happens on death -- see BattlegroundMOBA::OnTowerDestroyed:
+//   TOWER     -- just unlocks whatever it guarded.
+//   INHIBITOR -- unlocks + grants the enemy super minions + respawns itself.
+//   CORE      -- the base; its destruction ends the match.
+enum MobaStructureKind : uint8
+{
+    MOBA_STRUCTURE_TOWER     = 0,
+    MOBA_STRUCTURE_INHIBITOR = 1,
+    MOBA_STRUCTURE_CORE      = 2,
+};
+
 struct MobaTowerConfig
 {
     uint32 entry = 0;
@@ -30,6 +43,8 @@ struct MobaTowerConfig
     TeamId team = TEAM_ALLIANCE;
     uint8 tier = 0;
     uint32 guardedByEntry = 0;
+    uint8 kind = MOBA_STRUCTURE_TOWER;
+    uint32 respawnMs = 0;    // inhibitor respawn delay; 0 = never respawns (towers, cores)
     float x = 0.0f;
     float y = 0.0f;
     float z = 0.0f;

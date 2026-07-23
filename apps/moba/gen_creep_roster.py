@@ -57,7 +57,7 @@ OUTPUT = Path("data/sql/custom/db_world/mod_moba_creeps.sql")
 ID_RANGE = [900010, 900099]
 SCAN_SQL_DIRS = ["data/sql/custom/db_world"]
 
-ROLE_IDS = {"melee": 0, "caster": 1, "siege": 2}
+ROLE_IDS = {"melee": 0, "caster": 1, "siege": 2, "super": 3}
 STRING_COLUMNS = {"name", "subname", "IconName", "AIName", "ScriptName"}
 NUMBER_RE = re.compile(r"^-?\d+(\.\d+)?$")
 DUMP_LINE_RE = re.compile(r"^\s*(\w+): ?(.*)$")
@@ -428,7 +428,7 @@ def emit_sql(roster, column_order):
 
     lines += [
         "",
-        "-- Role: 0=melee, 1=caster, 2=siege. AttackRange/AttackIntervalMs/",
+        "-- Role: 0=melee, 1=caster, 2=siege, 3=super. AttackRange/AttackIntervalMs/",
         "-- AttackSpellId apply to casters only (melee/siege use default engine",
         "-- auto-attack). WaypointPathId comes from the lane generator lockfile.",
         "DROP TABLE IF EXISTS `mod_moba_creep_data`;",

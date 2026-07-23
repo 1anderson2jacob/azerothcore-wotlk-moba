@@ -9,7 +9,7 @@
 
 USE acore_world;
 
-DELETE FROM `creature_template` WHERE `entry` IN (900010, 900016, 900011, 900017, 900012, 900013, 900014, 900015);
+DELETE FROM `creature_template` WHERE `entry` IN (900010, 900016, 900011, 900017, 900012, 900013, 900014, 900015, 900018, 900019);
 INSERT INTO `creature_template`
 (`entry`, `difficulty_entry_1`, `difficulty_entry_2`, `difficulty_entry_3`, `KillCredit1`, `KillCredit2`, `name`, `subname`, `IconName`, `gossip_menu_id`, `minlevel`, `maxlevel`, `exp`, `faction`, `npcflag`, `speed_walk`, `speed_run`, `speed_swim`, `speed_flight`, `detection_range`, `rank`, `dmgschool`, `DamageModifier`, `BaseAttackTime`, `RangeAttackTime`, `BaseVariance`, `RangeVariance`, `unit_class`, `unit_flags`, `unit_flags2`, `dynamicflags`, `family`, `type`, `type_flags`, `lootid`, `pickpocketloot`, `skinloot`, `PetSpellDataId`, `VehicleId`, `mingold`, `maxgold`, `AIName`, `MovementType`, `HoverHeight`, `HealthModifier`, `ManaModifier`, `ArmorModifier`, `ExperienceModifier`, `RacialLeader`, `movementId`, `RegenHealth`, `CreatureImmunitiesId`, `flags_extra`, `ScriptName`, `VerifiedBuild`)
 VALUES
@@ -28,9 +28,13 @@ VALUES
 -- alliance_siege (from creature_template_34775.txt)
 (900014,0,0,0,0,0,'Alliance Demolisher','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
 -- horde_siege (from creature_template_34775.txt)
-(900015,0,0,0,0,0,'Horde Demolisher','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0);
+(900015,0,0,0,0,0,'Horde Demolisher','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
+-- alliance_super (from creature_template_34775.txt)
+(900018,0,0,0,0,0,'Alliance Super Minion','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.6,1,0.5,1,0,0,0,0,2097152,'npc_moba_creep',0),
+-- horde_super (from creature_template_34775.txt)
+(900019,0,0,0,0,0,'Horde Super Minion','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.6,1,0.5,1,0,0,0,0,2097152,'npc_moba_creep',0);
 
-DELETE FROM `creature_template_model` WHERE `CreatureID` IN (900010, 900016, 900011, 900017, 900012, 900013, 900014, 900015);
+DELETE FROM `creature_template_model` WHERE `CreatureID` IN (900010, 900016, 900011, 900017, 900012, 900013, 900014, 900015, 900018, 900019);
 INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)
 VALUES
 (900010, 0, 164, 1.0, 1, 0),
@@ -40,9 +44,11 @@ VALUES
 (900012, 0, 3559, 1.0, 1, 0),
 (900013, 0, 11865, 1.0, 1, 0),
 (900014, 0, 27658, 1.0, 1, 0),
-(900015, 0, 27658, 1.0, 1, 0);
+(900015, 0, 27658, 1.0, 1, 0),
+(900018, 0, 8395, 1.5, 1, 0),
+(900019, 0, 12818, 1.5, 1, 0);
 
-DELETE FROM `creature_equip_template` WHERE `CreatureID` IN (900010, 900016, 900011, 900017, 900012, 900013, 900014, 900015);
+DELETE FROM `creature_equip_template` WHERE `CreatureID` IN (900010, 900016, 900011, 900017, 900012, 900013, 900014, 900015, 900018, 900019);
 INSERT INTO `creature_equip_template` (`CreatureID`, `ID`, `ItemID1`, `ItemID2`, `ItemID3`, `VerifiedBuild`)
 VALUES
 (900010, 1, 1899, 143, 0, 0),
@@ -52,7 +58,7 @@ VALUES
 (900012, 1, 2177, 0, 0, 0),
 (900013, 1, 5303, 0, 0, 0);
 
--- Role: 0=melee, 1=caster, 2=siege. AttackRange/AttackIntervalMs/
+-- Role: 0=melee, 1=caster, 2=siege, 3=super. AttackRange/AttackIntervalMs/
 -- AttackSpellId apply to casters only (melee/siege use default engine
 -- auto-attack). WaypointPathId comes from the lane generator lockfile.
 DROP TABLE IF EXISTS `mod_moba_creep_data`;
@@ -86,9 +92,13 @@ VALUES
 -- alliance_siege (mid/siege)
 (900014, 566, 0, 2, 20, 2000, 0, 900112, 60000),
 -- horde_siege (mid/siege)
-(900015, 566, 1, 2, 20, 2000, 0, 900122, 60000);
+(900015, 566, 1, 2, 20, 2000, 0, 900122, 60000),
+-- alliance_super (mid/siege)
+(900018, 566, 0, 3, 20, 2000, 0, 900112, 60000),
+-- horde_super (mid/siege)
+(900019, 566, 1, 3, 20, 2000, 0, 900122, 60000);
 
-DELETE FROM `creature_loot_template` WHERE `Entry` IN (900010, 900016, 900011, 900017, 900012, 900013, 900014, 900015);
+DELETE FROM `creature_loot_template` WHERE `Entry` IN (900010, 900016, 900011, 900017, 900012, 900013, 900014, 900015, 900018, 900019);
 INSERT INTO `creature_loot_template`
 (`Entry`, `Item`, `Reference`, `Chance`, `QuestRequired`, `LootMode`, `GroupId`, `MinCount`, `MaxCount`, `Comment`)
 VALUES
@@ -131,4 +141,8 @@ VALUES
 -- alliance_siege
 (900014, 0, 1, 0, 0, 5000, 100),
 -- horde_siege
-(900015, 0, 1, 0, 0, 5000, 100);
+(900015, 0, 1, 0, 0, 5000, 100),
+-- alliance_super
+(900018, 0, 1, 0, 0, 8000, 100),
+-- horde_super
+(900019, 0, 1, 0, 0, 8000, 100);

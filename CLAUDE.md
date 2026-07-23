@@ -130,7 +130,7 @@ Neither is duplicated here. Read them when the task needs them.
 | System | Code | Config → generated SQL |
 |---|---|---|
 | Battleground class | `Battlegrounds/Zones/BattlegroundMOBA.{h,cpp}` (constructed by `BattlegroundMgr.cpp`'s `BATTLEGROUND_EY` factory) | — |
-| Towers | `Zones/MobaTowerData.{h,cpp}`, `scripts/Custom/npc_moba_tower.cpp` + `moba_tower_aggro.cpp` | `tower_config.yaml` → `gen_tower_data.py` → `mod_moba_towers.sql`; creature defs hand-written in `mod_moba_tower_defs.sql` |
+| Towers / inhibitors / base | `Zones/MobaTowerData.{h,cpp}`, `scripts/Custom/npc_moba_tower.cpp` + `moba_tower_aggro.cpp` | `tower_config.yaml` → `gen_tower_data.py` → `mod_moba_towers.sql` (creature templates + models + per-map placement) |
 | Lane creeps | `Zones/MobaCreepData.{h,cpp}`, `scripts/Custom/npc_moba_creep.cpp` | `creep_config.yaml` → `gen_creep_roster.py` → `mod_moba_creeps.sql`; lanes: `lane_config.yaml` → `gen_creep_paths.py` → `mod_moba_creep_paths.sql` |
 | Respawn, recall, fountain | `Zones/MobaBaseData.{h,cpp}`, `scripts/Custom/moba_respawn.cpp` + `moba_recall.cpp` | `base_config.yaml` → `gen_base.py` → `mod_moba_base.sql` |
 | HUD bar | `client/addons/MobaHUD/`, `scripts/Custom/moba_hud.cpp` | — (client addon; copy into `Interface/AddOns/`) |
