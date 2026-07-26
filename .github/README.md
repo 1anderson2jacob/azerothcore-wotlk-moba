@@ -46,6 +46,8 @@ Next, in order:
 - [ ] Lane mob and neutral mob gold pass
 - [ ] Player kill rewards and bounties — gold values, bounty scaling, and assist-gold split on top of the shipped kill/assist attribution
 - [ ] Itemization pass
+- [ ] Character creation scripts / level up automation - have the ability to create characters at a given level that have everything trained / learned, including armor proficiencies, weapon skill, class quest abilities, give bags, etc
+- [ ] Shop addon?
 
 ## Housekeeping
 
@@ -53,6 +55,7 @@ Code/doc chores — cleanups, audits, convention passes — that don't change ga
 
 - [x] Docs / code-comment pass — cut duplication and per-session context cost
 - [x] `GetBgTeamId` vs `GetTeamId` audit across `BattlegroundMOBA`
+- [ ] Remove all creep types being set to beast
 - [ ] `BG_MOBA_Score` enum holds only the Flurry achievement ID — decide whether EotS achievements should fire at all in this mode
 - [ ] Remove leftover `m_BuffChange = true` from the `BattlegroundMOBA` constructor (buffs were removed; harmless)
 

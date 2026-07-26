@@ -33,6 +33,8 @@
 #include "MobaBaseData.h"
 #include "MobaNeutralData.h"
 #include "MobaDropData.h"
+#include "MobaStoreData.h"
+#include "UpdateData.h"
 #include "Timer.h"
 #include "Random.h"
 #include "SpellAuras.h"
@@ -45,6 +47,7 @@
 #include <algorithm>
 #include "Opcodes.h"
 #include <unordered_set>
+#include <limits>
 
 namespace
 {
@@ -165,6 +168,29 @@ void BattlegroundMOBA::RemovePlayer(Player* player)
     {
         _recentAttackers.erase(player->GetGUID());
         _allySupport.erase(player->GetGUID());
+
+        // Shop gear is match-only. This hook covers every exit path, so it is
+        // the one place the sweep belongs. unequip_check = false so worn pieces
+        // go too -- DestroyItemCount walks bags, bank and equipped slots alike.
+        // The catalog holds our own custom entries, so this can never destroy a
+        // world-obtained item.
+        if (std::unordered_set<uint32> const* catalog = sMobaStoreDataStore->GetCatalogItems(GetMapId()))
+        {
+            for (uint32 itemEntry : *catalog)
+                player->DestroyItemCount(itemEntry, std::numeric_limits<uint32>::max(), true, false);
+
+            // DestroyItem zeroes the PLAYER_VISIBLE_ITEM fields, but this runs in
+            // the same tick the player is pulled from the world, so the normal
+            // flush never reaches the client -- and the client relocates its own
+            // player object on a map change rather than recreating it, so the
+            // stripped gear stays rendered on the model until relog. Send the
+            // changed values synchronously instead.
+            UpdateData upd;
+            WorldPacket packet;
+            player->BuildValuesUpdateBlockForPlayer(&upd, player);
+            upd.BuildPacket(packet);
+            player->SendDirectMessage(&packet);
+        }
     }
 }
 
@@ -180,6 +206,7 @@ bool BattlegroundMOBA::SetupBattleground()
     sMobaBaseDataStore->LoadIfNeeded();
     sMobaDropDataStore->LoadIfNeeded();
     sMobaPlayerDropDataStore->LoadIfNeeded();
+    sMobaStoreDataStore->LoadIfNeeded();
     std::vector<MobaTowerConfig> towerConfigs = sMobaTowerDataStore->GetForMap(GetMapId());
     if (towerConfigs.empty())
     {

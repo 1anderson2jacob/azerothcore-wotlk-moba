@@ -25,6 +25,7 @@ void AddSC_moba_respawn();
 void AddSC_moba_recall();
 void AddSC_moba_hud();
 void AddSC_moba_kill_credit();
+void AddSC_npc_moba_store();
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
@@ -38,4 +39,5 @@ void AddCustomScripts()
     AddSC_moba_recall();
     AddSC_moba_hud();
     AddSC_moba_kill_credit();
+    AddSC_npc_moba_store();
 }

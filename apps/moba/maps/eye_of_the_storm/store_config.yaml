@@ -1,0 +1,99 @@
+# MOBA item vendors for Eye of the Storm.
+# gen_store.py turns this into data/sql/custom/db_world/mod_moba_store.sql:
+#   creature_template + creature_template_model per vendor NPC (one entry per
+#   team), their per-map spawns, and the gossip menu tree (mod_moba_store_npc /
+#   _menu / _grant). Gear is granted in C++ by npc_moba_store on menu select.
+#
+# One creature entry PER TEAM (team carried in mod_moba_store_npc, keyed by
+# entry -- same pattern as towers). Both teams of a vendor share one menu.
+#
+# A menu group has either `subcategories` (a branch) or `pieces` (suffix leaves),
+# never both -- nest as deep as you like.
+#
+# "of the X" items are stock green random-suffix bases: the vendor stamps a
+# suffix id onto the base at grant time. gen_store.py derives which suffixes a
+# base may roll from item_template.RandomSuffix + item_enchantment_template and
+# offers only those, so cloth shows caster suffixes only and the wand shows just
+# three. A base that rolls NONE of the listed suffixes fails the run.
+# Cost omitted = free (0).
+
+map: 566
+
+# Suffix menu order. `id` is the ItemRandomSuffix.dbc id the vendor stamps onto
+# the base item; `name` is only the menu label. gen_store.py verifies each id
+# against item_template.RandomSuffix + item_enchantment_template, so a base is
+# only offered under a suffix the game itself would roll on it.
+# (The .dbc is not read at generation time -- env/dist is gitignored build
+# output; a fresh clone must still be able to regenerate.)
+suffixes:
+  - { name: "of the Tiger",   id: 14 }
+  - { name: "of the Bear",    id: 7 }
+  - { name: "of the Monkey",  id: 5 }
+  - { name: "of the Eagle",   id: 6 }
+  - { name: "of the Owl",     id: 9 }
+  - { name: "of the Gorilla", id: 10 }
+  - { name: "of the Falcon",  id: 11 }
+  - { name: "of the Boar",    id: 12 }
+  - { name: "of the Wolf",    id: 13 }
+  - { name: "of the Whale",   id: 8 }
+
+# Fraction of an item's purchase cost it sells back for. Applied per menu group;
+# a group may override with its own `sell_ratio`. Starting gear costs 0, so it
+# sells for 0 without needing its own setting.
+sell_ratio: 0.25
+
+# Back slot is always a cloth cloak (no plate/mail/leather cloak exists). All 10.
+cloak_item: 36416          # Regal Cloak (ilvl 182)
+
+vendors:
+  # -------------------------------------------------------------------------
+  # STARTING GEAR -- free.
+  #   armor / shield / accessories: category -> suffix, granting the whole set
+  #                                 (8 slots + cloak for armor).
+  #   weapons:                      category -> type -> suffix, granting one.
+  # ilvl-182 level-80 green sets: Coldwraith / Geist / Spectral / Necropolis.
+  # -------------------------------------------------------------------------
+  - key: starting_gear
+    name: "Quartermaster"
+    subname: "Starting Gear"
+    display_id: 3275
+    teams:
+      - { team: 0, entry: 900300, x: 2396.4521, y: 1602.2882, z: 1177.009, o: 4.5592303 }   # Alliance
+      - { team: 1, entry: 900301, x: 1933.402, y: 1532.0234, z: 1180.1082, o: 1.3783675 }   # Horde 
+    # pieces order: head, shoulder, chest, wrist, hands, waist, legs, feet
+    categories:
+      - name: Cloth        # Coldwraith -- caster only (Eagle/Owl/Whale)
+        append_cloak: true
+        pieces: [36063, 36065, 36061, 36066, 36062, 36059, 36064, 36060]
+      - name: Leather      # Geist
+        append_cloak: true
+        pieces: [36175, 36177, 36173, 36178, 36174, 36171, 36176, 36172]
+      - name: Mail         # Spectral
+        append_cloak: true
+        pieces: [36287, 36289, 36285, 36290, 36286, 36283, 36288, 36284]
+      - name: Plate        # Necropolis
+        append_cloak: true
+        pieces: [36399, 36401, 36397, 36402, 36398, 36395, 36400, 36396]
+      - name: Shield       # Frozen Shield
+        pieces: [36458]
+      - name: Weapons      # type -> suffix -> a single weapon
+        subcategories:
+          - { name: "Sword (One-Hand)", pieces: [36528] }   # Skeleton's Sword
+          - { name: "Sword (Two-Hand)", pieces: [36542] }   # Invasion Blade
+          - { name: "Axe (One-Hand)",   pieces: [36584] }   # Snowy Edge
+          - { name: "Axe (Two-Hand)",   pieces: [36598] }   # Scarlet Battle Axe
+          - { name: "Mace (One-Hand)",  pieces: [36500] }   # Gargoyle's Mace
+          - { name: "Mace (Two-Hand)",  pieces: [36514] }   # Kingly Battlehammer
+          - { name: "Dagger",           pieces: [36486] }   # Ornate Pugio
+          - { name: "Polearm",          pieces: [36612] }   # Scourge War Spear
+          - { name: "Staff",            pieces: [36556] }   # Apocalyptic Staff
+          - { name: "Fist Weapon",      pieces: [36570] }   # Corrupted Scythes
+          - { name: "Bow",              pieces: [36626] }   # Military Compound Bow
+          - { name: "Gun",              pieces: [36654] }   # Harsh-Winter Rifle
+          - { name: "Crossbow",         pieces: [36640] }   # Scourge Crossbow
+          - { name: "Wand",             pieces: [36668] }   # Mindless Wand -- caster suffixes only
+      - name: Accessories  # 2 rings + 1 neck
+        pieces: [36430, 36429, 36444]
+
+  # Reserved for the next pass: consumables 900302/03, rare 900304/05,
+  # epic 900306/07.
