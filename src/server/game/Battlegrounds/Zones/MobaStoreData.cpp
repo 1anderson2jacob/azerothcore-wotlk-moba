@@ -114,7 +114,6 @@ void MobaStoreDataStore::LoadIfNeeded()
             grant.count     = fields[5].Get<uint32>();
 
             _grants[MakeKey(map, vendorId, nodeId)].push_back(grant);
-            _catalogByMap[map].insert(grant.itemEntry);
         } while (grants->NextRow());
     }
     else
@@ -147,10 +146,4 @@ std::vector<MobaStoreGrant> const* MobaStoreDataStore::GetGrants(uint32 map, uin
 {
     auto itr = _grants.find(MakeKey(map, vendorId, nodeId));
     return itr != _grants.end() ? &itr->second : nullptr;
-}
-
-std::unordered_set<uint32> const* MobaStoreDataStore::GetCatalogItems(uint32 map) const
-{
-    auto itr = _catalogByMap.find(map);
-    return itr != _catalogByMap.end() ? &itr->second : nullptr;
 }

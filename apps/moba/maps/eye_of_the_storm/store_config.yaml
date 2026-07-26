@@ -19,6 +19,13 @@
 
 map: 566
 
+# Hand out our own copies of each item (entry + 900000) instead of the stock
+# entries. Copies let us own SellPrice and Bonding and can never collide with a
+# world drop -- but the client cannot render an item whose entry is absent from
+# its Item.dbc (question-mark icon, zero suffix stats), so this stays off until
+# the client patch ships those rows. Server-side everything works either way.
+custom_items: false
+
 # Suffix menu order. `id` is the ItemRandomSuffix.dbc id the vendor stamps onto
 # the base item; `name` is only the menu label. gen_store.py verifies each id
 # against item_template.RandomSuffix + item_enchantment_template, so a base is

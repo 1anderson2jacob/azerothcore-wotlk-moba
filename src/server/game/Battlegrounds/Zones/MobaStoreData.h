@@ -22,7 +22,6 @@
 #include "SharedDefines.h"
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 // A vendor NPC. One creature entry per team; the team lives here rather than in
@@ -72,7 +71,6 @@ public:
     std::vector<MobaStoreGrant> const* GetGrants(uint32 map, uint32 vendorId, uint32 nodeId) const;
     // Every item entry this map's vendors can hand out, so the battleground can
     // strip shop gear when a player leaves.
-    std::unordered_set<uint32> const* GetCatalogItems(uint32 map) const;
 
 private:
     MobaStoreDataStore() = default;
@@ -90,7 +88,6 @@ private:
     std::unordered_map<uint64, MobaStoreNode const*> _byNode;
     std::unordered_map<uint64, std::vector<MobaStoreNode const*>> _byParent;
     std::unordered_map<uint64, std::vector<MobaStoreGrant>> _grants;
-    std::unordered_map<uint32, std::unordered_set<uint32>> _catalogByMap;
 };
 
 #define sMobaStoreDataStore MobaStoreDataStore::instance()

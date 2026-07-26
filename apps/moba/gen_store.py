@@ -235,17 +235,17 @@ def load_configs():
 
 def build(configs):
     """Resolve every config into flat SQL row tuples."""
-    wanted = set()
 
-    def collect(group):
-        wanted.update(group.get("pieces", []))
+    def collect(group, into):
+        into.update(group.get("pieces", []))
         for sub in group.get("subcategories", []):
-            collect(sub)
+            collect(sub, into)
 
+    wanted = set()
     for _, cfg in configs:
         for v in cfg["vendors"]:
             for c in v["categories"]:
-                collect(c)
+                collect(c, wanted)
         if cfg.get("cloak_item"):
             wanted.add(cfg["cloak_item"])
 
@@ -264,8 +264,7 @@ def build(configs):
             warn(f'item {entry} "{info["name"]}" requires level {info["req"]}, '
                  f"outside {EXPECTED_REQ_LEVEL.start}-{EXPECTED_REQ_LEVEL.stop - 1}")
 
-    npc_rows, menu_rows, grant_rows, vendors_meta = [], [], [], []
-    item_sell = {}          # source entry -> sell price in copper
+    npc_rows, menu_rows, grant_rows, vendors_meta, item_copies = [], [], [], [], []
 
     for path, cfg in configs:
         map_id = cfg["map"]
@@ -273,6 +272,19 @@ def build(configs):
         suffix_ids = {s["id"] for s in suffixes}
         cloak = cfg.get("cloak_item")
         map_sell_ratio = cfg.get("sell_ratio", 0)
+
+        # Stock entries render in an unpatched client; our own copies do not.
+        custom_items = bool(cfg.get("custom_items", False))
+        entry_offset = ITEM_ENTRY_OFFSET if custom_items else 0
+
+        cfg_items = set()
+        for v in cfg["vendors"]:
+            for c in v["categories"]:
+                collect(c, cfg_items)
+        if cloak:
+            cfg_items.add(cloak)
+
+        item_sell = {}          # source entry -> sell price in copper
 
         for vendor_id, v in enumerate(cfg["vendors"]):
             for t in v["teams"]:
@@ -304,6 +316,10 @@ def build(configs):
                 pieces = group["pieces"]
                 cost = group.get("cost", 0)
                 sell = int(round(cost * group.get("sell_ratio", map_sell_ratio)))
+
+                if sell and not custom_items:
+                    warn(f'{path}: group "{here}" resolves to sell price {sell}, but '
+                         f"custom_items is off -- stock items keep their own SellPrice")
 
                 # A piece that rolls none of the configured suffixes is a config
                 # error (wrong entry, or an id that item cannot roll).
@@ -339,7 +355,7 @@ def build(configs):
                         item_sell[item_entry] = sell
 
                         grant_rows.append((map_id, vendor_id, leaf,
-                                           item_entry + ITEM_ENTRY_OFFSET, s["id"], 1))
+                                           item_entry + entry_offset, s["id"], 1))
 
                     sub_sort += 1
                     purchases += 1
@@ -360,8 +376,9 @@ def build(configs):
 
             vendors_meta.append((path, map_id, vendor_id, v, purchases))
 
-    item_copies = [(entry, entry + ITEM_ENTRY_OFFSET, item_sell.get(entry, 0))
-                   for entry in sorted(wanted)]
+        if custom_items:
+            item_copies.extend((entry, entry + ITEM_ENTRY_OFFSET, item_sell.get(entry, 0))
+                               for entry in sorted(cfg_items))
 
     return npc_rows, menu_rows, grant_rows, vendors_meta, item_copies
 
@@ -556,7 +573,8 @@ def emit(npc_rows, menu_rows, grant_rows, item_copies):
         f"({m}, {vid}, {nid}, {item}, {suffix}, {count})"
         for m, vid, nid, item, suffix, count in grant_rows) + ";")
 
-    lines += emit_item_copies(item_copies)
+    if item_copies:
+        lines += emit_item_copies(item_copies)
 
     return "\n".join(lines) + "\n"
 
@@ -573,7 +591,10 @@ def main():
               f"{len(v['categories'])} categories, {purchases} purchase nodes")
     print(f"  {len(npc_rows)} vendor NPCs, {len(menu_rows)} menu nodes, "
           f"{len(grant_rows)} grant rows")
-    print(f"  {len(item_copies)} custom item copies (source entry + {ITEM_ENTRY_OFFSET})")
+    if item_copies:
+        print(f"  {len(item_copies)} custom item copies (source entry + {ITEM_ENTRY_OFFSET})")
+    else:
+        print("  custom_items off -- grants use stock item entries")
     print("Restart worldserver -- mod_moba_store.sql auto-applies on boot, and "
           "the data store caches once per process.")
 

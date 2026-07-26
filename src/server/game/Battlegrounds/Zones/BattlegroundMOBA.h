@@ -138,6 +138,8 @@ protected:
     uint32 CreepKills = 0;
 };
 
+class Item;
+
 class AC_GAME_API BattlegroundMOBA : public Battleground
 {
 public:
@@ -195,6 +197,10 @@ public:
     void RecordAllyHeal(Player* ally, Player* healer);
     void RecordAllyBuff(Player* ally, Player* buffer, int32 buffMaxDurationMs);
     void HandlePlayerDeath(Player* victim, Unit* killer);
+
+    // Remember an item the shop handed a player, so RemovePlayer can destroy
+    // exactly those items on exit. Called from npc_moba_store.
+    void RecordGrantedItem(Player* player, Item* item);
 
     // League camp-link: called from npc_moba_neutral::JustEngagedWith so
     // hitting one camp member pulls the rest onto the attacker.
@@ -260,6 +266,12 @@ private:
     // cleared on the victim's death and when they leave. Keeps every recent attacker
     // (not just the latest) so assist-split and bounties can read it later.
     std::unordered_map<ObjectGuid, std::unordered_map<ObjectGuid, uint32>> _recentAttackers;
+
+    // Items the shop handed each player, destroyed when they leave. Keyed by
+    // item GUID rather than entry: the shop hands out stock entries while
+    // custom_items is off, so an entry-based sweep would also destroy a
+    // player's own world-obtained copies.
+    std::unordered_map<ObjectGuid, std::vector<ObjectGuid>> _grantedItems;
 
     // ally GUID -> (supporter GUID -> last heal/short-buff time, ms). Feeds the LoL
     // assist chain: healing or a short combat buff on a kill participant links the

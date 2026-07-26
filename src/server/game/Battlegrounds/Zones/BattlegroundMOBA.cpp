@@ -47,7 +47,6 @@
 #include <algorithm>
 #include "Opcodes.h"
 #include <unordered_set>
-#include <limits>
 
 namespace
 {
@@ -158,6 +157,14 @@ void BattlegroundMOBA::AddPlayer(Player* player)
     player->RemoveSpellCooldown(BG_MOBA_RECALL_SPELL, true);
 }
 
+void BattlegroundMOBA::RecordGrantedItem(Player* player, Item* item)
+{
+    if (!player || !item)
+        return;
+
+    _grantedItems[player->GetGUID()].push_back(item->GetGUID());
+}
+
 void BattlegroundMOBA::RemovePlayer(Player* player)
 {
     // Hide the HUD bar for anyone leaving the match early (Leave button, logout, GM
@@ -169,15 +176,22 @@ void BattlegroundMOBA::RemovePlayer(Player* player)
         _recentAttackers.erase(player->GetGUID());
         _allySupport.erase(player->GetGUID());
 
-        // Shop gear is match-only. This hook covers every exit path, so it is
-        // the one place the sweep belongs. unequip_check = false so worn pieces
-        // go too -- DestroyItemCount walks bags, bank and equipped slots alike.
-        // The catalog holds our own custom entries, so this can never destroy a
-        // world-obtained item.
-        if (std::unordered_set<uint32> const* catalog = sMobaStoreDataStore->GetCatalogItems(GetMapId()))
+        // Shop gear is match-only, and this hook covers every exit path.
+        // Destroy exactly the items we handed out, by GUID. A sweep over the
+        // catalog's item entries would be stateless and survive a restart, but
+        // the shop hands out STOCK entries while custom_items is off -- the
+        // client cannot render a custom entry absent from its Item.dbc -- so an
+        // entry sweep would also destroy a player's own world-obtained copy.
+        // Once the client patch ships those rows and custom_items is on, an
+        // entry sweep can be restored as a stateless catch-all.
+        auto itr = _grantedItems.find(player->GetGUID());
+        if (itr != _grantedItems.end())
         {
-            for (uint32 itemEntry : *catalog)
-                player->DestroyItemCount(itemEntry, std::numeric_limits<uint32>::max(), true, false);
+            for (ObjectGuid itemGuid : itr->second)
+                if (Item* item = player->GetItemByGuid(itemGuid))
+                    player->DestroyItem(item->GetBagSlot(), item->GetSlot(), true);
+
+            _grantedItems.erase(itr);
 
             // DestroyItem zeroes the PLAYER_VISIBLE_ITEM fields, but this runs in
             // the same tick the player is pulled from the world, so the normal

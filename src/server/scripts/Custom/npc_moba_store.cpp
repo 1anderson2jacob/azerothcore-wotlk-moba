@@ -24,6 +24,7 @@
 #include "ScriptMgr.h"
 #include "ScriptedGossip.h"
 #include "StringFormat.h"
+#include "BattlegroundMOBA.h"
 
 namespace
 {
@@ -124,7 +125,21 @@ namespace
             int32 randomPropertyId = grant.suffixId ? -static_cast<int32>(grant.suffixId) : 0;
 
             if (Item* item = player->StoreNewItem(dest, grant.itemEntry, true, randomPropertyId))
+            {
+                // Bind at grant rather than at equip: the client only prompts
+                // "this will bind to you" for an unbound bind-on-equip item, and
+                // soulbound shop gear also cannot be traded to a teammate. Once
+                // custom_items is on, the copies carry BIND_WHEN_PICKED_UP and
+                // this becomes redundant.
+                item->SetBinding(true);
+
+                // Nothing else tracks these -- the battleground destroys exactly
+                // these item GUIDs when the player leaves.
+                if (BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground()))
+                    moba->RecordGrantedItem(player, item);
+
                 player->SendNewItem(item, grant.count, true, false);
+            }
         }
     }
 }
