@@ -136,6 +136,7 @@ Neither is duplicated here. Read them when the task needs them.
 | HUD bar | `client/addons/MobaHUD/`, `scripts/Custom/moba_hud.cpp` | — (client addon; copy into `Interface/AddOns/`) |
 | Neutral camps | `Zones/MobaNeutralData.{h,cpp}`, `scripts/Custom/npc_moba_neutral.cpp` | `neutral_config.yaml` → `gen_neutral_camps.py` → `mod_moba_neutrals.sql` |
 | On-death drops | `Zones/MobaDropData.{h,cpp}`, `GrantDeathDrops` in `BattlegroundMOBA.cpp` | `drops` lists in creep/neutral configs → both generators |
+| Item shop | `Zones/MobaStoreData.{h,cpp}`, `scripts/Custom/npc_moba_store.cpp`, `RecordGrantedItem` + `RemovePlayer` in `BattlegroundMOBA.cpp` | `store_config.yaml` → `gen_store.py` → `mod_moba_store.sql` (vendor NPCs + spawns + gossip catalog) |
 
 
 Per-map config bundles live in `apps/moba/maps/<mode>/`; generators in `apps/moba/` (see `apps/moba/README.md`). Adding a map/mode = dropping in a new `maps/<mode>/` bundle — every content table carries a `Map` column. Custom DB entries live at **900000+**. Custom SQL in data/sql/custom/db_world/ (+db_auth/db_characters) and vendored-module SQL auto-apply on worldserver boot (Updates.AutoSetup).
@@ -196,8 +197,14 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 | `MOBA_GUIDE.md` gotcha index | One line naming the trap + where the full explanation lives | The full explanation |
 | `CLAUDE.md` | Rules, environment, and a map of where things live | Feature explanations; the roadmap |
 | `.github/README.md` | The roadmap; the public-facing overview | Internal recipes |
-| `.github/MOBA_*_PLAN.md` | Work not yet built | Anything shipped — **delete the plan when the work lands** |
+| `.github/MOBA_*_PLAN.md` | Work not yet built; the mid-feature handoff | Anything shipped |
 
+- **Every feature starts with a plan file.** Before writing code, create
+  `.github/MOBA_<FEATURE>_PLAN.md` holding the goal, decisions already made (so
+  they are not relitigated), what is built, what is left, and any hard-won facts
+  discovered along the way. Keep it current as work proceeds — it is the handoff
+  if a session ends mid-feature. **Delete it when the feature lands**; it is
+  never committed.
 - Never explain something in two places. Link instead.
 - Comments state constraints, not narration — never "what the next line does", never "why this change is correct".
 - Prefer deleting a stale line over updating it.
@@ -206,4 +213,5 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 ## Deferred / known-untidy
 
 - Tower `DisplayScale` 5.0 too large; tower positions temporary (mid-lane placement planned, via `.gps`)
-- **Client-patch bundle** — all blocked on the same MPQ/DBC work, so do them together: the recall tooltip still reads "Returns you to \<bind\>"; recall and fountain have no custom spell visuals; custom battle sounds (a doors-open cue and a first-wave-only cue — two `PlaySoundToAll` calls, ~10 min once `SoundEntries.dbc` rows exist); Twisted Treeline music; the leftover EotS grey point-icons.
+- **Client-patch bundle** — all blocked on the same MPQ/DBC work, so do them together: the recall tooltip still reads "Returns you to \<bind\>"; recall and fountain have no custom spell visuals; custom battle sounds (a doors-open cue and a first-wave-only cue — two `PlaySoundToAll` calls, ~10 min once `SoundEntries.dbc` rows exist); Twisted Treeline music; the leftover EotS grey point-icons; the item shop's `custom_items` flag (`Item.dbc` rows for the `+900000` copies).
+- Shop bag-space check counts empty slots only (`GetFreeInventorySpace`), so buying a stack of consumables with a full bag is refused even when a partial stack could absorb them

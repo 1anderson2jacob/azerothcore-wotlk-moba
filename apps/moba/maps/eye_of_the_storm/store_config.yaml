@@ -8,8 +8,11 @@
 # entry -- same pattern as towers). Both teams of a vendor share one menu.
 #
 # A menu group has either `subcategories` (a branch) or `pieces` (suffix leaves),
-# never both -- nest as deep as you like.
-#
+# A menu group has exactly one of `subcategories` (a branch), `pieces` (one leaf
+# per suffix, granting the whole bundle) or `items` (one leaf per fixed item, no
+# suffix) -- nest as deep as you like. An `items:` entry is a bare item id, or a
+# table overriding cost / count / name; a leaf label defaults to the item's own
+# name from item_template.
 # "of the X" items are stock green random-suffix bases: the vendor stamps a
 # suffix id onto the base at grant time. gen_store.py derives which suffixes a
 # base may roll from item_template.RandomSuffix + item_enchantment_template and
@@ -102,5 +105,138 @@ vendors:
       - name: Accessories  # 2 rings + 1 neck
         pieces: [36430, 36429, 36444]
 
-  # Reserved for the next pass: consumables 900302/03, rare 900304/05,
-  # epic 900306/07.
+  # -------------------------------------------------------------------------
+  # CONSUMABLES -- 50s each. Fixed items, no suffixes.
+  # Everything here is free of profession gates: bandages need First Aid 400,
+  # bombs need Engineering and Crazy Alchemist's Potion needs Alchemy 400, so
+  # none of those can be sold to an arbitrary character.
+  # All potions share one combat cooldown, so it is one potion per fight.
+  # -------------------------------------------------------------------------
+  - key: consumables
+    name: "Apothecary"
+    subname: "Consumables"
+    display_id: 4861
+    teams:
+      - { team: 0, entry: 900302, x: 2377.5535, y: 1605.5874, z: 1172.1476, o: 4.2953353 }
+      - { team: 1, entry: 900303, x: 1949.5693, y: 1531.0472, z: 1175.7777, o: 1.5558678 }
+    categories:
+      - name: Potions
+        cost: 5000
+        items:
+          - { entry: 33447, count: 5 }   # Runic Healing Potion
+          - { entry: 33448, count: 5 }   # Runic Mana Potion
+          - { entry: 2459,  count: 5 }   # Swiftness Potion -- +50% run speed 15s
+          - { entry: 5634,  count: 3 }   # Free Action Potion -- stun/root immune 30s
+          - { entry: 9172,  count: 3 }   # Invisibility Potion
+          - { entry: 40093, count: 3 }   # Indestructible Potion -- +3500 armour
+          - { entry: 40211, count: 3 }   # Potion of Speed -- +500 haste
+          - { entry: 40212, count: 3 }   # Potion of Wild Magic -- +200 crit/spell power
+      - name: Flasks                     # survive death, so they last the match
+        cost: 5000
+        items:
+          - 46377                        # Flask of Endless Rage -- +180 attack power
+          - 46376                        # Flask of the Frost Wyrm -- +125 spell power
+
+  # -------------------------------------------------------------------------
+  # RARE GEAR -- 1g each. ilvl 200 blues, every slot, two stat flavours per slot
+  # (physical then caster). Cloth is caster-only, so it lists one per slot.
+  # Mail's physical line carries intellect -- WotLK hunter mail always does.
+  # Weapons are the Savage Gladiator's arena set: complete across all 14 types,
+  # internally balanced, and resilience-carrying. Caster variants hang under the
+  # 1H mace, dagger and staff, which are the only types the set splits.
+  # -------------------------------------------------------------------------
+  - key: rare_gear
+    name: "Quartermaster"
+    subname: "Rare Gear"
+    display_id: 1355
+    teams:
+      - { team: 0, entry: 900304, x: 2388.638, y: 1602.5381, z: 1174.7131, o: 4.4084325 }
+      - { team: 1, entry: 900305, x: 1937.5688, y: 1531.9581, z: 1178.9604, o: 1.4309891 }
+    # slot order throughout: head, shoulder, chest, waist, legs, feet, wrist, hands
+    categories:
+      - name: Cloth
+        cost: 10000
+        items: [37715, 37691, 43401, 45156, 43313, 37629, 37245, 43287]
+      - name: Leather
+        cost: 10000
+        items: [43403, 37149, 37593, 37652, 43476, 37587, 37714, 45181,
+                43286, 37616, 45159, 37176, 37183, 37634, 37678, 37858]
+      - name: Mail
+        cost: 10000
+        items: [43311, 37592, 37373, 37398, 37144, 43410, 45184, 37868,
+                37262, 37818, 37870, 45183, 40490, 37365, 37614, 43475]
+      - name: Plate
+        cost: 10000
+        items: [37849, 43280, 37698, 37376, 37722, 37672, 37826, 37699,
+                37263, 37650, 37367, 43405, 37891, 37288, 37874, 45182]
+      - { name: Shield, cost: 10000, items: [42556, 42557] }
+      - { name: Cloak,  cost: 10000, items: [45811, 45810] }
+      - name: Weapons
+        subcategories:
+          - { name: "Sword (One-Hand)", cost: 10000, items: [42224] }
+          - { name: "Sword (Two-Hand)", cost: 10000, items: [42297] }
+          - { name: "Axe (One-Hand)",   cost: 10000, items: [42206] }
+          - { name: "Axe (Two-Hand)",   cost: 10000, items: [42294] }
+          - { name: "Mace (One-Hand)",  cost: 10000, items: [42222, 42344] }
+          - { name: "Mace (Two-Hand)",  cost: 10000, items: [42295] }
+          - { name: "Dagger",           cost: 10000, items: [42216, 42343] }
+          - { name: "Polearm",          cost: 10000, items: [42296] }
+          - { name: "Staff",            cost: 10000, items: [42356, 37190] }
+          - { name: "Fist Weapon",      cost: 10000, items: [42218] }
+          - { name: "Bow",              cost: 10000, items: [42445] }
+          - { name: "Gun",              cost: 10000, items: [42447] }
+          - { name: "Crossbow",         cost: 10000, items: [42446] }
+          - { name: "Wand",             cost: 10000, items: [42448] }
+      - name: Accessories              # neck x2, then ring x2, each flavour
+        cost: 10000
+        items: [45812, 45813, 45809, 37151, 45808, 43408]
+
+  # -------------------------------------------------------------------------
+  # EPIC GEAR -- 2g each. ilvl 213-226 purples, same shape as rare.
+  # Weapons are the Deadly Gladiator's set, except Fist: no Deadly fist weapon
+  # exists in the game, so that one leaf falls back to Hateful Gladiator's.
+  # -------------------------------------------------------------------------
+  - key: epic_gear
+    name: "Quartermaster"
+    subname: "Epic Gear"
+    display_id: 16203
+    teams:
+      - { team: 0, entry: 900306, x: 2382.9636, y: 1604.8624, z: 1173.1526, o: 4.3236103 }
+      - { team: 1, entry: 900307, x: 1942.9971, y: 1532.0552, z: 1177.4833, o: 1.2605579 }
+    categories:
+      - name: Cloth
+        cost: 20000
+        items: [45435, 45253, 45272, 40561, 45238, 45258, 45275, 45273]
+      - name: Leather
+        cost: 20000
+        items: [45993, 45439, 45265, 45492, 40539, 45237, 45829, 45185,
+                44011, 45482, 45162, 45260, 45108, 45149, 40541, 45293]
+      - name: Mail
+        cost: 20000
+        items: [45164, 45118, 45227, 46044, 45524, 45531, 45467, 45151,
+                45844, 45544, 45249, 45513, 45454, 45187, 45836, 45239]
+      - name: Plate
+        cost: 20000
+        items: [44006, 45226, 45320, 45140, 45225, 45167, 45824, 45826,
+                45248, 45452, 45501, 45434, 45264, 45252, 45833, 45835]
+      - { name: Shield, cost: 20000, items: [42559, 42564] }
+      - { name: Cloak,  cost: 20000, items: [45224, 45493] }
+      - name: Weapons
+        subcategories:
+          - { name: "Sword (One-Hand)", cost: 20000, items: [42285] }
+          - { name: "Sword (Two-Hand)", cost: 20000, items: [42332] }
+          - { name: "Axe (One-Hand)",   cost: 20000, items: [42208] }
+          - { name: "Axe (Two-Hand)",   cost: 20000, items: [42317] }
+          - { name: "Mace (One-Hand)",  cost: 20000, items: [42275, 42352] }
+          - { name: "Mace (Two-Hand)",  cost: 20000, items: [42322] }
+          - { name: "Dagger",           cost: 20000, items: [42242, 42346] }
+          - { name: "Polearm",          cost: 20000, items: [42327] }
+          - { name: "Staff",            cost: 20000, items: [42362, 40388] }
+          - { name: "Fist Weapon",      cost: 20000, items: [42259] }
+          - { name: "Bow",              cost: 20000, items: [42490] }
+          - { name: "Gun",              cost: 20000, items: [42485] }
+          - { name: "Crossbow",         cost: 20000, items: [42495] }
+          - { name: "Wand",             cost: 20000, items: [42502] }
+      - name: Accessories
+        cost: 20000
+        items: [45480, 45822, 45525, 45106, 45451, 45168]

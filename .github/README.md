@@ -36,10 +36,10 @@ Shipped:
 - [x] HUD revive countdown + kill feed — center-screen respawn countdown (client-ticked, re-synced on `/reload` while dead); transient feed for player kills (per-POV text, team-relative colours, class emblems) and non-player deaths (creep/tower/neutral/environment, category label + icon)
 - [x] YAML content configs — per-map generator configs migrated from JSON to commented YAML (inline field docs); generators read via PyYAML, generated SQL byte-identical
 - [x] Inhibitors + super minions — a passive inhibitor gates each base behind the tower; taking it fields stronger "super minion" waves for the attacker until it respawns, then the base re-locks. The base (core) is now the win condition — destroy the enemy base to win.
+- [x] Gear and items infrastructure — gossip shop NPCs in each base: starting gear (free, random-suffix bundles), consumables, rare and epic tiers. Per-map `store_config.yaml` drives an arbitrary-depth menu; suffix availability is derived from `item_template`, purchases are team-gated and all-or-nothing, and grants are GUID-tracked and stripped on exit
 
 Next, in order:
 
-- [ ] Gear and items infrastructure
 - [ ] Custom map/terrain — move onto the Twisted Treeline map (WMO route, ADT fallback; see `MOBA_MAP_WMO_PLAN.md`)
 - [ ] Standalone battleground ID via `BattlemasterList.dbc` patch (client MPQ distributed to players) — bundles with the custom-map work
 - [ ] Client-patch bundle - recall tooltip / animation, fountain heal visuals, custom battle sounds, music

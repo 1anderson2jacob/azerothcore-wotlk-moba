@@ -233,6 +233,44 @@ Both are anchored to the team's base and configured from `base_config.yaml`.
   server-side. Resolves when recall becomes its own spell in the client-patch
   phase.
 
+### Item shop
+
+Gossip vendor NPCs standing in each base — starting gear (free), consumables,
+rare and epic — generated per map from `store_config.yaml` → `gen_store.py` →
+`mod_moba_store.sql`. A player right-clicks, walks a nested menu, and buys;
+`npc_moba_store.cpp` validates, charges, and grants.
+
+- **Gossip, not `npc_vendor`.** The native vendor table is keyed on creature
+  entry, so one NPC gets one flat list and cannot filter per branch. The menu is
+  our own three tables (`mod_moba_store_npc` / `_menu` / `_grant`), walked as an
+  arbitrary-depth `ParentId` chain. `TryPurchase` is deliberately
+  front-end-agnostic, so a shop addon could drive it with a node id and no rewrite.
+- **Team lives in `mod_moba_store_npc`, not in faction.** Vendors are faction 35
+  (friendly to all) and immune; CFBG puts players of either faction on either BG
+  team, so faction cannot express team. The script refuses a mismatched
+  `GetBgTeamId`.
+- **Two kinds of leaf, one grant table.** A `pieces` group hangs one leaf per
+  random suffix and grants a whole bundle under it; an `items` group hangs one
+  leaf per fixed named item with no suffix. Which suffixes a base may legally roll
+  is derived from `item_template.RandomSuffix` joined to
+  `item_enchantment_template` and never hand-listed, so cloth's caster-only
+  suffixes and the wand's absence from physical bundles fall out of the data.
+- **Charged last, all-or-nothing.** Bag space is checked for the whole bundle,
+  then every item is pre-validated, and only then does money leave — see the
+  gotcha index.
+- **Everything granted is tracked and stripped.** Items are soulbound at grant and
+  recorded by GUID in `BattlegroundMOBA::_grantedItems`, so every exit path
+  destroys exactly what the shop handed out and never a world-obtained copy of the
+  same entry.
+- **Vendors spawn from the `creature` table**, not `AddCreature` — they are static
+  props, and this avoids adding `BgCreatures` enum slots (an ordering trap that has
+  caused two boot bugs).
+- **`custom_items` is off.** The generator can clone every sold item under our own
+  entry (`+900000`) to own `SellPrice` and `Bonding`; the machinery is written and
+  gated, but the client renders an entry absent from its `Item.dbc` as a "?" icon
+  with zero suffix stats. Server-side both paths work — it flips on with the
+  client patch.
+
 ### HUD bar
 
 An on-screen bar drawn by the client addon `client/addons/MobaHUD` (`.toc` +
@@ -421,6 +459,52 @@ would confound the test.
 fountain heal zone and the core's prep-phase leash ("can't leave before doors
 open"). Changing it moves both — check both after.
 
+## Recipes: item shop
+
+Every vendor lives in one per-map bundle: `maps/<mode>/store_config.yaml` →
+`gen_store.py` → `mod_moba_store.sql`. Deploy is a **full restart** — the data
+store caches once per worldserver process, so `.debug bg` and a requeue won't do.
+
+**Add an item to a vendor** — append its entry to the category's `items` list: a
+bare id, or `{ entry, count, cost, name }` to override. The leaf label defaults to
+the item's own `item_template` name, so most entries need nothing else. Run
+`gen_store.py`; deploy.
+
+**Add a category** — a block under that vendor's `categories` holding exactly one
+of `subcategories` (a branch), `pieces` (suffix bundles) or `items` (fixed items).
+Nest as deep as you like; gossip allows 32 entries per menu and the generator
+fails the run above that.
+
+**Add a vendor** — a new `vendors` block: `key`, `name`, `subname`, `display_id`
+(`.morph` to choose one), two `teams` entries with globally unique creature
+entries in the 900300+ window and `.gps` positions, then `categories`. Node ids
+regenerate fresh every run and nothing persistent references them, so there is no
+lockfile here — unlike creep entries and waypoint path ids.
+
+**Change a price** — `cost` in copper, on the group or per item. `sell_ratio`
+(map-level, overridable per group and per item) only bites once `custom_items` is
+on, because stock entries keep their own `SellPrice`; the generator warns once per
+config when it resolves non-zero while the flag is off.
+
+**Pick items out of `item_template`** — filter on `Quality`, `RequiredLevel` and
+`InventoryType`, but be careful with "usable by everyone": `AllowableClass` and
+`AllowableRace` encode *unrestricted* two different ways, and consumables can be
+profession-gated. Both are in the gotcha index.
+
+**Verify a generator change without touching the DB** — `build()` is pure
+computation, so a run can be diffed against the committed SQL:
+
+```bash
+python3 -c "
+import sys; sys.path.insert(0,'apps/moba')
+import gen_store as g
+cfgs=g.load_configs(); npc,menu,grant,meta,copies=g.build(cfgs)
+print('matches disk:', g.emit(npc,menu,grant,copies)==open('data/sql/custom/db_world/mod_moba_store.sql').read())
+"
+```
+
+Always confirm the committed SQL matches its generator before committing.
+
 ## Recipes: HUD and map
 
 **Retune or extend the HUD** — resync cadence is `MOBA_HUD_RESYNC_MS` (anonymous
@@ -484,6 +568,18 @@ touching that area:
   player/pet killing blow, but MOBA deaths are as often finished by a creep, tower,
   or environment, so all crediting + death tallying lives in `HandlePlayerDeath` via
   `OnUnitDeath`. → `BattlegroundMOBA.cpp`, `HandleKillPlayer` / `HandlePlayerDeath`.
+- **Money must leave only after every item is pre-validated** — a
+  `CanStoreNewItem` inside the grant loop is too late: a unique item the player
+  already owns is refused there and the gold is already gone. The bundle path also
+  needs its own free-slot check, because per-item validation can't see the slots
+  the bundle's earlier pieces will take. → `npc_moba_store.cpp`, `TryPurchase`.
+- **Copy whole rows through a staging table, not a hand-listed column set** — an
+  upstream column change breaks the enumeration, and `item_template` has already
+  lost one. → `emit_item_copies` in `gen_store.py`.
+- **The 3.3.5 client relocates its player object on a map change rather than
+  recreating it** — field changes made in the tick a player leaves never reach it,
+  so stripped gear stays rendered until relog. `ForceValuesUpdateAtIndex` does not
+  help; it only marks fields dirty. → `RemovePlayer` in `BattlegroundMOBA.cpp`.
 
 Traps with no single code home:
 
@@ -511,6 +607,17 @@ Traps with no single code home:
   just the new one). Re-run the generator. And the new column shifts the
   trailing-comma: the previously-last DDL line needs a comma, the new last line must
   not. Cost two boots.
+- **`AllowableClass` / `AllowableRace` encode "unrestricted" two ways** — `-1`
+  *and* the all-bits-set mask (`262143` / `2147483647`). Filtering on `-1` alone
+  silently drops legitimate items, and produced one confident, wrong "no such item
+  exists" conclusion during the shop's item pass.
+- **Consumables can be profession-gated** via `item_template.RequiredSkill` —
+  bandages need First Aid, bombs Engineering, Crazy Alchemist's Potion Alchemy. A
+  character without the skill simply cannot use what it bought.
+- **`data/sql/base/` is the *historical* schema** — the live schema is base +
+  `updates/`. `creature.id1` was renamed `id`; `item_template` lost `StatsCount`.
+  When hand-writing generated SQL, trust the `SELECT` in `ObjectMgr.cpp` — it must
+  match the live schema or the server wouldn't boot. Cost one failed apply.
 
 ## Reference: values that live in code
 
@@ -521,7 +628,7 @@ C++ or are allocation policy:
 | What | Value |
 |---|---|
 | BG map id (all content rows are tagged with it) | 566 (hijacked EotS) |
-| Custom DB entry range | 900000+ — towers 900000–900001, creeps 900010–900017, neutrals 900200–900207 |
+| Custom DB entry range | 900000+ — towers 900000–900001, creeps 900010–900017, neutrals 900200–900207, shop vendors 900300–900307 |
 | Custom waypoint path ID range | 900100–900122 (base lanes + per-formation-slot paths) |
 | Graveyard DB IDs | 1103 (Alliance), 1104 (Horde) — reused vanilla EotS rows |
 | Wave cadence | every 30s; every 3rd wave adds siege (`BattlegroundMOBA.cpp`) |

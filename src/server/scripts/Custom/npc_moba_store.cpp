@@ -106,6 +106,20 @@ namespace
             return;
         }
 
+        // Every per-item refusal must be caught BEFORE the money leaves. The
+        // catalog sells maxcount=1 items, so buying one twice is an ordinary
+        // player action, not an edge case -- and it costs nothing to check.
+        for (MobaStoreGrant const& grant : *grants)
+        {
+            ItemPosCountVec dest;
+            InventoryResult msg = player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, grant.itemEntry, grant.count);
+            if (msg != EQUIP_ERR_OK)
+            {
+                player->SendEquipError(msg, nullptr, nullptr, grant.itemEntry);
+                return;
+            }
+        }
+
         if (node.costCopper)
             player->ModifyMoney(-static_cast<int32>(node.costCopper));
 
@@ -115,6 +129,13 @@ namespace
             InventoryResult msg = player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, grant.itemEntry, grant.count);
             if (msg != EQUIP_ERR_OK)
             {
+                // The pass above cleared this item against an empty-handed
+                // player, so a refusal here means earlier pieces of this same
+                // bundle took the room. The money is already gone, so it must
+                // not fail silently.
+                LOG_ERROR("scripts.moba", "npc_moba_store: item {} refused ({}) after pre-validation "
+                          "on node {} (map {}, vendor {}).",
+                          grant.itemEntry, uint32(msg), node.nodeId, npc.map, npc.vendorId);
                 player->SendEquipError(msg, nullptr, nullptr, grant.itemEntry);
                 continue;
             }

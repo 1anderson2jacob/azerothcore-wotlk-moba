@@ -15,6 +15,13 @@ generates data/sql/custom/db_world/mod_moba_store.sql in full:
   * mod_moba_store_menu   -- the gossip tree, arbitrary depth
   * mod_moba_store_grant  -- the item(s) behind each purchase node
 
+A menu group is exactly one of three shapes:
+  * subcategories -- a branch, nested to any depth
+  * pieces        -- random-suffix bases; ONE LEAF PER SUFFIX, granting the whole
+                     bundle under that suffix
+  * items         -- fixed named items; ONE LEAF PER ITEM, no suffix (the blue,
+                     purple and consumable vendors)
+
 Starting-gear "of the X" pieces are stock green random-suffix bases: the vendor
 stamps a suffix id onto the base at grant time. Which suffixes a base may
 legally roll is DERIVED here from committed data --
@@ -64,6 +71,8 @@ DEFAULT_SUBNAME = "MOBA Vendor"
 QUALITY_GREEN = 2
 EXPECTED_REQ_LEVEL = range(77, 81)   # advisory only
 
+MAX_USABLE_REQ_LEVEL = 80            # a fixed item above this can never be equipped
+
 GOSSIP_MAX_MENU_ITEMS = 32       # GossipDef.h; a fuller menu is silently truncated
 
 # Custom copy entry = source entry + this offset (36063 -> 936063). Deterministic,
@@ -83,6 +92,11 @@ def warn(msg):
 
 def sql_str(s):
     return "'" + str(s).replace("'", "''") + "'"
+
+
+def item_spec(spec):
+    """One `items:` leaf -- a bare entry id, or a table overriding cost/count/name."""
+    return {"entry": spec} if isinstance(spec, int) else dict(spec)
 
 
 def parse_tuple_at(data, start):
@@ -187,17 +201,21 @@ def validate(cfg, path):
     if not isinstance(cfg.get("vendors"), list) or not cfg["vendors"]:
         fail(f'{path}: "vendors" must be a non-empty list')
 
-    # A menu group is either a branch ("subcategories") or a leaf-bearing group
-    # ("pieces"), never both -- that is what allows arbitrary nesting depth.
+    # A menu group is a branch ("subcategories") or leaf-bearing ("pieces" for
+    # suffix bundles, "items" for fixed items), never more than one -- that is
+    # what allows arbitrary nesting depth.
     def validate_group(group, vendor_key, trail):
         if "name" not in group:
             fail(f'{path}: vendor {vendor_key} group under "{trail}" needs a "name"')
         here = f'{trail} / {group["name"]}'
-        has_subs = bool(group.get("subcategories"))
-        has_pieces = bool(group.get("pieces"))
-        if has_subs == has_pieces:
+        modes = [k for k in ("subcategories", "pieces", "items") if group.get(k)]
+        if len(modes) != 1:
             fail(f'{path}: vendor {vendor_key} group "{here}" needs exactly one of '
-                 f'"subcategories" or "pieces"')
+                 f'"subcategories", "pieces" or "items"')
+        for spec in group.get("items", []):
+            if not isinstance(spec, int) and "entry" not in spec:
+                fail(f'{path}: vendor {vendor_key} group "{here}": every "items" entry is '
+                     f'an item id or a table with an "entry"')
         for sub in group.get("subcategories", []):
             validate_group(sub, vendor_key, here)
 
@@ -236,33 +254,43 @@ def load_configs():
 def build(configs):
     """Resolve every config into flat SQL row tuples."""
 
-    def collect(group, into):
-        into.update(group.get("pieces", []))
+    def collect(group, bases, fixed):
+        bases.update(group.get("pieces", []))
+        fixed.update(item_spec(s)["entry"] for s in group.get("items", []))
         for sub in group.get("subcategories", []):
-            collect(sub, into)
+            collect(sub, bases, fixed)
 
-    wanted = set()
+    suffix_bases, fixed_items = set(), set()
     for _, cfg in configs:
         for v in cfg["vendors"]:
             for c in v["categories"]:
-                collect(c, wanted)
+                collect(c, suffix_bases, fixed_items)
         if cfg.get("cloak_item"):
-            wanted.add(cfg["cloak_item"])
+            suffix_bases.add(cfg["cloak_item"])
 
-    items = load_items(wanted)
+    items = load_items(suffix_bases | fixed_items)
     groups = load_suffix_groups()
 
     def rolls(entry):
         """The suffix ids this base item can actually roll."""
         return groups.get(items[entry]["suffix_group"], set())
 
-    for entry, info in sorted(items.items()):
+    # Only suffix bases must be green: a random suffix cannot roll on a blue or a
+    # purple, which is exactly what the fixed-item vendors sell.
+    for entry in sorted(suffix_bases):
+        info = items[entry]
         if info["quality"] != QUALITY_GREEN:
             warn(f'item {entry} "{info["name"]}" is quality {info["quality"]}, '
                  f"not green -- random suffixes only roll on greens")
         if info["req"] not in EXPECTED_REQ_LEVEL:
             warn(f'item {entry} "{info["name"]}" requires level {info["req"]}, '
                  f"outside {EXPECTED_REQ_LEVEL.start}-{EXPECTED_REQ_LEVEL.stop - 1}")
+
+    for entry in sorted(fixed_items):
+        info = items[entry]
+        if info["req"] > MAX_USABLE_REQ_LEVEL:
+            fail(f'item {entry} "{info["name"]}" requires level {info["req"]} -- '
+                 f"unusable by a level-{MAX_USABLE_REQ_LEVEL} player")
 
     npc_rows, menu_rows, grant_rows, vendors_meta, item_copies = [], [], [], [], []
 
@@ -277,14 +305,26 @@ def build(configs):
         custom_items = bool(cfg.get("custom_items", False))
         entry_offset = ITEM_ENTRY_OFFSET if custom_items else 0
 
-        cfg_items = set()
+        cfg_bases, cfg_fixed = set(), set()
         for v in cfg["vendors"]:
             for c in v["categories"]:
-                collect(c, cfg_items)
+                collect(c, cfg_bases, cfg_fixed)
         if cloak:
-            cfg_items.add(cloak)
+            cfg_bases.add(cloak)
+        cfg_items = cfg_bases | cfg_fixed
 
         item_sell = {}          # source entry -> sell price in copper
+
+        def note_sell(item_entry, sell, here):
+            # SellPrice is a column on the copied row, so one item cannot carry two
+            # prices -- the cloak is shared by every armour category, so those groups
+            # must agree.
+            prior = item_sell.get(item_entry)
+            if prior is not None and prior != sell:
+                fail(f'{path}: item {item_entry} "{items[item_entry]["name"]}" resolves '
+                     f'to sell price {sell} under "{here}" but {prior} elsewhere -- give '
+                     f"the groups the same cost/sell_ratio, or the item its own entry")
+            item_sell[item_entry] = sell
 
         for vendor_id, v in enumerate(cfg["vendors"]):
             for t in v["teams"]:
@@ -294,8 +334,9 @@ def build(configs):
             purchases = 0
 
             def add_group(group, parent_id, sort_order, trail):
-                """Emit `group`'s menu node, then recurse into its subcategories
-                or hang one purchase node per available suffix off it."""
+                """Emit `group`'s menu node, then recurse into its subcategories,
+                hang one purchase node per fixed item, or hang one per suffix the
+                whole bundle can roll."""
                 nonlocal next_node, purchases
 
                 next_node += 1
@@ -313,13 +354,41 @@ def build(configs):
                         add_group(sub, node, i, here)
                     return
 
+                group_ratio = group.get("sell_ratio", map_sell_ratio)
+
+                # Fixed-item group: one leaf per item, no suffix. Blues, purples and
+                # consumables are named items, not random-suffix bases.
+                fixed = group.get("items")
+                if fixed:
+                    leaves = []
+                    for spec in (item_spec(s) for s in fixed):
+                        cost = spec.get("cost", group.get("cost", 0))
+                        leaves.append((spec, cost,
+                                       int(round(cost * spec.get("sell_ratio", group_ratio)))))
+
+                    if len(leaves) > GOSSIP_MAX_MENU_ITEMS:
+                        fail(f'{path}: vendor {v["key"]} group "{here}" has {len(leaves)} '
+                             f"items -- gossip allows at most {GOSSIP_MAX_MENU_ITEMS}")
+
+                    for i, (spec, cost, sell) in enumerate(leaves):
+                        entry = spec["entry"]
+                        count = spec.get("count", 1)
+                        label = spec.get("name", items[entry]["name"])
+                        if count > 1:
+                            label += f" x{count}"
+
+                        next_node += 1
+                        leaf = next_node
+                        menu_rows.append((map_id, vendor_id, leaf, node, i, label, 1, cost))
+                        note_sell(entry, sell, here)
+                        grant_rows.append((map_id, vendor_id, leaf,
+                                           entry + entry_offset, 0, count))
+                        purchases += 1
+                    return
+
                 pieces = group["pieces"]
                 cost = group.get("cost", 0)
-                sell = int(round(cost * group.get("sell_ratio", map_sell_ratio)))
-
-                if sell and not custom_items:
-                    warn(f'{path}: group "{here}" resolves to sell price {sell}, but '
-                         f"custom_items is off -- stock items keep their own SellPrice")
+                sell = int(round(cost * group_ratio))
 
                 # A piece that rolls none of the configured suffixes is a config
                 # error (wrong entry, or an id that item cannot roll).
@@ -343,17 +412,7 @@ def build(configs):
                                       s["name"], 1, cost))
 
                     for item_entry in bundle:
-                        # SellPrice is a column on the copied row, so one item
-                        # cannot carry two prices -- the cloak is shared by every
-                        # armour category, so those must agree.
-                        prior = item_sell.get(item_entry)
-                        if prior is not None and prior != sell:
-                            fail(f'{path}: item {item_entry} "{items[item_entry]["name"]}" '
-                                 f"resolves to sell price {sell} under \"{here}\" but "
-                                 f"{prior} elsewhere -- give the groups the same "
-                                 f"cost/sell_ratio, or the item its own entry")
-                        item_sell[item_entry] = sell
-
+                        note_sell(item_entry, sell, here)
                         grant_rows.append((map_id, vendor_id, leaf,
                                            item_entry + entry_offset, s["id"], 1))
 
@@ -375,6 +434,10 @@ def build(configs):
                 add_group(c, 0, cat_sort, v["key"])
 
             vendors_meta.append((path, map_id, vendor_id, v, purchases))
+
+        if not custom_items and any(item_sell.values()):
+            warn(f"{path}: sell prices resolve non-zero but custom_items is off -- "
+                 f"stock items keep their own SellPrice")
 
         if custom_items:
             item_copies.extend((entry, entry + ITEM_ENTRY_OFFSET, item_sell.get(entry, 0))
