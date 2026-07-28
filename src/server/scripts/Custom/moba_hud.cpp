@@ -21,11 +21,15 @@
 #include "ScriptMgr.h"
 #include "SharedDefines.h"
 
-// The MobaHUD client addon sends a one-shot "ready" ping over the battleground addon
-// channel (SendAddonMessage("MobaHUD", "REQ", "BATTLEGROUND")) on entering the world.
-// We answer with the current HUD state so the bar populates the instant the client is
-// listening -- no warmup polling. This fires via the group-chat CanUseChat hook, which
-// battleground chat routes through; returning false consumes the ping.
+// The MobaHUD addon sends a one-shot "ready" ping ("MobaHUD\tREQ") over the
+// battleground addon channel on entering the world; we answer with current HUD
+// state so the bar populates the instant the client is listening. Fires via the
+// group-chat CanUseChat hook, which battleground chat routes through.
+//
+// INVARIANT: return false ONLY for our own prefix. ScriptMgr's boolean-hook macro
+// stops at the first script that returns false, so consuming another addon's
+// prefix here would silently starve whichever script actually owns it --
+// npc_moba_store's shop hook is the one that matters.
 class moba_hud_playerscript : public PlayerScript
 {
 public:
@@ -33,14 +37,19 @@ public:
 
     bool OnPlayerCanUseChat(Player* player, uint32 /*type*/, uint32 lang, std::string& msg, Group* /*group*/) override
     {
-        // Only our addon ping; everything else (real BG chat, other addons) passes through.
-        if (lang != LANG_ADDON || msg != "MobaHUD\tREQ")
+        if (lang != LANG_ADDON)
             return true;
 
-        if (BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground()))
-            moba->SendHudStateTo(player);
+        // "<prefix>\t<payload>" -- the same framing the server sends back.
+        std::string::size_type tab = msg.find('\t');
+        if (tab == std::string::npos || msg.compare(0, tab, MOBA_HUD_ADDON_PREFIX) != 0)
+            return true;
 
-        return false; // consume: don't broadcast the ping to battleground chat
+        if (msg.compare(tab + 1, std::string::npos, "REQ") == 0)
+            if (BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground()))
+                moba->SendHudStateTo(player);
+
+        return false; // consume: never broadcast HUD traffic to battleground chat
     }
 };
 

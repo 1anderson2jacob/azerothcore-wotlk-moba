@@ -5,4 +5,5 @@
 ## Version: 0.2
 ## SavedVariables: MobaHUDDB
 
+Catalog.lua
 MobaHUD.lua

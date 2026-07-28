@@ -28,7 +28,15 @@
 #include "MobaPlayerDropData.h"
 #include <vector>
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
+
+// Shared with the client addon (client/addons/MobaHUD). The server sends
+// "<prefix>\t<payload>" as a LANG_ADDON chat message; the 3.3.5a client splits on
+// the TAB into (prefix, payload) for CHAT_MSG_ADDON. Two namespaces over one
+// transport: the shop panel's payloads never mix with the HUD bar's.
+constexpr char MOBA_HUD_ADDON_PREFIX[]  = "MobaHUD";
+constexpr char MOBA_SHOP_ADDON_PREFIX[] = "MobaShop";
 
 enum BG_MOBA_ObjectEntry
 {
@@ -216,6 +224,18 @@ public:
     // Reply to a MobaHUD client "ready" ping with this player's current HUD state.
     void SendHudStateTo(Player* player);
 
+    // MobaShop handshake and panel handoff. The panel is addon-only: a player who
+    // never sent HELLO has no UI to open, so npc_moba_store falls back to gossip.
+    void SetShopAddonReady(Player* player);
+    bool HasShopAddon(Player* player) const;
+    void SendShopMessage(Player* player, std::string const& body);
+
+    // The shopkeeper a player currently has open; ObjectGuid::Empty if none.
+    // Remembered server-side so a BUY: never names a vendor -- the client cannot
+    // reach one it isn't standing at.
+    void SetOpenShopkeeper(Player* player, ObjectGuid creatureGuid);
+    ObjectGuid GetOpenShopkeeper(Player* player) const;
+
     // Per-map recall cast time (ms) for a player currently in a MOBA BG; 0 = no
     // override (use the spell's default). Read by Spell::prepare to retime Hearthstone.
     static uint32 GetRecallCastTimeMs(Player* player);
@@ -242,6 +262,7 @@ private:
     // start (0 = hide), "K:<pov>,<killer>,<kClass>,<kSide>,<victim>,<vClass>,<vSide>"
     // a player kill line, "D:<pov>,<vSide>,<vClass>,<victim>,<cat>" a non-player death
     // line (cat 0=env 1=tower 2=creep 3=neutral). K:/D: are built per recipient.
+    void SendAddonPacket(Player* player, char const* prefix, std::string const& body);
     void SendHudMessage(Player* player, std::string const& body);
     void BroadcastHudMessage(std::string const& body);
     void BroadcastKillFeed(Player* killer, Player* victim);
@@ -279,6 +300,13 @@ private:
     std::unordered_map<ObjectGuid, std::unordered_map<ObjectGuid, uint32>> _allySupport;
 
     std::unordered_map<ObjectGuid, MobaRespawnState> _respawnTimers;
+
+    // Players whose client announced the shop panel (HELLO). Everyone else gets
+    // the gossip fallback, which goes away once the panel ships.
+    std::unordered_set<ObjectGuid> _shopAddonPlayers;
+
+    // player GUID -> the shopkeeper creature they currently have open.
+    std::unordered_map<ObjectGuid, ObjectGuid> _openShopkeeper;
 
 };
 #endif

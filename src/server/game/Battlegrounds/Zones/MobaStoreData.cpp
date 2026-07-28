@@ -123,6 +123,20 @@ void MobaStoreDataStore::LoadIfNeeded()
              _npcs.size(), _nodes.size());
 }
 
+void MobaStoreDataStore::CollectSuffixedEntries(uint32 map, std::set<uint32>& out) const
+{
+    // MakeKey packs map into the high bits; unpack rather than keeping a second index.
+    for (auto const& itr : _grants)
+    {
+        if (uint32(itr.first >> 40) != map)
+            continue;
+
+        for (MobaStoreGrant const& grant : itr.second)
+            if (grant.suffixId)
+                out.insert(grant.itemEntry);
+    }
+}
+
 MobaStoreNpc const* MobaStoreDataStore::GetNpc(uint32 creatureEntry) const
 {
     auto itr = _npcs.find(creatureEntry);

@@ -50,10 +50,6 @@
 
 namespace
 {
-    // Shared with the client-side MobaHUD addon (client/addons/MobaHUD). The server
-    // sends "MobaHUD\t<payload>" as a LANG_ADDON chat message; the 3.3.5a client
-    // splits on the TAB into (prefix, payload) for the CHAT_MSG_ADDON event.
-    constexpr char MOBA_HUD_ADDON_PREFIX[] = "MobaHUD";
     constexpr uint32 MOBA_HUD_RESYNC_MS    = 10000; // re-broadcast cadence for /reload + late joiners
     constexpr uint32 MOBA_NEUTRAL_CORPSE_DESPAWN_MS = 15000; // camp-member corpse cleanup (see SpawnCamp)
 }
@@ -165,6 +161,32 @@ void BattlegroundMOBA::RecordGrantedItem(Player* player, Item* item)
     _grantedItems[player->GetGUID()].push_back(item->GetGUID());
 }
 
+void BattlegroundMOBA::SetShopAddonReady(Player* player)
+{
+    if (player)
+        _shopAddonPlayers.insert(player->GetGUID());
+}
+
+bool BattlegroundMOBA::HasShopAddon(Player* player) const
+{
+    return player && _shopAddonPlayers.count(player->GetGUID()) != 0;
+}
+
+void BattlegroundMOBA::SetOpenShopkeeper(Player* player, ObjectGuid creatureGuid)
+{
+    if (player)
+        _openShopkeeper[player->GetGUID()] = creatureGuid;
+}
+
+ObjectGuid BattlegroundMOBA::GetOpenShopkeeper(Player* player) const
+{
+    if (!player)
+        return ObjectGuid::Empty;
+
+    auto itr = _openShopkeeper.find(player->GetGUID());
+    return itr != _openShopkeeper.end() ? itr->second : ObjectGuid::Empty;
+}
+
 void BattlegroundMOBA::RemovePlayer(Player* player)
 {
     // Hide the HUD bar for anyone leaving the match early (Leave button, logout, GM
@@ -175,6 +197,8 @@ void BattlegroundMOBA::RemovePlayer(Player* player)
     {
         _recentAttackers.erase(player->GetGUID());
         _allySupport.erase(player->GetGUID());
+        _shopAddonPlayers.erase(player->GetGUID());
+        _openShopkeeper.erase(player->GetGUID());
 
         // Shop gear is match-only, and this hook covers every exit path.
         // Destroy exactly the items we handed out, by GUID. A sweep over the
@@ -1022,14 +1046,14 @@ void BattlegroundMOBA::UpdateFountainHealing(uint32 diff)
     }
 }
 
-void BattlegroundMOBA::SendHudMessage(Player* player, std::string const& body)
+// One addon packet. LANG_ADDON marks this as addon traffic client-side; the
+// chat-type byte is irrelevant to delivery.
+void BattlegroundMOBA::SendAddonPacket(Player* player, char const* prefix, std::string const& body)
 {
     if (!player)
         return;
 
-    // LANG_ADDON marks this as an addon message client-side; the chat-type byte is
-    // irrelevant to delivery. Body is "<prefix>\t<payload>" (see the MobaHUD addon).
-    std::string message = Acore::StringFormat("{}\t{}", MOBA_HUD_ADDON_PREFIX, body);
+    std::string message = Acore::StringFormat("{}\t{}", prefix, body);
 
     WorldPacket data(SMSG_MESSAGECHAT, 1 + 4 + 8 + 4 + 8 + 4 + message.size() + 2);
     data << uint8(CHAT_MSG_WHISPER);
@@ -1041,6 +1065,16 @@ void BattlegroundMOBA::SendHudMessage(Player* player, std::string const& body)
     data << message;
     data << uint8(0);
     player->SendDirectMessage(&data);
+}
+
+void BattlegroundMOBA::SendHudMessage(Player* player, std::string const& body)
+{
+    SendAddonPacket(player, MOBA_HUD_ADDON_PREFIX, body);
+}
+
+void BattlegroundMOBA::SendShopMessage(Player* player, std::string const& body)
+{
+    SendAddonPacket(player, MOBA_SHOP_ADDON_PREFIX, body);
 }
 
 void BattlegroundMOBA::BroadcastHudMessage(std::string const& body)

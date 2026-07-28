@@ -499,7 +499,8 @@ python3 -c "
 import sys; sys.path.insert(0,'apps/moba')
 import gen_store as g
 cfgs=g.load_configs(); npc,menu,grant,meta,copies=g.build(cfgs)
-print('matches disk:', g.emit(npc,menu,grant,copies)==open('data/sql/custom/db_world/mod_moba_store.sql').read())
+print('sql matches disk:', g.emit(npc,menu,grant,copies)==open('data/sql/custom/db_world/mod_moba_store.sql').read())
+print('lua matches disk:', g.emit_catalog(menu,grant,meta)==open('client/addons/MobaHUD/Catalog.lua').read())
 "
 ```
 

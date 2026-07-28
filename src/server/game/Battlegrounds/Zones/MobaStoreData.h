@@ -23,6 +23,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <set>
 
 // A vendor NPC. One creature entry per team; the team lives here rather than in
 // the creature's faction because CFBG puts players of either faction on either
@@ -69,8 +70,11 @@ public:
     // Children of parentId (0 = top level), in config order. Null if none.
     std::vector<MobaStoreNode const*> const* GetChildren(uint32 map, uint32 vendorId, uint32 parentId) const;
     std::vector<MobaStoreGrant> const* GetGrants(uint32 map, uint32 vendorId, uint32 nodeId) const;
-    // Every item entry this map's vendors can hand out, so the battleground can
-    // strip shop gear when a player leaves.
+    // Every item entry this map's vendors hand out with a random suffix. The shop
+    // addon needs each one's suffix factor: the client multiplies a suffix's
+    // allocation by it to get real stat values, and it lives in RandPropPoints.dbc
+    // with no Lua accessor, so an addon-built item link renders +0 without it.
+    void CollectSuffixedEntries(uint32 map, std::set<uint32>& out) const;
 
 private:
     MobaStoreDataStore() = default;
