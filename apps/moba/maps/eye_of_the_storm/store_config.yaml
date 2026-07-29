@@ -77,9 +77,6 @@ tabs:
   # -------------------------------------------------------------------------
   - key: starting_gear
     name: "Starting Gear"
-    teams:
-      - { team: 0, entry: 900300, x: 2396.4521, y: 1602.2882, z: 1177.009, o: 4.5592303 }   # Alliance
-      - { team: 1, entry: 900301, x: 1933.402, y: 1532.0234, z: 1180.1082, o: 1.3783675 }   # Horde 
     # pieces order: head, shoulder, chest, wrist, hands, waist, legs, feet
     categories:
       - name: Cloth        # Coldwraith -- caster only (Eagle/Owl/Whale)
@@ -124,9 +121,6 @@ tabs:
   # -------------------------------------------------------------------------
   - key: consumables
     name: "Consumables"
-    teams:
-      - { team: 0, entry: 900302, x: 2377.5535, y: 1605.5874, z: 1172.1476, o: 4.2953353 }
-      - { team: 1, entry: 900303, x: 1949.5693, y: 1531.0472, z: 1175.7777, o: 1.5558678 }
     categories:
       - name: Potions
         cost: 5000
@@ -155,9 +149,6 @@ tabs:
   # -------------------------------------------------------------------------
   - key: rare_gear
     name: "Rare Gear"
-    teams:
-      - { team: 0, entry: 900304, x: 2388.638, y: 1602.5381, z: 1174.7131, o: 4.4084325 }
-      - { team: 1, entry: 900305, x: 1937.5688, y: 1531.9581, z: 1178.9604, o: 1.4309891 }
     # slot order throughout: head, shoulder, chest, waist, legs, feet, wrist, hands
     categories:
       - name: Cloth
@@ -204,9 +195,6 @@ tabs:
   # -------------------------------------------------------------------------
   - key: epic_gear
     name: "Epic Gear"
-    teams:
-      - { team: 0, entry: 900306, x: 2382.9636, y: 1604.8624, z: 1173.1526, o: 4.3236103 }
-      - { team: 1, entry: 900307, x: 1942.9971, y: 1532.0552, z: 1177.4833, o: 1.2605579 }
     categories:
       - name: Cloth
         cost: 20000
