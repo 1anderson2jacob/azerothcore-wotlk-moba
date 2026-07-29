@@ -38,12 +38,6 @@
 constexpr char MOBA_HUD_ADDON_PREFIX[]  = "MobaHUD";
 constexpr char MOBA_SHOP_ADDON_PREFIX[] = "MobaShop";
 
-enum BG_MOBA_ObjectEntry
-{
-    BG_OBJECT_A_DOOR_EY_ENTRY           = 184719,           //Alliance door
-    BG_OBJECT_H_DOOR_EY_ENTRY           = 184720,           //Horde door
-};
-
 enum BG_MOBA_Graveyards
 {
     BG_MOBA_GRAVEYARD_MAIN_ALLIANCE     = 1103,

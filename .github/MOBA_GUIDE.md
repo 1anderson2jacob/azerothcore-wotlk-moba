@@ -223,11 +223,10 @@ Both are anchored to the team's base and configured from `base_config.yaml`.
   pending a real mechanic. `AddPlayer` grants a Hearthstone and clears its
   cooldown on entry.
 - **Fountain**: `UpdateFountainHealing` (from `PostUpdateImpl`) restores a
-  percentage of max health and mana per tick to players inside their own base
-  bubble, in or out of combat; enemies get nothing. The bubble is
-  `battleground_template.StartMaxDist`, shared with the core's prep-phase leash
-  so the two can't drift — see the comment on `UpdateFountainHealing` for the
-  squared-getter and 2D-vs-3D traps.
+  percentage of max health and mana per tick to players inside their own spawn
+  dome, in or out of combat; enemies get nothing. The zone is
+  `mod_moba_base.FountainRadius` — the same number that sizes the dome
+  gameobject, so the heal zone and the barrier you can see are one thing.
 - **Cosmetic limit**: the Hearthstone's on-use tooltip still reads "Returns you
   to \<bind\>" — client-rendered from the spell's bind, not changeable
   server-side. Resolves when recall becomes its own spell in the client-patch
@@ -462,7 +461,8 @@ release-repop, and respawn. `.gps` at the new ground-level spot, edit that team'
 `x`/`y`/`z`/`o` in the `spawn` block, run `gen_base.py`, deploy. The generator
 writes both the graveyard coords and the template's `StartLoc`/`StartO` — no hand
 `UPDATE`s. (The `WorldSafeLocs.dbc` gotcha below still applies.) Confirm both
-teleport-in and a post-death respawn.
+teleport-in and a post-death respawn. The spawn dome and the fountain heal zone are
+centered on this point at runtime, so both follow automatically — nothing else to move.
 
 **Change respawn timings** — `respawn` block (`base_ms` / `per_min_ms` /
 `cap_ms`). Test an early death against one a few minutes in to see the scaling.
@@ -480,10 +480,12 @@ would confound the test.
 `hp_pct` / `mana_pct` percent of max per tick; mana users only). Test with
 `.damage 5000` in base, then walk out of the bubble and confirm it stops.
 
-**Change the base bubble radius** — `spawn.radius`, which the generator writes to
-`battleground_template.StartMaxDist`. It is **one number for two things**: the
-fountain heal zone and the core's prep-phase leash ("can't leave before doors
-open"). Changing it moves both — check both after.
+**Change the base bubble radius** — `spawn.radius`. One number drives both halves
+of the bubble: the dome gameobjects' scale and `mod_moba_base.FountainRadius` (see
+`DOME_MODEL_HALF_EXTENT` in `gen_base.py` for the conversion). It is deliberately
+*not* written to `battleground_template.StartMaxDist` — see the gotcha index.
+Regenerate and restart, then confirm the dome visibly changed size *and* that
+healing reaches its new edge. Scale is uniform, so a wider dome is also a taller one.
 
 ## Recipes: item shop
 
@@ -558,14 +560,6 @@ a sender beside `SendHudMessage`, extend `BuildScoreboardBody`, then handle it i
 **Move the HUD on screen** — `/mobahud unlock`, drag, `/mobahud lock`. Position
 and lock persist per character (`MobaHUDDB`); `/mobahud reset` recenters.
 
-**Move the starting-area door (the visual dome)** — the door gameobject *is* the
-dome. `.gps` the new spot, then compute a yaw-only quaternion (`.gps` won't give
-you one): `rotation0 = 0`, `rotation1 = 0`, `rotation2 = sin(o/2)`,
-`rotation3 = cos(o/2)`. Update the `AddObject(BG_MOBA_OBJECT_DOOR_A/H, …)` call
-in `SetupBattleground()`. C++ change. If it looks tilted, that's the limit of the
-flat-yaw approximation — the original EotS doors baked a tilted quaternion to
-match sloped terrain; nudge by trial and error if it matters.
-
 ---
 
 ## Gotcha index
@@ -586,7 +580,6 @@ touching that area:
   the wrong despawn type). → `SpawnCreep` in `BattlegroundMOBA.cpp`.
 - **`BgCreatures.resize()` must precede the first `AddCreature`** — it asserts the
   slot exists. → `SetupBattleground()`.
-- **`GetStartMaxDist()` returns a *squared* distance.** → `UpdateFountainHealing`.
 - **`DoCastVictim(id, true)` bypasses cast time, mana, and GCD** regardless of the
   spell's data. → "Make a creep's attack instant/free" above.
 - **Helpful spells aimed at a plain friendly NPC never reach the server** — the
@@ -597,10 +590,22 @@ touching that area:
   → `npc_moba_creep.cpp`, `moba_creep_spell_gate` comment.
 - **Mechanical-type creatures are hard-immune to direct heals.**
   → `gen_creep_roster.py`, `"type"` override comment.
+- **`battleground_template.StartMaxDist` must stay 0** — any non-zero value arms the
+  core's prep-phase leash, which teleports players back to spawn every 9s. Shipped as
+  a real bug: it read as a random position/orientation reset ~8s after loading in.
+  → `MobaBaseConfig` comment in `MobaBaseData.h`.
+- **A `gameobject_template` copy needs its `gameobject_template_addon` row too** —
+  faction and flags are read from nowhere else, so a copy without one spawns
+  faction 0 / flags 0: client-selectable, and clicking a DOOR opens it. Players could
+  lift their own spawn dome (shipped as a real bug). → `DOME_ADDON_FLAGS` in `gen_base.py`.
+- **A zero rotation quaternion is legal and means "derive from orientation"** —
+  `SetWorldRotation` falls back to a Z-axis rotation from the orientation, so
+  hand-computed `sin(o/2)`/`cos(o/2)` literals are redundant. → `SetupBattleground()`,
+  spawn-dome comment.
 - **An inlined evade must end with `EngagementOver()`** — omit it and the
   creature stays "engaged" forever and ignores every later enemy.
   → `npc_moba_creep.cpp`, `EnterEvadeMode`.
-  - **Camp-link must ride `DamageTaken`, not `JustEngagedWith`** — a one-shot
+- **Camp-link must ride `DamageTaken`, not `JustEngagedWith`** — a one-shot
   kills before engagement starts and the pull never fires (shipped as a real
   bug). → `npc_moba_neutral.cpp`, `DamageTaken` comment.
 - **`CORPSE_TIMED_DESPAWN`'s countdown only runs on a corpse** — the trap for

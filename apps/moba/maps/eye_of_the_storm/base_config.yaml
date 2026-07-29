@@ -25,6 +25,12 @@ fountain:
   mana_pct: 10
 
 spawn:
-  radius: 10.0                       # yards; players scatter within this of the point
+  # The spawn dome's radius, and the fountain heal zone -- ONE value driving both.
+  # The generator sizes the dome GOs from it (gameobject_template.size =
+  # radius / 172.4, the GeoBox half-extent of displayId 7203) and writes the same
+  # number to mod_moba_base.FountainRadius, so the two cannot drift.
+  # Uniform model scale: a wider dome is also a taller one.
+  radius: 20
+  dome: {alliance_entry: 900400, horde_entry: 900401}
   alliance: {graveyard_id: 1103, x: 2387.529,  y: 1587.426,  z: 1174.763, o: 3.0222116}
   horde:    {graveyard_id: 1104, x: 1942.9327, y: 1547.6229, z: 1176.458, o: 0.32122585}

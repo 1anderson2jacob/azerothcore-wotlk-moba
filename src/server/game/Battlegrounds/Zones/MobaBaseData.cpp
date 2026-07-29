@@ -36,7 +36,9 @@ void MobaBaseDataStore::LoadIfNeeded()
 
     QueryResult result = WorldDatabase.Query(
         "SELECT Map, RespawnBaseMs, RespawnPerMinMs, RespawnCapMs, RecallCastMs, RecallEmpoweredCastMs, "
-        "FountainTickMs, FountainHpPct, FountainManaPct, KillCreditWindowMs, AssistWindowMs, AssistBuffMaxDurationMs FROM mod_moba_base");
+        "FountainTickMs, FountainHpPct, FountainManaPct, FountainRadius, "
+        "KillCreditWindowMs, AssistWindowMs, AssistBuffMaxDurationMs, "
+        "DomeEntryAlliance, DomeEntryHorde FROM mod_moba_base");
 
     if (!result)
     {
@@ -58,9 +60,12 @@ void MobaBaseDataStore::LoadIfNeeded()
         cfg.fountainTickMs        = fields[6].Get<uint32>();
         cfg.fountainHpPct         = fields[7].Get<uint32>();
         cfg.fountainManaPct       = fields[8].Get<uint32>();
-        cfg.killCreditWindowMs      = fields[9].Get<uint32>();
-        cfg.assistWindowMs          = fields[10].Get<uint32>();
-        cfg.assistBuffMaxDurationMs = fields[11].Get<uint32>();
+        cfg.fountainRadius        = fields[9].Get<float>();
+        cfg.killCreditWindowMs      = fields[10].Get<uint32>();
+        cfg.assistWindowMs          = fields[11].Get<uint32>();
+        cfg.assistBuffMaxDurationMs = fields[12].Get<uint32>();
+        cfg.domeEntryAlliance       = fields[13].Get<uint32>();
+        cfg.domeEntryHorde          = fields[14].Get<uint32>();
 
         _byMap[cfg.map] = cfg;
     } while (result->NextRow());

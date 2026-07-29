@@ -255,9 +255,28 @@ bool BattlegroundMOBA::SetupBattleground()
     // Must resize before any AddCreature call below.
     BgCreatures.resize(BG_MOBA_CREATURE_FIXED_MAX + towerConfigs.size());
 
-    // doors (ground-level starting areas)
-    AddObject(BG_MOBA_OBJECT_DOOR_A, BG_OBJECT_A_DOOR_EY_ENTRY, 2387.529f, 1587.426f, 1174.763f, 3.0222116f, 0.0f, 0.0f, 0.998219f, 0.059655f, RESPAWN_IMMEDIATELY);
-    AddObject(BG_MOBA_OBJECT_DOOR_H, BG_OBJECT_H_DOOR_EY_ENTRY, 1942.9327f, 1547.6229f, 1176.458f, 0.32122585f, 0.0f, 0.0f, 0.159923f, 0.987129f, RESPAWN_IMMEDIATELY);
+    MobaBaseConfig const* baseCfg = sMobaBaseDataStore->GetConfig(GetMapId());
+    if (!baseCfg || !baseCfg->domeEntryAlliance || !baseCfg->domeEntryHorde)
+    {
+        LOG_ERROR("sql.sql", "BattlegroundMOBA: `mod_moba_base` has no spawn dome entries for map {}, battleground not created!", GetMapId());
+        return false;
+    }
+
+    // Spawn domes (the prep-phase barrier), each centered on its team's start
+    // position -- the same source respawn and the fountain read, so a dome cannot
+    // drift off the spawn point. Entries are per-map so each mode's dome is sized
+    // to its own spawn.radius (see gen_base.py).
+    // The zero quaternion is deliberate: SetWorldRotation derives the rotation from
+    // the orientation when the quat is zero, which is the Z-axis spin a dome wants.
+    Position const* allianceStart = GetTeamStartPosition(TEAM_ALLIANCE);
+    Position const* hordeStart    = GetTeamStartPosition(TEAM_HORDE);
+
+    AddObject(BG_MOBA_OBJECT_DOOR_A, baseCfg->domeEntryAlliance,
+        allianceStart->GetPositionX(), allianceStart->GetPositionY(), allianceStart->GetPositionZ(),
+        allianceStart->GetOrientation(), 0.0f, 0.0f, 0.0f, 0.0f, RESPAWN_IMMEDIATELY);
+    AddObject(BG_MOBA_OBJECT_DOOR_H, baseCfg->domeEntryHorde,
+        hordeStart->GetPositionX(), hordeStart->GetPositionY(), hordeStart->GetPositionZ(),
+        hordeStart->GetOrientation(), 0.0f, 0.0f, 0.0f, 0.0f, RESPAWN_IMMEDIATELY);
 
     // towers (data-driven; see mod_moba_tower_data / MobaTowerData.h)
     _towers.clear();
@@ -1001,21 +1020,20 @@ void BattlegroundMOBA::RespawnAtBase(Player* player)
     SendHudMessage(player, "R:0");
 }
 
-// Fountain heal: players inside their own base bubble regain a % of max
-// health/mana per tick. The bubble is battleground_template.StartMaxDist, shared
-// with the core's prep-phase leash (_CheckSafePositions) so the two can't drift.
-// Two traps: GetStartMaxDist() returns that distance ALREADY SQUARED (BattlegroundMgr
-// stores MaxStartDistSq), hence the squared compare; and the core leash is 3D while
-// this is 2D, so the heal zone is a cylinder -- same radius, forgiving of terrain.
+// Fountain heal: players inside their own spawn dome regain a % of max
+// health/mana per tick. The radius is the dome's (mod_moba_base.FountainRadius),
+// so the heal zone and the visible dome cannot drift apart. The compare is 2D,
+// making the zone a cylinder -- forgiving of the base's terrain slope.
 void BattlegroundMOBA::UpdateFountainHealing(uint32 diff)
 {
     MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId());
     if (!cfg || !cfg->fountainTickMs || (!cfg->fountainHpPct && !cfg->fountainManaPct))
         return;
 
-    float radiusSq = GetStartMaxDist();
-    if (!radiusSq)
+    if (cfg->fountainRadius <= 0.0f)
         return;
+
+    float radiusSq = cfg->fountainRadius * cfg->fountainRadius;
 
     _fountainTickMs += diff;
     if (_fountainTickMs < cfg->fountainTickMs)

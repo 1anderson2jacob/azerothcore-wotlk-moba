@@ -1,9 +1,9 @@
 -- ============================================================
 -- GENERATED FILE -- do not hand-edit.
 -- Produced by apps/moba/gen_base.py from apps/moba/maps/*/base_config.yaml.
--- Tunables live in mod_moba_base; the base LOCATION and RADIUS are written
--- into game_graveyard / battleground_template (read at runtime via
--- GetTeamStartPosition / GetClosestGraveyard / GetStartMaxDist).
+-- Tunables live in mod_moba_base; the base LOCATION is written into
+-- game_graveyard / battleground_template (read at runtime via
+-- GetTeamStartPosition / GetClosestGraveyard).
 -- ============================================================
 
 USE acore_world;
@@ -19,17 +19,44 @@ CREATE TABLE `mod_moba_base` (
     `FountainTickMs`  INT UNSIGNED NOT NULL DEFAULT 0,        -- fountain heal cadence (ms); 0 = fountain healing off
     `FountainHpPct`   INT UNSIGNED NOT NULL DEFAULT 0,        -- % of max health restored per tick
     `FountainManaPct` INT UNSIGNED NOT NULL DEFAULT 0,        -- % of max mana restored per tick (mana users only)
+    `FountainRadius`  FLOAT NOT NULL DEFAULT 0,               -- spawn-dome radius (yards) = heal zone; 0 = fountain healing off
     `KillCreditWindowMs` INT UNSIGNED NOT NULL DEFAULT 15000,  -- window after enemy-player damage/debuff in which a death still credits that player (0 = off)
     `AssistWindowMs` INT UNSIGNED NOT NULL DEFAULT 10000,      -- window before a death in which damage/debuff/support earns an assist (0 = off)
-    `AssistBuffMaxDurationMs` INT UNSIGNED NOT NULL DEFAULT 60000 -- max buff/shield duration (ms) counting as a fight buff for assists; longer = maintenance buff, ignored
+    `AssistBuffMaxDurationMs` INT UNSIGNED NOT NULL DEFAULT 60000, -- max buff/shield duration (ms) counting as a fight buff for assists; longer = maintenance buff, ignored
+    `DomeEntryAlliance` INT UNSIGNED NOT NULL DEFAULT 0,  -- gameobject_template entry of the Alliance spawn dome
+    `DomeEntryHorde`    INT UNSIGNED NOT NULL DEFAULT 0   -- gameobject_template entry of the Horde spawn dome
 );
 
-INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`)
+INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`)
 VALUES
-(566, 10000, 1500, 60000, 9000, 4500, 1000, 10, 10, 15000, 10000, 60000);
+(566, 10000, 1500, 60000, 9000, 4500, 1000, 10, 10, 20, 15000, 10000, 60000, 900400, 900401);
+
+-- Spawn dome gameobjects. The whole 900400-900409 window is cleared,
+-- so a dome dropped from a config is dropped from the DB too.
+DELETE FROM `gameobject_template` WHERE `entry` BETWEEN 900400 AND 900409;
+INSERT INTO `gameobject_template`
+(`entry`, `type`, `displayId`, `name`, `IconName`, `castBarCaption`, `unk1`, `size`,
+ `Data0`, `Data1`, `Data2`, `Data3`, `Data4`, `Data5`, `Data6`, `Data7`, `Data8`, `Data9`,
+ `Data10`, `Data11`, `Data12`, `Data13`, `Data14`, `Data15`, `Data16`, `Data17`, `Data18`,
+ `Data19`, `Data20`, `Data21`, `Data22`, `Data23`, `AIName`, `ScriptName`, `VerifiedBuild`)
+VALUES
+(900400, 0, 7203, 'eye_of_the_storm spawn dome (Alliance)', '', '', '', 0.116009, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0),
+(900401, 0, 7203, 'eye_of_the_storm spawn dome (Horde)', '', '', '', 0.116009, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0);
+
+-- Dome faction/flags. GameObject reads both ONLY from this table, so a template
+-- copy with no row here is selectable and clickable -- and clicking a DOOR opens it.
+DELETE FROM `gameobject_template_addon` WHERE `entry` BETWEEN 900400 AND 900409;
+INSERT INTO `gameobject_template_addon`
+(`entry`, `faction`, `flags`, `mingold`, `maxgold`, `artkit0`, `artkit1`, `artkit2`, `artkit3`)
+VALUES
+(900400, 1375, 48, 0, 0, 0, 0, 0, 0),
+(900401, 1375, 48, 0, 0, 0, 0, 0, 0);
 
 -- Spawn wiring for map 566 (eye_of_the_storm)
--- StartMaxDist is the base bubble: the core's prep-phase leash AND the fountain heal zone.
-UPDATE battleground_template SET AllianceStartLoc = 1103, AllianceStartO = 3.0222116, HordeStartLoc = 1104, HordeStartO = 0.32122585, StartMaxDist = 10.0 WHERE ID = 7;
+-- StartMaxDist stays 0 ON PURPOSE. It is the core's prep-phase leash
+-- (Battleground::_CheckSafePositions), which teleports players back to spawn
+-- every 9s -- wrong for a base you are meant to walk around in. The dome holds
+-- players in; the radius lives in mod_moba_base.FountainRadius.
+UPDATE battleground_template SET AllianceStartLoc = 1103, AllianceStartO = 3.0222116, HordeStartLoc = 1104, HordeStartO = 0.32122585, StartMaxDist = 0 WHERE ID = 7;
 UPDATE game_graveyard SET x = 2387.529, y = 1587.426, z = 1174.763 WHERE ID = 1103;
 UPDATE game_graveyard SET x = 1942.9327, y = 1547.6229, z = 1176.458 WHERE ID = 1104;

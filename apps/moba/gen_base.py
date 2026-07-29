@@ -4,18 +4,19 @@ MOBA base generator.
 
 Reads per-map base configs (apps/moba/maps/<mode>/base_config.yaml) and
 generates data/sql/custom/db_world/mod_moba_base.sql: the map-keyed mod_moba_base table
-(respawn timing, recall cast times, fountain healing), plus the per-map spawn
-wiring (game_graveyard coordinates, and the battleground_template
-start-location / orientation / radius that back them).
+(respawn timing, recall cast times, fountain healing), the per-map spawn wiring
+(game_graveyard coordinates plus the battleground_template start-location /
+orientation that back them), and the spawn dome gameobject_template (+ _addon) rows.
 
 "Base" here means the team's base -- everything anchored to it. Tunables live in
-the table; the base LOCATION and RADIUS are written into game_graveyard /
+the table; the base LOCATION is written into game_graveyard /
 battleground_template, which the server already reads via GetTeamStartPosition /
-GetClosestGraveyard / GetStartMaxDist (see MobaBaseData.{h,cpp}).
+GetClosestGraveyard (see MobaBaseData.{h,cpp}).
 
-spawn.radius does double duty: it is the core's prep-phase leash
-(_CheckSafePositions teleports you back if you leave it before doors open) AND
-the fountain heal zone. One value, so the two cannot drift apart.
+spawn.radius drives BOTH halves of the base bubble from one number: the dome GOs'
+gameobject_template.size, and mod_moba_base.FountainRadius. It is deliberately NOT
+written to battleground_template.StartMaxDist -- that field arms the core's
+prep-phase leash, which teleports players back to spawn every 9s.
 
 Usage (from the repo root):
     python3 apps/moba/gen_base.py
@@ -27,6 +28,24 @@ from pathlib import Path
 
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_base.sql")
+
+# The spawn dome is a COPY of the EotS force-field GO (184719/184720), not those
+# entries themselves: `size` is per-entry, so per-map radii need per-map entries,
+# and editing the core rows would resize stock EotS's own barriers too.
+DOME_ID_RANGE = [900400, 900409]   # gameobject_template entries owned by this generator
+DOME_DISPLAY_ID = 7203             # NS_BioDome_BG.mdx
+# GameObjectDisplayInfo GeoBox for 7203 is +-172.4 horizontally, so dome radius in
+# yards == this * gameobject_template.size. Re-derive if the display id changes.
+DOME_MODEL_HALF_EXTENT = 172.4
+# Faction and flags come ONLY from gameobject_template_addon -- GameObject's ctor
+# reads them nowhere else, so a template copy with no addon row spawns faction 0 /
+# flags 0: client-selectable, and GameObject::Use opens a DOOR unconditionally (no
+# lock or faction check), letting players lift their own dome before the match.
+DOME_ADDON_FACTION = 1375   # the faction the source rows 184719/184720 use
+# GO_FLAG_NODESPAWN (0x20), as on the source rows -- inert for type DOOR, since the
+# only check on it is GOOBER-only, so SpawnBGObject still lifts the dome at start.
+# GO_FLAG_NOT_SELECTABLE (0x10) is what actually removes the tooltip and the click.
+DOME_ADDON_FLAGS = 48
 
 REQUIRED_RESPAWN = ["base_ms", "per_min_ms", "cap_ms"]
 REQUIRED_SPAWN_TEAM = ["graveyard_id", "x", "y", "z", "o"]
@@ -57,9 +76,20 @@ def validate(cfg, path):
     spawn = cfg.get("spawn")
     if not isinstance(spawn, dict) or "alliance" not in spawn or "horde" not in spawn:
         fail(f'{path}: "spawn" must have "alliance" and "horde"')
-    # Positive, because 0 would silently disable the core's prep-phase leash too.
+    # Positive, because 0 would silently disable the fountain heal zone.
     if not isinstance(spawn.get("radius"), (int, float)) or spawn["radius"] <= 0:
         fail(f'{path}: "spawn.radius" must be a positive number (yards)')
+    dome = spawn.get("dome")
+    if not isinstance(dome, dict):
+        fail(f'{path}: "spawn.dome" must be a block with "alliance_entry" and "horde_entry"')
+    for k in ("alliance_entry", "horde_entry"):
+        entry = dome.get(k)
+        if not isinstance(entry, int) or not DOME_ID_RANGE[0] <= entry <= DOME_ID_RANGE[1]:
+            fail(f'{path}: "spawn.dome.{k}" must be an integer in '
+                 f'{DOME_ID_RANGE[0]}-{DOME_ID_RANGE[1]} -- the generated SQL clears that window, '
+                 f'so an entry outside it would never be cleaned up')
+    if dome["alliance_entry"] == dome["horde_entry"]:
+        fail(f'{path}: "spawn.dome" entries must differ')
     for team in ("alliance", "horde"):
         for k in REQUIRED_SPAWN_TEAM:
             if k not in spawn[team]:
@@ -82,9 +112,15 @@ def validate(cfg, path):
 
 def load_configs():
     configs = []
+    seen_domes = {}
     for path in sorted(MAPS_DIR.glob("*/base_config.yaml")):
         cfg = yaml.safe_load(path.read_text())
         validate(cfg, path)
+        for k in ("alliance_entry", "horde_entry"):
+            entry = cfg["spawn"]["dome"][k]
+            if entry in seen_domes:
+                fail(f'{path}: dome entry {entry} is already used by {seen_domes[entry]}')
+            seen_domes[entry] = path
         configs.append((path, cfg))
     if not configs:
         fail(f"no base configs found under {MAPS_DIR}/*/base_config.yaml")
@@ -96,9 +132,9 @@ def emit(configs):
         "-- ============================================================",
         "-- GENERATED FILE -- do not hand-edit.",
         "-- Produced by apps/moba/gen_base.py from apps/moba/maps/*/base_config.yaml.",
-        "-- Tunables live in mod_moba_base; the base LOCATION and RADIUS are written",
-        "-- into game_graveyard / battleground_template (read at runtime via",
-        "-- GetTeamStartPosition / GetClosestGraveyard / GetStartMaxDist).",
+        "-- Tunables live in mod_moba_base; the base LOCATION is written into",
+        "-- game_graveyard / battleground_template (read at runtime via",
+        "-- GetTeamStartPosition / GetClosestGraveyard).",
         "-- ============================================================",
         "",
         "USE acore_world;",
@@ -114,12 +150,15 @@ def emit(configs):
         "    `FountainTickMs`  INT UNSIGNED NOT NULL DEFAULT 0,        -- fountain heal cadence (ms); 0 = fountain healing off",
         "    `FountainHpPct`   INT UNSIGNED NOT NULL DEFAULT 0,        -- % of max health restored per tick",
         "    `FountainManaPct` INT UNSIGNED NOT NULL DEFAULT 0,        -- % of max mana restored per tick (mana users only)",
+        "    `FountainRadius`  FLOAT NOT NULL DEFAULT 0,               -- spawn-dome radius (yards) = heal zone; 0 = fountain healing off",
         "    `KillCreditWindowMs` INT UNSIGNED NOT NULL DEFAULT 15000,  -- window after enemy-player damage/debuff in which a death still credits that player (0 = off)",
         "    `AssistWindowMs` INT UNSIGNED NOT NULL DEFAULT 10000,      -- window before a death in which damage/debuff/support earns an assist (0 = off)",
-        "    `AssistBuffMaxDurationMs` INT UNSIGNED NOT NULL DEFAULT 60000 -- max buff/shield duration (ms) counting as a fight buff for assists; longer = maintenance buff, ignored",
+        "    `AssistBuffMaxDurationMs` INT UNSIGNED NOT NULL DEFAULT 60000, -- max buff/shield duration (ms) counting as a fight buff for assists; longer = maintenance buff, ignored",
+        "    `DomeEntryAlliance` INT UNSIGNED NOT NULL DEFAULT 0,  -- gameobject_template entry of the Alliance spawn dome",
+        "    `DomeEntryHorde`    INT UNSIGNED NOT NULL DEFAULT 0   -- gameobject_template entry of the Horde spawn dome",
         ");",
         "",
-        "INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`)",
+        "INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`)",
         "VALUES",
     ]
     rows = []
@@ -132,10 +171,55 @@ def emit(configs):
         rows.append(
             f"({cfg['map']}, {t['base_ms']}, {t['per_min_ms']}, {t['cap_ms']}, {recall_ms}, {recall_emp_ms}, "
             f"{f.get('tick_ms', 0)}, {f.get('hp_pct', 0)}, {f.get('mana_pct', 0)}, "
+            f"{cfg['spawn']['radius']}, "
             f"{cfg.get('kill_credit_window_ms', 15000)}, "
             f"{cfg.get('assist_window_ms', 10000)}, "
-            f"{cfg.get('assist_buff_max_duration_ms', 60000)})")
+            f"{cfg.get('assist_buff_max_duration_ms', 60000)}, "
+            f"{cfg['spawn']['dome']['alliance_entry']}, "
+            f"{cfg['spawn']['dome']['horde_entry']})")
     lines.append(",\n".join(rows) + ";")
+
+    # One dome pair per map, sized from that map's spawn.radius. Copies of
+    # 184719/184720: type 0 (DOOR) with every Data field zero, so behaviour is
+    # identical to the barrier the EotS battleground uses.
+    lines += [
+        "",
+        f"-- Spawn dome gameobjects. The whole {DOME_ID_RANGE[0]}-{DOME_ID_RANGE[1]} window is cleared,",
+        "-- so a dome dropped from a config is dropped from the DB too.",
+        f"DELETE FROM `gameobject_template` WHERE `entry` BETWEEN {DOME_ID_RANGE[0]} AND {DOME_ID_RANGE[1]};",
+        "INSERT INTO `gameobject_template`",
+        "(`entry`, `type`, `displayId`, `name`, `IconName`, `castBarCaption`, `unk1`, `size`,",
+        " `Data0`, `Data1`, `Data2`, `Data3`, `Data4`, `Data5`, `Data6`, `Data7`, `Data8`, `Data9`,",
+        " `Data10`, `Data11`, `Data12`, `Data13`, `Data14`, `Data15`, `Data16`, `Data17`, `Data18`,",
+        " `Data19`, `Data20`, `Data21`, `Data22`, `Data23`, `AIName`, `ScriptName`, `VerifiedBuild`)",
+        "VALUES",
+    ]
+    dome_entries = []
+    dome_rows = []
+    zeros = ", ".join(["0"] * 24)
+    for path, cfg in configs:
+        mode = path.parent.name
+        size = cfg["spawn"]["radius"] / DOME_MODEL_HALF_EXTENT
+        for team, key in (("Alliance", "alliance_entry"), ("Horde", "horde_entry")):
+            entry = cfg["spawn"]["dome"][key]
+            dome_entries.append(entry)
+            dome_rows.append(
+                f"({entry}, 0, {DOME_DISPLAY_ID}, '{mode} spawn dome ({team})', '', '', '', "
+                f"{size:.6f}, {zeros}, '', '', 0)")
+    lines.append(",\n".join(dome_rows) + ";")
+
+    lines += [
+        "",
+        "-- Dome faction/flags. GameObject reads both ONLY from this table, so a template",
+        "-- copy with no row here is selectable and clickable -- and clicking a DOOR opens it.",
+        f"DELETE FROM `gameobject_template_addon` WHERE `entry` BETWEEN {DOME_ID_RANGE[0]} AND {DOME_ID_RANGE[1]};",
+        "INSERT INTO `gameobject_template_addon`",
+        "(`entry`, `faction`, `flags`, `mingold`, `maxgold`, `artkit0`, `artkit1`, `artkit2`, `artkit3`)",
+        "VALUES",
+    ]
+    lines.append(",\n".join(
+        f"({entry}, {DOME_ADDON_FACTION}, {DOME_ADDON_FLAGS}, 0, 0, 0, 0, 0, 0)"
+        for entry in dome_entries) + ";")
 
     for path, cfg in configs:
         mode = path.parent.name
@@ -144,11 +228,14 @@ def emit(configs):
         lines += [
             "",
             f"-- Spawn wiring for map {cfg['map']} ({mode})",
-            "-- StartMaxDist is the base bubble: the core's prep-phase leash AND the fountain heal zone.",
+            "-- StartMaxDist stays 0 ON PURPOSE. It is the core's prep-phase leash",
+            "-- (Battleground::_CheckSafePositions), which teleports players back to spawn",
+            "-- every 9s -- wrong for a base you are meant to walk around in. The dome holds",
+            "-- players in; the radius lives in mod_moba_base.FountainRadius.",
             (f"UPDATE battleground_template SET "
              f"AllianceStartLoc = {a['graveyard_id']}, AllianceStartO = {a['o']}, "
              f"HordeStartLoc = {h['graveyard_id']}, HordeStartO = {h['o']}, "
-             f"StartMaxDist = {spawn['radius']} "
+             f"StartMaxDist = 0 "
              f"WHERE ID = {cfg['battleground_template_id']};"),
             f"UPDATE game_graveyard SET x = {a['x']}, y = {a['y']}, z = {a['z']} WHERE ID = {a['graveyard_id']};",
             f"UPDATE game_graveyard SET x = {h['x']}, y = {h['y']}, z = {h['z']} WHERE ID = {h['graveyard_id']};",
@@ -162,7 +249,7 @@ def main():
     OUTPUT.write_text(emit(configs))
     maps = ", ".join(str(c["map"]) for _, c in configs)
     print(f"Wrote {OUTPUT} ({len(configs)} map(s): {maps}).")
-    print("ARestart worldserver — the SQL auto-applies from data/sql/custom/db_world on boot.")
+    print("Restart worldserver — the SQL auto-applies from data/sql/custom/db_world on boot.")
 
 
 if __name__ == "__main__":
