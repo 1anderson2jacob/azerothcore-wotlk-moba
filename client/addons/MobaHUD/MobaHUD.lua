@@ -488,7 +488,7 @@ local function ShopTab()
     local c = Cat()
     if not c then return nil end
     for _, tab in ipairs(c.tabs) do
-        if tab.vendorId == shop.tabId then return tab end
+        if tab.tabId == shop.tabId then return tab end
     end
     return nil
 end
@@ -698,47 +698,20 @@ dSub:SetJustifyH("LEFT")
 dSub:SetJustifyV("TOP")
 -- A real tooltip embedded in the pane, so a single item shows its full stats
 -- without needing to be hovered. Bundles keep the piece list instead.
--- Hidden scanner. SetHyperlink populates its font strings and we copy them into
--- the pane: showing the tooltip frame itself sizes to its own content and spills
--- outside the panel, which is what made it look like a floating modal.
+-- Hidden scanner: showing the tooltip frame itself sizes to its own content and
+-- spills outside the panel, which is what made it look like a floating modal.
 local scan = CreateFrame("GameTooltip", "MobaShopScan", nil, "GameTooltipTemplate")
 scan:SetOwner(UIParent, "ANCHOR_NONE")
 
--- Usability cache. Proficiency is not exposed to Lua, but the client paints
--- requirements you fail in red -- scanning for that is the only way to see it.
--- Keyed by entry: it cannot change during a match.
-local usable = {}
-local function PieceUsable(piece)
-    local cached = usable[piece.entry]
-    if cached ~= nil then return cached end
-    scan:ClearLines()
-    scan:SetOwner(UIParent, "ANCHOR_NONE")
-    scan:SetHyperlink(PieceLink(piece))
-
-    local ok = true
-    for i = 1, scan:NumLines() do
-        -- Both columns. A failed armour-class or weapon-proficiency requirement
-        -- reddens the type name ("Plate", "Sword") in the RIGHT column; only
-        -- class and level requirements appear red on the left.
-        for _, side in ipairs({ "Left", "Right" }) do
-            local fs = _G["MobaShopScanText" .. side .. i]
-            local txt = fs and fs:GetText()
-            if txt and txt ~= "" then
-                local r, g, b = fs:GetTextColor()
-                if r and r > 0.9 and g < 0.2 and b < 0.2 then ok = false end
-            end
-        end
-        if not ok then break end
-    end
-
-    usable[piece.entry] = ok
-    return ok
-end
+-- The server's verdict, pushed once at HELLO as NU: batches and constant for the
+-- match. Absent data means usable: the server revalidates every purchase, so an
+-- over-eager card can only ever earn a refusal, never a wrong grant.
+local notUsable = {}
 
 -- A bundle is armour-class homogeneous, so one unusable piece condemns the set.
 local function LeafUsable(leaf)
     for _, p in ipairs(leaf.pieces) do
-        if not PieceUsable(p) then return false end
+        if notUsable[p.entry] then return false end
     end
     return true
 end
@@ -856,7 +829,7 @@ for i = 1, 6 do
     b:SetPoint("TOPLEFT", shop, "TOPLEFT", 20 + (i - 1) * 116, -34)
     b:SetWidth(112)
     b:SetScript("OnClick", function(self)
-        shop.tabId = self.vendorId
+        shop.tabId = self.tabId
         fCategory, fSub, selected, scrollOffset = nil, nil, nil, 0
         RenderShop()
     end)
@@ -870,9 +843,9 @@ local function RenderTabs()
     for i, b in ipairs(tabButtons) do
         local tab = c and c.tabs[i]
         if tab then
-            b.vendorId = tab.vendorId
+            b.tabId = tab.tabId
             b:SetText(tab.name)
-            if tab.vendorId == shop.tabId then b:Disable() else b:Enable() end
+            if tab.tabId == shop.tabId then b:Disable() else b:Enable() end
             b:Show()
         else
             b:Hide()
@@ -1109,10 +1082,13 @@ RenderShop = function()
 end
 
 local function HandleShopPayload(payload)
-    local mapId, tabId = string.match(payload, "^OPEN:(%d+),(%d+)$")
+    local mapId = string.match(payload, "^OPEN:(%d+)$")
     if mapId then
         shop.mapId = tonumber(mapId)
-        shop.tabId = tonumber(tabId)
+        -- One shopkeeper sells every tab, so the server names no tab; open on the
+        -- first one the catalog defines. Cat() reads shop.mapId, so order matters.
+        local c = Cat()
+        shop.tabId = c and c.tabs[1] and c.tabs[1].tabId or 0
         fCategory, fSub, fSearch, selected, scrollOffset = nil, nil, "", nil, 0
         searchBox:SetText("")
         shopStatus:SetText("")
@@ -1133,6 +1109,14 @@ local function HandleShopPayload(payload)
         for entry, factor in string.gmatch(sf, "(%d+):(%d+)") do
             suffixFactor[tonumber(entry)] = tonumber(factor)
         end
+        return
+    end
+    local nu = string.match(payload, "^NU:(.+)$")
+    if nu then
+        for entry in string.gmatch(nu, "%d+") do
+            notUsable[tonumber(entry)] = true
+        end
+        if shop:IsShown() then RenderShop() end
         return
     end
     local err = string.match(payload, "^ERR:(.+)$")

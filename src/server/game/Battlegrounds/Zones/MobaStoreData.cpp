@@ -35,7 +35,7 @@ void MobaStoreDataStore::LoadIfNeeded()
     _loaded = true;
 
     if (QueryResult npcs = WorldDatabase.Query(
-        "SELECT CreatureEntry, Map, Team, VendorId FROM mod_moba_store_npc"))
+        "SELECT CreatureEntry, Map, Team FROM mod_moba_store_npc"))
     {
         do
         {
@@ -45,7 +45,6 @@ void MobaStoreDataStore::LoadIfNeeded()
             npc.entry    = fields[0].Get<uint32>();
             npc.map      = fields[1].Get<uint32>();
             npc.team     = static_cast<TeamId>(fields[2].Get<uint8>());
-            npc.vendorId = fields[3].Get<uint32>();
 
             _npcs[npc.entry] = npc;
         } while (npcs->NextRow());
@@ -54,8 +53,7 @@ void MobaStoreDataStore::LoadIfNeeded()
         LOG_ERROR("sql.sql", "MobaStoreDataStore: table `mod_moba_store_npc` is empty or missing.");
 
     QueryResult menu = WorldDatabase.Query(
-        "SELECT Map, VendorId, NodeId, ParentId, Label, IsPurchase, CostCopper FROM mod_moba_store_menu "
-        "ORDER BY Map, VendorId, ParentId, SortOrder");
+        "SELECT Map, TabId, NodeId, IsPurchase, CostCopper FROM mod_moba_store_menu");
 
     if (!menu)
     {
@@ -65,7 +63,7 @@ void MobaStoreDataStore::LoadIfNeeded()
 
     _nodes.reserve(menu->GetRowCount());
 
-    // (map, vendorId) per row, kept parallel to _nodes: the node struct itself
+    // (map, tabId) per row, kept parallel to _nodes: the node struct itself
     // does not carry them, but the lookups below are keyed on them.
     std::vector<std::pair<uint32, uint32>> owners;
     owners.reserve(menu->GetRowCount());
@@ -76,36 +74,33 @@ void MobaStoreDataStore::LoadIfNeeded()
 
         MobaStoreNode node;
         node.nodeId     = fields[2].Get<uint32>();
-        node.parentId   = fields[3].Get<uint32>();
-        node.label      = fields[4].Get<std::string>();
-        node.isPurchase = fields[5].Get<uint8>() != 0;
-        node.costCopper = fields[6].Get<uint32>();
+        node.isPurchase = fields[3].Get<uint8>() != 0;
+        node.costCopper = fields[4].Get<uint32>();
 
         _nodes.push_back(node);
         owners.emplace_back(fields[0].Get<uint32>(), fields[1].Get<uint32>());
     } while (menu->NextRow());
 
-    // Build the lookups only after every node is pushed: _nodes was reserve()'d
+    // Build the lookup only after every node is pushed: _nodes was reserve()'d
     // to the exact final row count, so no reallocation happens above and these
     // pointers stay stable (same rule as MobaTowerDataStore).
     for (std::size_t i = 0; i < _nodes.size(); ++i)
     {
         MobaStoreNode const& node = _nodes[i];
-        auto const& [map, vendorId] = owners[i];
+        auto const& [map, tabId] = owners[i];
 
-        _byNode[MakeKey(map, vendorId, node.nodeId)] = &node;
-        _byParent[MakeKey(map, vendorId, node.parentId)].push_back(&node);
+        _byNode[MakeKey(map, tabId, node.nodeId)] = &node;
     }
 
     if (QueryResult grants = WorldDatabase.Query(
-        "SELECT Map, VendorId, NodeId, ItemEntry, SuffixId, Count FROM mod_moba_store_grant"))
+        "SELECT Map, TabId, NodeId, ItemEntry, SuffixId, Count FROM mod_moba_store_grant"))
     {
         do
         {
             Field* fields = grants->Fetch();
 
             uint32 map      = fields[0].Get<uint32>();
-            uint32 vendorId = fields[1].Get<uint32>();
+            uint32 tabId    = fields[1].Get<uint32>();
             uint32 nodeId   = fields[2].Get<uint32>();
 
             MobaStoreGrant grant;
@@ -113,13 +108,13 @@ void MobaStoreDataStore::LoadIfNeeded()
             grant.suffixId  = fields[4].Get<uint32>();
             grant.count     = fields[5].Get<uint32>();
 
-            _grants[MakeKey(map, vendorId, nodeId)].push_back(grant);
+            _grants[MakeKey(map, tabId, nodeId)].push_back(grant);
         } while (grants->NextRow());
     }
     else
         LOG_ERROR("sql.sql", "MobaStoreDataStore: table `mod_moba_store_grant` is empty or missing.");
 
-    LOG_INFO("server.loading", ">> Loaded {} MOBA store vendor(s), {} menu node(s).",
+    LOG_INFO("server.loading", ">> Loaded {} MOBA shopkeeper(s), {} catalog node(s).",
              _npcs.size(), _nodes.size());
 }
 
@@ -137,27 +132,32 @@ void MobaStoreDataStore::CollectSuffixedEntries(uint32 map, std::set<uint32>& ou
     }
 }
 
+void MobaStoreDataStore::CollectEntries(uint32 map, std::set<uint32>& out) const
+{
+    for (auto const& itr : _grants)
+    {
+        if (uint32(itr.first >> 40) != map)
+            continue;
+
+        for (MobaStoreGrant const& grant : itr.second)
+            out.insert(grant.itemEntry);
+    }
+}
+
 MobaStoreNpc const* MobaStoreDataStore::GetNpc(uint32 creatureEntry) const
 {
     auto itr = _npcs.find(creatureEntry);
     return itr != _npcs.end() ? &itr->second : nullptr;
 }
 
-MobaStoreNode const* MobaStoreDataStore::GetNode(uint32 map, uint32 vendorId, uint32 nodeId) const
+MobaStoreNode const* MobaStoreDataStore::GetNode(uint32 map, uint32 tabId, uint32 nodeId) const
 {
-    auto itr = _byNode.find(MakeKey(map, vendorId, nodeId));
+    auto itr = _byNode.find(MakeKey(map, tabId, nodeId));
     return itr != _byNode.end() ? itr->second : nullptr;
 }
 
-std::vector<MobaStoreNode const*> const* MobaStoreDataStore::GetChildren(uint32 map, uint32 vendorId,
-                                                                        uint32 parentId) const
+std::vector<MobaStoreGrant> const* MobaStoreDataStore::GetGrants(uint32 map, uint32 tabId, uint32 nodeId) const
 {
-    auto itr = _byParent.find(MakeKey(map, vendorId, parentId));
-    return itr != _byParent.end() ? &itr->second : nullptr;
-}
-
-std::vector<MobaStoreGrant> const* MobaStoreDataStore::GetGrants(uint32 map, uint32 vendorId, uint32 nodeId) const
-{
-    auto itr = _grants.find(MakeKey(map, vendorId, nodeId));
+    auto itr = _grants.find(MakeKey(map, tabId, nodeId));
     return itr != _grants.end() ? &itr->second : nullptr;
 }

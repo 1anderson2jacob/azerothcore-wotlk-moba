@@ -1,94 +1,72 @@
 -- ============================================================
 -- GENERATED FILE -- do not hand-edit.
 -- Produced by apps/moba/gen_store.py from apps/moba/maps/*/store_config.yaml.
--- Owns the vendor creatures (creature_template + creature_template_model),
--- their spawns (creature), and the gossip catalog (mod_moba_store_*).
+-- Owns the shopkeeper creatures (creature_template + creature_template_model),
+-- their spawns (creature), and the item catalog (mod_moba_store_*).
+-- ONE shopkeeper per team per map; TabId below is a tab in the addon
+-- panel, not an NPC. Browsing is client-side (Catalog.lua); these tables
+-- exist so the server can validate a purchase from a node id alone.
 -- Team is carried in mod_moba_store_npc, NOT in faction: CFBG puts players
 -- of either faction on either BG team, so faction cannot express team.
--- Vendors are faction 35 (friendly to all) and immune; npc_moba_store
+-- Shopkeepers are faction 35 (friendly to all) and immune; npc_moba_store
 -- refuses players whose BG team does not match.
 -- ============================================================
 
 USE acore_world;
 
-DELETE FROM `creature_template` WHERE `entry` IN (900300, 900301, 900302, 900303, 900304, 900305, 900306, 900307);
+DELETE FROM `creature_template` WHERE `entry` BETWEEN 900300 AND 900399;
 INSERT INTO `creature_template`
 (`entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`,
  `speed_walk`, `speed_run`, `rank`, `unit_class`, `unit_flags`,
  `type`, `type_flags`, `MovementType`, `HealthModifier`, `ArmorModifier`,
  `RegenHealth`, `flags_extra`, `ScriptName`, `VerifiedBuild`)
 VALUES
-(900300, 'Quartermaster', 'Starting Gear', 80, 80, 35, 1, 1.0, 1.14286, 0, 1, 770, 7, 0, 0, 1, 1, 1, 0, 'npc_moba_store', 0),
-(900301, 'Quartermaster', 'Starting Gear', 80, 80, 35, 1, 1.0, 1.14286, 0, 1, 770, 7, 0, 0, 1, 1, 1, 0, 'npc_moba_store', 0),
-(900302, 'Apothecary', 'Consumables', 80, 80, 35, 1, 1.0, 1.14286, 0, 1, 770, 7, 0, 0, 1, 1, 1, 0, 'npc_moba_store', 0),
-(900303, 'Apothecary', 'Consumables', 80, 80, 35, 1, 1.0, 1.14286, 0, 1, 770, 7, 0, 0, 1, 1, 1, 0, 'npc_moba_store', 0),
-(900304, 'Quartermaster', 'Rare Gear', 80, 80, 35, 1, 1.0, 1.14286, 0, 1, 770, 7, 0, 0, 1, 1, 1, 0, 'npc_moba_store', 0),
-(900305, 'Quartermaster', 'Rare Gear', 80, 80, 35, 1, 1.0, 1.14286, 0, 1, 770, 7, 0, 0, 1, 1, 1, 0, 'npc_moba_store', 0),
-(900306, 'Quartermaster', 'Epic Gear', 80, 80, 35, 1, 1.0, 1.14286, 0, 1, 770, 7, 0, 0, 1, 1, 1, 0, 'npc_moba_store', 0),
-(900307, 'Quartermaster', 'Epic Gear', 80, 80, 35, 1, 1.0, 1.14286, 0, 1, 770, 7, 0, 0, 1, 1, 1, 0, 'npc_moba_store', 0);
+(900300, 'Dkeka', 'Goods & Gear', 80, 80, 35, 1, 1.0, 1.14286, 0, 1, 770, 7, 0, 0, 1, 1, 1, 0, 'npc_moba_store', 0),
+(900301, 'Tojakk', 'Goods & Gear', 80, 80, 35, 1, 1.0, 1.14286, 0, 1, 770, 7, 0, 0, 1, 1, 1, 0, 'npc_moba_store', 0);
 
-DELETE FROM `creature_template_model` WHERE `CreatureID` IN (900300, 900301, 900302, 900303, 900304, 900305, 900306, 900307);
+DELETE FROM `creature_template_model` WHERE `CreatureID` BETWEEN 900300 AND 900399;
 INSERT INTO `creature_template_model`
 (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)
 VALUES
 (900300, 0, 3275, 1.0, 1, 0),
-(900301, 0, 3275, 1.0, 1, 0),
-(900302, 0, 4861, 1.0, 1, 0),
-(900303, 0, 4861, 1.0, 1, 0),
-(900304, 0, 1355, 1.0, 1, 0),
-(900305, 0, 1355, 1.0, 1, 0),
-(900306, 0, 16203, 1.0, 1, 0),
-(900307, 0, 16203, 1.0, 1, 0);
+(900301, 0, 1879, 1.0, 1, 0);
 
-DELETE FROM `creature` WHERE `guid` IN (900300, 900301, 900302, 900303, 900304, 900305, 900306, 900307);
+DELETE FROM `creature` WHERE `guid` BETWEEN 900300 AND 900399;
 INSERT INTO `creature`
 (`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `equipment_id`,
  `position_x`, `position_y`, `position_z`, `orientation`,
  `spawntimesecs`, `wander_distance`, `MovementType`)
 VALUES
-(900300, 900300, 566, 1, 1, 0, 2396.4521, 1602.2882, 1177.009, 4.5592303, 300, 0, 0),
-(900301, 900301, 566, 1, 1, 0, 1933.402, 1532.0234, 1180.1082, 1.3783675, 300, 0, 0),
-(900302, 900302, 566, 1, 1, 0, 2377.5535, 1605.5874, 1172.1476, 4.2953353, 300, 0, 0),
-(900303, 900303, 566, 1, 1, 0, 1949.5693, 1531.0472, 1175.7777, 1.5558678, 300, 0, 0),
-(900304, 900304, 566, 1, 1, 0, 2388.638, 1602.5381, 1174.7131, 4.4084325, 300, 0, 0),
-(900305, 900305, 566, 1, 1, 0, 1937.5688, 1531.9581, 1178.9604, 1.4309891, 300, 0, 0),
-(900306, 900306, 566, 1, 1, 0, 2382.9636, 1604.8624, 1173.1526, 4.3236103, 300, 0, 0),
-(900307, 900307, 566, 1, 1, 0, 1942.9971, 1532.0552, 1177.4833, 1.2605579, 300, 0, 0);
+(900300, 900300, 566, 1, 1, 0, 2393.576, 1601.3021, 1176.2003, 3.9607582, 300, 0, 0),
+(900301, 900301, 566, 1, 1, 0, 1934.58, 1534.1799, 1179.745, 1.3783675, 300, 0, 0);
 
 DROP TABLE IF EXISTS `mod_moba_store_npc`;
 CREATE TABLE `mod_moba_store_npc` (
     `CreatureEntry` INT UNSIGNED NOT NULL PRIMARY KEY,
     `Map`           INT UNSIGNED NOT NULL,
-    `Team`          TINYINT UNSIGNED NOT NULL,  -- 0 = Alliance, 1 = Horde
-    `VendorId`      INT UNSIGNED NOT NULL       -- both teams' entries share one
+    `Team`          TINYINT UNSIGNED NOT NULL   -- 0 = Alliance, 1 = Horde
 );
 
-INSERT INTO `mod_moba_store_npc` (`CreatureEntry`, `Map`, `Team`, `VendorId`)
+INSERT INTO `mod_moba_store_npc` (`CreatureEntry`, `Map`, `Team`)
 VALUES
-(900300, 566, 0, 0),
-(900301, 566, 1, 0),
-(900302, 566, 0, 1),
-(900303, 566, 1, 1),
-(900304, 566, 0, 2),
-(900305, 566, 1, 2),
-(900306, 566, 0, 3),
-(900307, 566, 1, 3);
+(900300, 566, 0),
+(900301, 566, 1);
 
 DROP TABLE IF EXISTS `mod_moba_store_menu`;
 CREATE TABLE `mod_moba_store_menu` (
     `Map`        INT UNSIGNED NOT NULL,
-    `VendorId`   INT UNSIGNED NOT NULL,
+    `TabId`      INT UNSIGNED NOT NULL,
     `NodeId`     INT UNSIGNED NOT NULL,
     `ParentId`   INT UNSIGNED NOT NULL DEFAULT 0,  -- 0 = top level
     `SortOrder`  INT UNSIGNED NOT NULL DEFAULT 0,
     `Label`      VARCHAR(100) NOT NULL,
     `IsPurchase` TINYINT UNSIGNED NOT NULL DEFAULT 0,
     `CostCopper` INT UNSIGNED NOT NULL DEFAULT 0,
-    PRIMARY KEY (`Map`, `VendorId`, `NodeId`)
+    PRIMARY KEY (`Map`, `TabId`, `NodeId`)
 );
 
 INSERT INTO `mod_moba_store_menu`
-(`Map`, `VendorId`, `NodeId`, `ParentId`, `SortOrder`, `Label`, `IsPurchase`, `CostCopper`)
+(`Map`, `TabId`, `NodeId`, `ParentId`, `SortOrder`, `Label`, `IsPurchase`, `CostCopper`)
 VALUES
 (566, 0, 1, 0, 0, 'Cloth', 0, 0),
 (566, 0, 2, 1, 0, 'of the Eagle', 1, 0),
@@ -313,7 +291,7 @@ VALUES
 (566, 2, 2, 1, 0, 'Cowl of the Dire Troll', 1, 10000),
 (566, 2, 3, 1, 1, 'Mantle of Deceit', 1, 10000),
 (566, 2, 4, 1, 2, 'Water-Drenched Robe', 1, 10000),
-(566, 2, 5, 1, 3, 'Sash of Shattering Hearts', 1, 10000),
+(566, 2, 5, 1, 3, 'Living Mojo Belt', 1, 10000),
 (566, 2, 6, 1, 4, 'Leggings of the Ruins Dweller', 1, 10000),
 (566, 2, 7, 1, 5, 'Slithering Slippers', 1, 10000),
 (566, 2, 8, 1, 6, 'Tangled Web Bindings', 1, 10000),
@@ -326,10 +304,10 @@ VALUES
 (566, 2, 15, 10, 4, 'Trollwoven Breastplate', 1, 10000),
 (566, 2, 16, 10, 5, 'Ymirjar Physician''s Robe', 1, 10000),
 (566, 2, 17, 10, 6, 'Batrider''s Cord', 1, 10000),
-(566, 2, 18, 10, 7, 'Wrap of the Everliving Tree', 1, 10000),
+(566, 2, 18, 10, 7, 'Maiden''s Girdle', 1, 10000),
 (566, 2, 19, 10, 8, 'Legguards of Swarming Attacks', 1, 10000),
 (566, 2, 20, 10, 9, 'Kilt of the Forgotten One', 1, 10000),
-(566, 2, 21, 10, 10, 'Treads of Nimble Evasion', 1, 10000),
+(566, 2, 21, 10, 10, 'Gorloc Muddy Footwraps', 1, 10000),
 (566, 2, 22, 10, 11, 'Cavern Leather Treads', 1, 10000),
 (566, 2, 23, 10, 12, 'Bindings of the Tunneler', 1, 10000),
 (566, 2, 24, 10, 13, 'Bracers of the Divine Elemental', 1, 10000),
@@ -342,12 +320,12 @@ VALUES
 (566, 2, 31, 27, 3, 'Mantle of Discarded Ways', 1, 10000),
 (566, 2, 32, 27, 4, 'Hauberk of the Arcane Wraith', 1, 10000),
 (566, 2, 33, 27, 5, 'Moragg''s Chestguard', 1, 10000),
-(566, 2, 34, 27, 6, 'Cinch of Bonded Servitude', 1, 10000),
+(566, 2, 34, 27, 6, 'Cord of Swirling Winds', 1, 10000),
 (566, 2, 35, 27, 7, 'Girdle of the Ethereal', 1, 10000),
 (566, 2, 36, 27, 8, 'Azure Ringmail Leggings', 1, 10000),
 (566, 2, 37, 27, 9, 'Patroller''s War-Kilt', 1, 10000),
 (566, 2, 38, 27, 10, 'Twin-Headed Boots', 1, 10000),
-(566, 2, 39, 27, 11, 'Treads of the Glorious Spirit', 1, 10000),
+(566, 2, 39, 27, 11, 'Sabatons of the Ages', 1, 10000),
 (566, 2, 40, 27, 12, 'Necromantic Wristguards', 1, 10000),
 (566, 2, 41, 27, 13, 'Bands of the Sky Ring', 1, 10000),
 (566, 2, 42, 27, 14, 'Gauntlets of the Plundering Geist', 1, 10000),
@@ -368,7 +346,7 @@ VALUES
 (566, 2, 57, 44, 12, 'Cast Iron Shackles', 1, 10000),
 (566, 2, 58, 44, 13, 'Catalytic Bands', 1, 10000),
 (566, 2, 59, 44, 14, 'Gauntlets of Capture', 1, 10000),
-(566, 2, 60, 44, 15, 'Gauntlets of Shattered Pride', 1, 10000),
+(566, 2, 60, 44, 15, 'Grips of Sculptured Icicles', 1, 10000),
 (566, 2, 61, 0, 4, 'Shield', 0, 0),
 (566, 2, 62, 61, 0, 'Savage Gladiator''s Shield Wall', 1, 10000),
 (566, 2, 63, 61, 1, 'Savage Gladiator''s Barrier', 1, 10000),
@@ -523,18 +501,18 @@ VALUES
 DROP TABLE IF EXISTS `mod_moba_store_grant`;
 CREATE TABLE `mod_moba_store_grant` (
     `Map`       INT UNSIGNED NOT NULL,
-    `VendorId`  INT UNSIGNED NOT NULL,
+    `TabId`     INT UNSIGNED NOT NULL,
     `NodeId`    INT UNSIGNED NOT NULL,
     `ItemEntry` INT UNSIGNED NOT NULL,
     -- ItemRandomSuffix.dbc id, stored positive; 0 = no suffix. The engine
     -- wants it NEGATED as randomPropertyId (see Item::GenerateItemRandomPropertyId).
     `SuffixId`  INT UNSIGNED NOT NULL DEFAULT 0,
     `Count`     INT UNSIGNED NOT NULL DEFAULT 1,
-    KEY `idx_node` (`Map`, `VendorId`, `NodeId`)
+    KEY `idx_node` (`Map`, `TabId`, `NodeId`)
 );
 
 INSERT INTO `mod_moba_store_grant`
-(`Map`, `VendorId`, `NodeId`, `ItemEntry`, `SuffixId`, `Count`)
+(`Map`, `TabId`, `NodeId`, `ItemEntry`, `SuffixId`, `Count`)
 VALUES
 (566, 0, 2, 36063, 6, 1),
 (566, 0, 2, 36065, 6, 1),
@@ -1019,7 +997,7 @@ VALUES
 (566, 2, 2, 37715, 0, 1),
 (566, 2, 3, 37691, 0, 1),
 (566, 2, 4, 43401, 0, 1),
-(566, 2, 5, 45156, 0, 1),
+(566, 2, 5, 37637, 0, 1),
 (566, 2, 6, 43313, 0, 1),
 (566, 2, 7, 37629, 0, 1),
 (566, 2, 8, 37245, 0, 1),
@@ -1031,10 +1009,10 @@ VALUES
 (566, 2, 15, 43476, 0, 1),
 (566, 2, 16, 37587, 0, 1),
 (566, 2, 17, 37714, 0, 1),
-(566, 2, 18, 45181, 0, 1),
+(566, 2, 18, 38616, 0, 1),
 (566, 2, 19, 43286, 0, 1),
 (566, 2, 20, 37616, 0, 1),
-(566, 2, 21, 45159, 0, 1),
+(566, 2, 21, 43312, 0, 1),
 (566, 2, 22, 37176, 0, 1),
 (566, 2, 23, 37183, 0, 1),
 (566, 2, 24, 37634, 0, 1),
@@ -1046,12 +1024,12 @@ VALUES
 (566, 2, 31, 37398, 0, 1),
 (566, 2, 32, 37144, 0, 1),
 (566, 2, 33, 43410, 0, 1),
-(566, 2, 34, 45184, 0, 1),
+(566, 2, 34, 37845, 0, 1),
 (566, 2, 35, 37868, 0, 1),
 (566, 2, 36, 37262, 0, 1),
 (566, 2, 37, 37818, 0, 1),
 (566, 2, 38, 37870, 0, 1),
-(566, 2, 39, 45183, 0, 1),
+(566, 2, 39, 37654, 0, 1),
 (566, 2, 40, 40490, 0, 1),
 (566, 2, 41, 37365, 0, 1),
 (566, 2, 42, 37614, 0, 1),
@@ -1071,7 +1049,7 @@ VALUES
 (566, 2, 57, 37891, 0, 1),
 (566, 2, 58, 37288, 0, 1),
 (566, 2, 59, 37874, 0, 1),
-(566, 2, 60, 45182, 0, 1),
+(566, 2, 60, 37729, 0, 1),
 (566, 2, 62, 42556, 0, 1),
 (566, 2, 63, 42557, 0, 1),
 (566, 2, 65, 45811, 0, 1),

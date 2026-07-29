@@ -36,7 +36,7 @@ Shipped:
 - [x] HUD revive countdown + kill feed — center-screen respawn countdown (client-ticked, re-synced on `/reload` while dead); transient feed for player kills (per-POV text, team-relative colours, class emblems) and non-player deaths (creep/tower/neutral/environment, category label + icon)
 - [x] YAML content configs — per-map generator configs migrated from JSON to commented YAML (inline field docs); generators read via PyYAML, generated SQL byte-identical
 - [x] Inhibitors + super minions — a passive inhibitor gates each base behind the tower; taking it fields stronger "super minion" waves for the attacker until it respawns, then the base re-locks. The base (core) is now the win condition — destroy the enemy base to win.
-- [x] Gear and items infrastructure — gossip shop NPCs in each base: starting gear (free, random-suffix bundles), consumables, rare and epic tiers. Per-map `store_config.yaml` drives an arbitrary-depth menu; suffix availability is derived from `item_template`, purchases are team-gated and all-or-nothing, and grants are GUID-tracked and stripped on exit
+- [x] Gear and items infrastructure — one shopkeeper NPC per base opening a League-style shop panel drawn by the MobaHUD addon: four tabs (starting gear free with random-suffix bundles, consumables, rare, epic), icon grid with real item tooltips and suffix stats, sidebar filters with counts, and server-pushed usability greying. Per-map `store_config.yaml` generates both the SQL and the addon's `Catalog.lua`; suffix availability is derived from `item_template`, purchases are team-gated and all-or-nothing, and grants are GUID-tracked and stripped on exit
 
 Next, in order:
 
@@ -47,7 +47,6 @@ Next, in order:
 - [ ] Player kill rewards and bounties — gold values, bounty scaling, and assist-gold split on top of the shipped kill/assist attribution
 - [ ] Itemization pass
 - [ ] Character creation scripts / level up automation - have the ability to create characters at a given level that have everything trained / learned, including armor proficiencies, weapon skill, class quest abilities, give bags, etc
-- [ ] Shop addon?
 
 ## Housekeeping
 
@@ -58,6 +57,7 @@ Code/doc chores — cleanups, audits, convention passes — that don't change ga
 - [ ] Remove all creep types being set to beast
 - [ ] `BG_MOBA_Score` enum holds only the Flurry achievement ID — decide whether EotS achievements should fire at all in this mode
 - [ ] Remove leftover `m_BuffChange = true` from the `BattlegroundMOBA` constructor (buffs were removed; harmless)
+- [ ] Split the shop out of `MobaHUD.lua` (~1300 lines) into `Shop.lua` — it is one file, so a shop error currently takes the HUD down with it
 
 ## Key changed files
 

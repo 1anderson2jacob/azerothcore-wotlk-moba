@@ -1,28 +1,33 @@
 #!/usr/bin/env python3
 """
-MOBA item vendor generator.
+MOBA item shop generator.
 
-Reads per-map vendor configs (apps/moba/maps/<mode>/store_config.yaml) and
+Reads per-map shop configs (apps/moba/maps/<mode>/store_config.yaml) and
 generates data/sql/custom/db_world/mod_moba_store.sql in full:
-  * creature_template / creature_template_model -- the vendor NPCs (one entry
+  * creature_template / creature_template_model -- the shopkeeper NPCs (one entry
                             per team; team lives in mod_moba_store_npc, not in
                             faction -- CFBG means faction cannot express team)
   * creature              -- their per-map spawns (guid == entry; static props,
                             so they are world spawns rather than BG-lifecycle
                             AddCreature calls, which would need new BgCreatures
                             enum slots)
-  * mod_moba_store_npc    -- creature entry -> (map, team, vendor)
-  * mod_moba_store_menu   -- the gossip tree, arbitrary depth
+  * mod_moba_store_npc    -- creature entry -> (map, team)
+  * mod_moba_store_menu   -- the catalog tree, arbitrary depth, keyed per tab
   * mod_moba_store_grant  -- the item(s) behind each purchase node
+plus client/addons/MobaHUD/Catalog.lua, which is what the shop panel browses.
+
+ONE shopkeeper per team serves every tab, so TabId keys the menu and grant tables
+but NOT the NPC: the tab bought from is picked in the panel, never inferred from
+which NPC you are standing at.
 
 A menu group is exactly one of three shapes:
   * subcategories -- a branch, nested to any depth
   * pieces        -- random-suffix bases; ONE LEAF PER SUFFIX, granting the whole
                      bundle under that suffix
   * items         -- fixed named items; ONE LEAF PER ITEM, no suffix (the blue,
-                     purple and consumable vendors)
+                     purple and consumable tabs)
 
-Starting-gear "of the X" pieces are stock green random-suffix bases: the vendor
+Starting-gear "of the X" pieces are stock green random-suffix bases: the shop
 stamps a suffix id onto the base at grant time. Which suffixes a base may
 legally roll is DERIVED here from committed data --
     item_template.RandomSuffix  (base item -> suffix group)
@@ -60,22 +65,36 @@ ITEM_ENCHANT_SQL = Path("data/sql/base/db_world/item_enchantment_template.sql")
 COL_ENTRY, COL_NAME, COL_QUALITY = 0, 4, 6
 COL_CLASS, COL_SUBCLASS = 1, 2
 COL_INVTYPE, COL_ITEMLEVEL, COL_REQLEVEL, COL_RANDOMSUFFIX = 12, 15, 16, 110
+COL_FLAGS2 = 8                   # item_template.FlagsExtra
 ITEM_TEMPLATE_MIN_FIELDS = 130   # real rows have 137; guards against a false
                                  # "(entry," match inside a text column
 
-# Vendor creature invariants.
-VENDOR_FACTION = 35              # friendly to all -- team is a script rule
-VENDOR_NPCFLAG = 1               # UNIT_NPC_FLAG_GOSSIP
-VENDOR_UNIT_FLAGS = 0x2 | 0x100 | 0x200   # NON_ATTACKABLE | IMMUNE_TO_PC | IMMUNE_TO_NPC
-VENDOR_SCRIPT = "npc_moba_store"
-DEFAULT_SUBNAME = "MOBA Vendor"
+# Shopkeeper creature invariants.
+SHOPKEEPER_FACTION = 35              # friendly to all -- team is a script rule
+SHOPKEEPER_NPCFLAG = 1               # UNIT_NPC_FLAG_GOSSIP: what makes it right-clickable
+SHOPKEEPER_UNIT_FLAGS = 0x2 | 0x100 | 0x200   # NON_ATTACKABLE | IMMUNE_TO_PC | IMMUNE_TO_NPC
+SHOPKEEPER_SCRIPT = "npc_moba_store"
+
+# Reserved creature-entry window for shop NPCs. The generated SQL clears the whole
+# range rather than only the entries it inserts, so an NPC removed from a config is
+# removed from the DB -- otherwise the four-vendors-to-one collapse would leave
+# 900302-900307 spawned forever.
+#
+# The sibling generators deliberately do NOT do this: they own templates only, so
+# an orphaned row is inert (nothing spawns it). This one owns `creature` rows, and
+# an orphaned spawn is a live scripted NPC standing in the base.
+SHOP_ENTRY_MIN, SHOP_ENTRY_MAX = 900300, 900399
 
 QUALITY_GREEN = 2
 EXPECTED_REQ_LEVEL = range(77, 81)   # advisory only
 
 MAX_USABLE_REQ_LEVEL = 80            # a fixed item above this can never be equipped
 
-GOSSIP_MAX_MENU_ITEMS = 32       # GossipDef.h; a fuller menu is silently truncated
+# ItemFlags2. Player::CanUseItem tests these against the player's NATIVE race,
+# not their BG team -- so with CFBG a faction-locked item differs between two
+# players on the SAME side. Both teams must see the same shop.
+ITEM_FLAG2_FACTION_HORDE    = 0x1
+ITEM_FLAG2_FACTION_ALLIANCE = 0x2
 
 # Custom copy entry = source entry + this offset (36063 -> 936063). Deterministic,
 # so re-runs are stable without a lockfile and the mapping stays readable.
@@ -191,6 +210,7 @@ def load_items(entries):
                 "subclass": int(fields[COL_SUBCLASS]),
                 "invtype": int(fields[COL_INVTYPE]),
                 "ilvl": int(fields[COL_ITEMLEVEL]),
+                "flags2": int(fields[COL_FLAGS2]),
             }
         except ValueError:
             continue
@@ -221,37 +241,48 @@ def validate(cfg, path):
     for s in cfg["suffixes"]:
         if "name" not in s or "id" not in s:
             fail(f'{path}: every "suffixes" entry needs "name" and "id"')
-    if not isinstance(cfg.get("vendors"), list) or not cfg["vendors"]:
-        fail(f'{path}: "vendors" must be a non-empty list')
+
+    sk = cfg.get("shopkeeper")
+    if not isinstance(sk, dict):
+        fail(f'{path}: "shopkeeper" must be a block with name/subname/display_id/teams')
+    for key in ("name", "subname", "display_id", "teams"):
+        if key not in sk:
+            fail(f'{path}: "shopkeeper" missing "{key}"')
+    for t in sk["teams"]:
+        for key in ("team", "entry", "x", "y", "z", "o"):
+            if key not in t:
+                fail(f'{path}: shopkeeper team block missing "{key}"')
+        if t["team"] not in (0, 1):
+            fail(f'{path}: shopkeeper "team" must be 0 or 1')
+        if not SHOP_ENTRY_MIN <= t["entry"] <= SHOP_ENTRY_MAX:
+            fail(f'{path}: shopkeeper entry {t["entry"]} is outside the reserved '
+                 f"{SHOP_ENTRY_MIN}-{SHOP_ENTRY_MAX} window the generated SQL clears")
+
+    if not isinstance(cfg.get("tabs"), list) or not cfg["tabs"]:
+        fail(f'{path}: "tabs" must be a non-empty list')
 
     # A menu group is a branch ("subcategories") or leaf-bearing ("pieces" for
     # suffix bundles, "items" for fixed items), never more than one -- that is
     # what allows arbitrary nesting depth.
-    def validate_group(group, vendor_key, trail):
+    def validate_group(group, tab_key, trail):
         if "name" not in group:
-            fail(f'{path}: vendor {vendor_key} group under "{trail}" needs a "name"')
+            fail(f'{path}: tab {tab_key} group under "{trail}" needs a "name"')
         here = f'{trail} / {group["name"]}'
         modes = [k for k in ("subcategories", "pieces", "items") if group.get(k)]
         if len(modes) != 1:
-            fail(f'{path}: vendor {vendor_key} group "{here}" needs exactly one of '
+            fail(f'{path}: tab {tab_key} group "{here}" needs exactly one of '
                  f'"subcategories", "pieces" or "items"')
         for spec in group.get("items", []):
             if not isinstance(spec, int) and "entry" not in spec:
-                fail(f'{path}: vendor {vendor_key} group "{here}": every "items" entry is '
+                fail(f'{path}: tab {tab_key} group "{here}": every "items" entry is '
                      f'an item id or a table with an "entry"')
         for sub in group.get("subcategories", []):
-            validate_group(sub, vendor_key, here)
+            validate_group(sub, tab_key, here)
 
-    for v in cfg["vendors"]:
-        for key in ("key", "name", "display_id", "teams", "categories"):
+    for v in cfg["tabs"]:
+        for key in ("key", "name", "categories"):
             if key not in v:
-                fail(f'{path}: vendor {v.get("key", "?")} missing "{key}"')
-        for t in v["teams"]:
-            for key in ("team", "entry", "x", "y", "z", "o"):
-                if key not in t:
-                    fail(f'{path}: vendor {v["key"]} team block missing "{key}"')
-            if t["team"] not in (0, 1):
-                fail(f'{path}: vendor {v["key"]} "team" must be 0 or 1')
+                fail(f'{path}: tab {v.get("key", "?")} missing "{key}"')
         for c in v["categories"]:
             validate_group(c, v["key"], v["key"])
 
@@ -262,15 +293,14 @@ def load_configs():
     for path in sorted(MAPS_DIR.glob("*/store_config.yaml")):
         cfg = yaml.safe_load(path.read_text())
         validate(cfg, path)
-        for v in cfg["vendors"]:
-            for t in v["teams"]:
-                if t["entry"] in seen_entries:
-                    fail(f'{path}: vendor entry {t["entry"]} already defined in '
-                         f'{seen_entries[t["entry"]]} -- entries must be globally unique')
-                seen_entries[t["entry"]] = path
+        for t in cfg["shopkeeper"]["teams"]:
+            if t["entry"] in seen_entries:
+                fail(f'{path}: shopkeeper entry {t["entry"]} already defined in '
+                     f'{seen_entries[t["entry"]]} -- entries must be globally unique')
+            seen_entries[t["entry"]] = path
         configs.append((path, cfg))
     if not configs:
-        fail(f"no vendor configs found under {MAPS_DIR}/*/store_config.yaml")
+        fail(f"no shop configs found under {MAPS_DIR}/*/store_config.yaml")
     return configs
 
 
@@ -285,7 +315,7 @@ def build(configs):
 
     suffix_bases, fixed_items = set(), set()
     for _, cfg in configs:
-        for v in cfg["vendors"]:
+        for v in cfg["tabs"]:
             for c in v["categories"]:
                 collect(c, suffix_bases, fixed_items)
         if cfg.get("cloak_item"):
@@ -299,7 +329,7 @@ def build(configs):
         return groups.get(items[entry]["suffix_group"], set())
 
     # Only suffix bases must be green: a random suffix cannot roll on a blue or a
-    # purple, which is exactly what the fixed-item vendors sell.
+    # purple, which is exactly what the fixed-item tabs sell.
     for entry in sorted(suffix_bases):
         info = items[entry]
         if info["quality"] != QUALITY_GREEN:
@@ -315,7 +345,19 @@ def build(configs):
             fail(f'item {entry} "{info["name"]}" requires level {info["req"]} -- '
                  f"unusable by a level-{MAX_USABLE_REQ_LEVEL} player")
 
-    npc_rows, menu_rows, grant_rows, vendors_meta, item_copies = [], [], [], [], []
+    # Every catalog item, suffix bases included -- a faction-locked base greys out
+    # for half the players exactly the same way a fixed item does.
+    locked = []
+    for entry in sorted(suffix_bases | fixed_items):
+        info = items[entry]
+        if info["flags2"] & (ITEM_FLAG2_FACTION_HORDE | ITEM_FLAG2_FACTION_ALLIANCE):
+            side = "Horde" if info["flags2"] & ITEM_FLAG2_FACTION_HORDE else "Alliance"
+            locked.append(f'  {entry} "{info["name"]}" is {side}-only')
+    if locked:
+        fail("faction-locked items in the catalog -- both teams must see the same "
+             "shop:\n" + "\n".join(locked))
+
+    npc_rows, menu_rows, grant_rows, tabs_meta, item_copies = [], [], [], [], []
 
     for path, cfg in configs:
         map_id = cfg["map"]
@@ -329,7 +371,7 @@ def build(configs):
         entry_offset = ITEM_ENTRY_OFFSET if custom_items else 0
 
         cfg_bases, cfg_fixed = set(), set()
-        for v in cfg["vendors"]:
+        for v in cfg["tabs"]:
             for c in v["categories"]:
                 collect(c, cfg_bases, cfg_fixed)
         if cloak:
@@ -349,10 +391,14 @@ def build(configs):
                      f"the groups the same cost/sell_ratio, or the item its own entry")
             item_sell[item_entry] = sell
 
-        for vendor_id, v in enumerate(cfg["vendors"]):
-            for t in v["teams"]:
-                npc_rows.append((t["entry"], map_id, t["team"], vendor_id, v, t))
+        # One shopkeeper pair per map, independent of the tab count.
+        sk = cfg["shopkeeper"]
+        for t in sk["teams"]:
+            npc_rows.append((t["entry"], map_id, t["team"], sk, t))
 
+        # TabId keys mod_moba_store_menu and _grant and rides the BUY protocol.
+        # It is an index into `tabs`, never a creature -- see the module docstring.
+        for tab_id, v in enumerate(cfg["tabs"]):
             next_node = 0
             purchases = 0
 
@@ -365,14 +411,11 @@ def build(configs):
                 next_node += 1
                 node = next_node
                 here = f'{trail} / {group["name"]}'
-                menu_rows.append((map_id, vendor_id, node, parent_id, sort_order,
+                menu_rows.append((map_id, tab_id, node, parent_id, sort_order,
                                   group["name"], 0, 0))
 
                 subs = group.get("subcategories")
                 if subs:
-                    if len(subs) > GOSSIP_MAX_MENU_ITEMS:
-                        fail(f'{path}: vendor {v["key"]} group "{here}" has {len(subs)} '
-                             f"subcategories -- gossip allows at most {GOSSIP_MAX_MENU_ITEMS}")
                     for i, sub in enumerate(subs):
                         add_group(sub, node, i, here)
                     return
@@ -389,10 +432,6 @@ def build(configs):
                         leaves.append((spec, cost,
                                        int(round(cost * spec.get("sell_ratio", group_ratio)))))
 
-                    if len(leaves) > GOSSIP_MAX_MENU_ITEMS:
-                        fail(f'{path}: vendor {v["key"]} group "{here}" has {len(leaves)} '
-                             f"items -- gossip allows at most {GOSSIP_MAX_MENU_ITEMS}")
-
                     for i, (spec, cost, sell) in enumerate(leaves):
                         entry = spec["entry"]
                         count = spec.get("count", 1)
@@ -402,9 +441,9 @@ def build(configs):
 
                         next_node += 1
                         leaf = next_node
-                        menu_rows.append((map_id, vendor_id, leaf, node, i, label, 1, cost))
+                        menu_rows.append((map_id, tab_id, leaf, node, i, label, 1, cost))
                         note_sell(entry, sell, here)
-                        grant_rows.append((map_id, vendor_id, leaf,
+                        grant_rows.append((map_id, tab_id, leaf,
                                            entry + entry_offset, 0, count))
                         purchases += 1
                     return
@@ -417,7 +456,7 @@ def build(configs):
                 # error (wrong entry, or an id that item cannot roll).
                 for p in pieces:
                     if not rolls(p) & suffix_ids:
-                        fail(f'{path}: vendor {v["key"]} group "{here}": item {p} '
+                        fail(f'{path}: tab {v["key"]} group "{here}": item {p} '
                              f'"{items[p]["name"]}" rolls none of the configured '
                              f'suffixes (its group is {items[p]["suffix_group"]})')
 
@@ -431,32 +470,25 @@ def build(configs):
 
                     next_node += 1
                     leaf = next_node
-                    menu_rows.append((map_id, vendor_id, leaf, node, sub_sort,
+                    menu_rows.append((map_id, tab_id, leaf, node, sub_sort,
                                       s["name"], 1, cost))
 
                     for item_entry in bundle:
                         note_sell(item_entry, sell, here)
-                        grant_rows.append((map_id, vendor_id, leaf,
+                        grant_rows.append((map_id, tab_id, leaf,
                                            item_entry + entry_offset, s["id"], 1))
 
                     sub_sort += 1
                     purchases += 1
 
                 if sub_sort == 0:
-                    fail(f'{path}: vendor {v["key"]} group "{here}" produced no '
+                    fail(f'{path}: tab {v["key"]} group "{here}" produced no '
                          f"purchasable suffixes")
-                if sub_sort > GOSSIP_MAX_MENU_ITEMS:
-                    fail(f'{path}: vendor {v["key"]} group "{here}" has {sub_sort} '
-                         f"options -- gossip allows at most {GOSSIP_MAX_MENU_ITEMS}")
-
-            if len(v["categories"]) > GOSSIP_MAX_MENU_ITEMS:
-                fail(f'{path}: vendor {v["key"]} has {len(v["categories"])} categories '
-                     f"-- gossip allows at most {GOSSIP_MAX_MENU_ITEMS}")
 
             for cat_sort, c in enumerate(v["categories"]):
                 add_group(c, 0, cat_sort, v["key"])
 
-            vendors_meta.append((path, map_id, vendor_id, v, purchases))
+            tabs_meta.append((path, map_id, tab_id, v, purchases))
 
         if not custom_items and any(item_sell.values()):
             warn(f"{path}: sell prices resolve non-zero but custom_items is off -- "
@@ -466,7 +498,7 @@ def build(configs):
             item_copies.extend((entry, entry + ITEM_ENTRY_OFFSET, item_sell.get(entry, 0))
                                for entry in sorted(cfg_items))
 
-    return npc_rows, menu_rows, grant_rows, vendors_meta, item_copies
+    return npc_rows, menu_rows, grant_rows, tabs_meta, item_copies
 
 
 def emit_item_copies(item_copies):
@@ -530,7 +562,7 @@ def emit_item_copies(item_copies):
     return lines
 
 
-def emit_catalog(menu_rows, grant_rows, vendors_meta):
+def emit_catalog(menu_rows, grant_rows, tabs_meta):
     """Generated Lua catalog for the shop addon.
 
     The panel browses entirely client-side, so structure and display metadata ship
@@ -588,19 +620,17 @@ def emit_catalog(menu_rows, grant_rows, vendors_meta):
         lines.append("    },")
 
         lines.append("    tabs = {")
-        for _path, meta_map, vendor_id, v, _purchases in vendors_meta:
+        for _path, meta_map, tab_id, v, _purchases in tabs_meta:
             if meta_map != map_id:
                 continue
-            # subname, not name: three of four vendors are called "Quartermaster".
-            tab_name = v.get("subname", DEFAULT_SUBNAME)
-            lines.append(f"      {{ vendorId = {vendor_id}, "
-                         f"name = {lua_str(tab_name)}, leaves = {{")
+            lines.append(f"      {{ tabId = {tab_id}, "
+                         f"name = {lua_str(v['name'])}, leaves = {{")
             for m in menu_rows:
-                if m[0] != map_id or m[1] != vendor_id or not m[6]:
+                if m[0] != map_id or m[1] != tab_id or not m[6]:
                     continue
                 pieces = ", ".join(
                     f"{{ entry = {g[3]}, suffix = {g[4]}, count = {g[5]} }}"
-                    for g in grants_by_node[(map_id, vendor_id, m[2])])
+                    for g in grants_by_node[(map_id, tab_id, m[2])])
                 path = ", ".join(lua_str(p) for p in path_of(m))
                 lines.append(
                     f"        {{ node = {m[2]}, cost = {m[7]}, "
@@ -616,23 +646,28 @@ def emit_catalog(menu_rows, grant_rows, vendors_meta):
 
 
 def emit(npc_rows, menu_rows, grant_rows, item_copies):
-    entries_csv = ", ".join(str(r[0]) for r in npc_rows)
+    # The reserved window, not entries_csv: deleting only what we insert would
+    # leave a removed shopkeeper spawned in the DB forever.
+    window = f"BETWEEN {SHOP_ENTRY_MIN} AND {SHOP_ENTRY_MAX}"
 
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE -- do not hand-edit.",
         "-- Produced by apps/moba/gen_store.py from apps/moba/maps/*/store_config.yaml.",
-        "-- Owns the vendor creatures (creature_template + creature_template_model),",
-        "-- their spawns (creature), and the gossip catalog (mod_moba_store_*).",
+        "-- Owns the shopkeeper creatures (creature_template + creature_template_model),",
+        "-- their spawns (creature), and the item catalog (mod_moba_store_*).",
+        "-- ONE shopkeeper per team per map; TabId below is a tab in the addon",
+        "-- panel, not an NPC. Browsing is client-side (Catalog.lua); these tables",
+        "-- exist so the server can validate a purchase from a node id alone.",
         "-- Team is carried in mod_moba_store_npc, NOT in faction: CFBG puts players",
         "-- of either faction on either BG team, so faction cannot express team.",
-        "-- Vendors are faction 35 (friendly to all) and immune; npc_moba_store",
+        "-- Shopkeepers are faction 35 (friendly to all) and immune; npc_moba_store",
         "-- refuses players whose BG team does not match.",
         "-- ============================================================",
         "",
         "USE acore_world;",
         "",
-        f"DELETE FROM `creature_template` WHERE `entry` IN ({entries_csv});",
+        f"DELETE FROM `creature_template` WHERE `entry` {window};",
         "INSERT INTO `creature_template`",
         "(`entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`,",
         " `speed_walk`, `speed_run`, `rank`, `unit_class`, `unit_flags`,",
@@ -641,25 +676,28 @@ def emit(npc_rows, menu_rows, grant_rows, item_copies):
         "VALUES",
     ]
     ct_rows = []
-    for entry, _map_id, _team, _vid, v, _t in npc_rows:
-        subname = v.get("subname", DEFAULT_SUBNAME)
+    for entry, _map_id, _team, sk, t in npc_rows:
+        # Team blocks override the shopkeeper's defaults, so the two sides can
+        # differ in name or model without duplicating the whole block.
         ct_rows.append(
-            f"({entry}, {sql_str(v['name'])}, {sql_str(subname)}, 80, 80, "
-            f"{VENDOR_FACTION}, {VENDOR_NPCFLAG}, "
-            f"1.0, 1.14286, 0, 1, {VENDOR_UNIT_FLAGS}, "
+            f"({entry}, {sql_str(t.get('name', sk['name']))}, "
+            f"{sql_str(t.get('subname', sk['subname']))}, 80, 80, "
+            f"{SHOPKEEPER_FACTION}, {SHOPKEEPER_NPCFLAG}, "
+            f"1.0, 1.14286, 0, 1, {SHOPKEEPER_UNIT_FLAGS}, "
             f"7, 0, 0, 1, 1, "
-            f"1, 0, {sql_str(VENDOR_SCRIPT)}, 0)")
+            f"1, 0, {sql_str(SHOPKEEPER_SCRIPT)}, 0)")
     lines.append(",\n".join(ct_rows) + ";")
 
     lines += [
         "",
-        f"DELETE FROM `creature_template_model` WHERE `CreatureID` IN ({entries_csv});",
+        f"DELETE FROM `creature_template_model` WHERE `CreatureID` {window};",
         "INSERT INTO `creature_template_model`",
         "(`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)",
         "VALUES",
     ]
-    ctm_rows = [f"({entry}, 0, {v['display_id']}, {v.get('display_scale', 1.0)}, 1, 0)"
-                for entry, _m, _team, _vid, v, _t in npc_rows]
+    ctm_rows = [f"({entry}, 0, {t.get('display_id', sk['display_id'])}, "
+                f"{t.get('display_scale', sk.get('display_scale', 1.0))}, 1, 0)"
+                for entry, _m, _team, sk, t in npc_rows]
     lines.append(",\n".join(ctm_rows) + ";")
 
     # guid == entry: the 900000-900999 guid window is unused by core data.
@@ -669,7 +707,7 @@ def emit(npc_rows, menu_rows, grant_rows, item_copies):
     # the live schema is base + updates.
     lines += [
         "",
-        f"DELETE FROM `creature` WHERE `guid` IN ({entries_csv});",
+        f"DELETE FROM `creature` WHERE `guid` {window};",
         "INSERT INTO `creature`",
         "(`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `equipment_id`,",
         " `position_x`, `position_y`, `position_z`, `orientation`,",
@@ -678,7 +716,7 @@ def emit(npc_rows, menu_rows, grant_rows, item_copies):
     ]
     c_rows = [f"({entry}, {entry}, {map_id}, 1, 1, 0, "
               f"{t['x']}, {t['y']}, {t['z']}, {t['o']}, 300, 0, 0)"
-              for entry, map_id, _team, _vid, _v, t in npc_rows]
+              for entry, map_id, _team, _sk, t in npc_rows]
     lines.append(",\n".join(c_rows) + ";")
 
     lines += [
@@ -687,62 +725,61 @@ def emit(npc_rows, menu_rows, grant_rows, item_copies):
         "CREATE TABLE `mod_moba_store_npc` (",
         "    `CreatureEntry` INT UNSIGNED NOT NULL PRIMARY KEY,",
         "    `Map`           INT UNSIGNED NOT NULL,",
-        "    `Team`          TINYINT UNSIGNED NOT NULL,  -- 0 = Alliance, 1 = Horde",
-        "    `VendorId`      INT UNSIGNED NOT NULL       -- both teams' entries share one",
+        "    `Team`          TINYINT UNSIGNED NOT NULL   -- 0 = Alliance, 1 = Horde",
         ");",
         "",
-        "INSERT INTO `mod_moba_store_npc` (`CreatureEntry`, `Map`, `Team`, `VendorId`)",
+        "INSERT INTO `mod_moba_store_npc` (`CreatureEntry`, `Map`, `Team`)",
         "VALUES",
     ]
     lines.append(",\n".join(
-        f"({entry}, {map_id}, {team}, {vid})"
-        for entry, map_id, team, vid, _v, _t in npc_rows) + ";")
+        f"({entry}, {map_id}, {team})"
+        for entry, map_id, team, _sk, _t in npc_rows) + ";")
 
     lines += [
         "",
         "DROP TABLE IF EXISTS `mod_moba_store_menu`;",
         "CREATE TABLE `mod_moba_store_menu` (",
         "    `Map`        INT UNSIGNED NOT NULL,",
-        "    `VendorId`   INT UNSIGNED NOT NULL,",
+        "    `TabId`      INT UNSIGNED NOT NULL,",
         "    `NodeId`     INT UNSIGNED NOT NULL,",
         "    `ParentId`   INT UNSIGNED NOT NULL DEFAULT 0,  -- 0 = top level",
         "    `SortOrder`  INT UNSIGNED NOT NULL DEFAULT 0,",
         "    `Label`      VARCHAR(100) NOT NULL,",
         "    `IsPurchase` TINYINT UNSIGNED NOT NULL DEFAULT 0,",
         "    `CostCopper` INT UNSIGNED NOT NULL DEFAULT 0,",
-        "    PRIMARY KEY (`Map`, `VendorId`, `NodeId`)",
+        "    PRIMARY KEY (`Map`, `TabId`, `NodeId`)",
         ");",
         "",
         "INSERT INTO `mod_moba_store_menu`",
-        "(`Map`, `VendorId`, `NodeId`, `ParentId`, `SortOrder`, `Label`, `IsPurchase`, `CostCopper`)",
+        "(`Map`, `TabId`, `NodeId`, `ParentId`, `SortOrder`, `Label`, `IsPurchase`, `CostCopper`)",
         "VALUES",
     ]
     lines.append(",\n".join(
-        f"({m}, {vid}, {nid}, {pid}, {sort}, {sql_str(label)}, {is_buy}, {cost})"
-        for m, vid, nid, pid, sort, label, is_buy, cost in menu_rows) + ";")
+        f"({m}, {tid}, {nid}, {pid}, {sort}, {sql_str(label)}, {is_buy}, {cost})"
+        for m, tid, nid, pid, sort, label, is_buy, cost in menu_rows) + ";")
 
     lines += [
         "",
         "DROP TABLE IF EXISTS `mod_moba_store_grant`;",
         "CREATE TABLE `mod_moba_store_grant` (",
         "    `Map`       INT UNSIGNED NOT NULL,",
-        "    `VendorId`  INT UNSIGNED NOT NULL,",
+        "    `TabId`     INT UNSIGNED NOT NULL,",
         "    `NodeId`    INT UNSIGNED NOT NULL,",
         "    `ItemEntry` INT UNSIGNED NOT NULL,",
         "    -- ItemRandomSuffix.dbc id, stored positive; 0 = no suffix. The engine",
         "    -- wants it NEGATED as randomPropertyId (see Item::GenerateItemRandomPropertyId).",
         "    `SuffixId`  INT UNSIGNED NOT NULL DEFAULT 0,",
         "    `Count`     INT UNSIGNED NOT NULL DEFAULT 1,",
-        "    KEY `idx_node` (`Map`, `VendorId`, `NodeId`)",
+        "    KEY `idx_node` (`Map`, `TabId`, `NodeId`)",
         ");",
         "",
         "INSERT INTO `mod_moba_store_grant`",
-        "(`Map`, `VendorId`, `NodeId`, `ItemEntry`, `SuffixId`, `Count`)",
+        "(`Map`, `TabId`, `NodeId`, `ItemEntry`, `SuffixId`, `Count`)",
         "VALUES",
     ]
     lines.append(",\n".join(
-        f"({m}, {vid}, {nid}, {item}, {suffix}, {count})"
-        for m, vid, nid, item, suffix, count in grant_rows) + ";")
+        f"({m}, {tid}, {nid}, {item}, {suffix}, {count})"
+        for m, tid, nid, item, suffix, count in grant_rows) + ";")
 
     if item_copies:
         lines += emit_item_copies(item_copies)
@@ -752,18 +789,18 @@ def emit(npc_rows, menu_rows, grant_rows, item_copies):
 
 def main():
     configs = load_configs()
-    npc_rows, menu_rows, grant_rows, vendors_meta, item_copies = build(configs)
+    npc_rows, menu_rows, grant_rows, tabs_meta, item_copies = build(configs)
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     OUTPUT.write_text(emit(npc_rows, menu_rows, grant_rows, item_copies))
     CATALOG_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    CATALOG_OUTPUT.write_text(emit_catalog(menu_rows, grant_rows, vendors_meta))
+    CATALOG_OUTPUT.write_text(emit_catalog(menu_rows, grant_rows, tabs_meta))
 
     print(f"Wrote {OUTPUT}")
     print(f"Wrote {CATALOG_OUTPUT}")
-    for path, map_id, vendor_id, v, purchases in vendors_meta:
-        print(f"  map {map_id} vendor {vendor_id} ({v['key']}): "
+    for path, map_id, tab_id, v, purchases in tabs_meta:
+        print(f"  map {map_id} tab {tab_id} ({v['key']}): "
               f"{len(v['categories'])} categories, {purchases} purchase nodes")
-    print(f"  {len(npc_rows)} vendor NPCs, {len(menu_rows)} menu nodes, "
+    print(f"  {len(npc_rows)} shopkeeper NPCs, {len(menu_rows)} menu nodes, "
           f"{len(grant_rows)} grant rows")
     if item_copies:
         print(f"  {len(item_copies)} custom item copies (source entry + {ITEM_ENTRY_OFFSET})")

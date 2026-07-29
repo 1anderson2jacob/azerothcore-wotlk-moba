@@ -1,23 +1,21 @@
-# MOBA item vendors for Eye of the Storm.
-# gen_store.py turns this into data/sql/custom/db_world/mod_moba_store.sql:
-#   creature_template + creature_template_model per vendor NPC (one entry per
-#   team), their per-map spawns, and the gossip menu tree (mod_moba_store_npc /
-#   _menu / _grant). Gear is granted in C++ by npc_moba_store on menu select.
+# MOBA item shop for Eye of the Storm.
+# gen_store.py turns this into data/sql/custom/db_world/mod_moba_store.sql and
+# client/addons/MobaHUD/Catalog.lua:
+#   creature_template + creature_template_model for the shopkeeper (one entry per
+#   team), their per-map spawns, and the catalog tables (mod_moba_store_npc /
+#   _menu / _grant). ONE shopkeeper per base -- the `tabs` below are tabs in the
+#   addon panel, not separate NPCs. Gear is granted in C++ by npc_moba_store.
 #
-# One creature entry PER TEAM (team carried in mod_moba_store_npc, keyed by
-# entry -- same pattern as towers). Both teams of a vendor share one menu.
-#
-# A menu group has either `subcategories` (a branch) or `pieces` (suffix leaves),
 # A menu group has exactly one of `subcategories` (a branch), `pieces` (one leaf
 # per suffix, granting the whole bundle) or `items` (one leaf per fixed item, no
 # suffix) -- nest as deep as you like. An `items:` entry is a bare item id, or a
 # table overriding cost / count / name; a leaf label defaults to the item's own
 # name from item_template.
-# "of the X" items are stock green random-suffix bases: the vendor stamps a
-# suffix id onto the base at grant time. gen_store.py derives which suffixes a
-# base may roll from item_template.RandomSuffix + item_enchantment_template and
-# offers only those, so cloth shows caster suffixes only and the wand shows just
-# three. A base that rolls NONE of the listed suffixes fails the run.
+# "of the X" items are stock green random-suffix bases: the shop stamps a suffix
+# id onto the base at grant time. gen_store.py derives which suffixes a base may
+# roll from item_template.RandomSuffix + item_enchantment_template and offers only
+# those, so cloth shows caster suffixes only and the wand shows just three. A base
+# that rolls NONE of the listed suffixes fails the run.
 # Cost omitted = free (0).
 
 map: 566
@@ -55,7 +53,21 @@ sell_ratio: 0.25
 # Back slot is always a cloth cloak (no plate/mail/leather cloak exists). All 10.
 cloak_item: 36416          # Regal Cloak (ilvl 182)
 
-vendors:
+# The shopkeeper -- one per base, one creature entry per team. Entries must sit
+# inside the reserved 900300-900399 window: the generated SQL clears that whole
+# range, so an NPC dropped from this config is dropped from the DB too. (Without
+# that, collapsing four vendors into one would leave 900302-900307 spawned.)
+shopkeeper:
+  name: "Shopkeeper"
+  subname: "Goods & Gear"
+  display_id: 3275
+  teams:
+    - { team: 0, entry: 900300, display_id: 3275, name: 'Dkeka',
+        x: 2393.576, y: 1601.3021, z: 1176.2003, o: 3.9607582 }   # Alliance
+    - { team: 1, entry: 900301, display_id: 1879, name: 'Tojakk',
+        x: 1934.58, y: 1534.1799, z: 1179.745, o: 1.3783675 }   # Horde
+
+tabs:
   # -------------------------------------------------------------------------
   # STARTING GEAR -- free.
   #   armor / shield / accessories: category -> suffix, granting the whole set
@@ -64,9 +76,7 @@ vendors:
   # ilvl-182 level-80 green sets: Coldwraith / Geist / Spectral / Necropolis.
   # -------------------------------------------------------------------------
   - key: starting_gear
-    name: "Quartermaster"
-    subname: "Starting Gear"
-    display_id: 3275
+    name: "Starting Gear"
     teams:
       - { team: 0, entry: 900300, x: 2396.4521, y: 1602.2882, z: 1177.009, o: 4.5592303 }   # Alliance
       - { team: 1, entry: 900301, x: 1933.402, y: 1532.0234, z: 1180.1082, o: 1.3783675 }   # Horde 
@@ -113,9 +123,7 @@ vendors:
   # All potions share one combat cooldown, so it is one potion per fight.
   # -------------------------------------------------------------------------
   - key: consumables
-    name: "Apothecary"
-    subname: "Consumables"
-    display_id: 4861
+    name: "Consumables"
     teams:
       - { team: 0, entry: 900302, x: 2377.5535, y: 1605.5874, z: 1172.1476, o: 4.2953353 }
       - { team: 1, entry: 900303, x: 1949.5693, y: 1531.0472, z: 1175.7777, o: 1.5558678 }
@@ -146,9 +154,7 @@ vendors:
   # 1H mace, dagger and staff, which are the only types the set splits.
   # -------------------------------------------------------------------------
   - key: rare_gear
-    name: "Quartermaster"
-    subname: "Rare Gear"
-    display_id: 1355
+    name: "Rare Gear"
     teams:
       - { team: 0, entry: 900304, x: 2388.638, y: 1602.5381, z: 1174.7131, o: 4.4084325 }
       - { team: 1, entry: 900305, x: 1937.5688, y: 1531.9581, z: 1178.9604, o: 1.4309891 }
@@ -156,19 +162,19 @@ vendors:
     categories:
       - name: Cloth
         cost: 10000
-        items: [37715, 37691, 43401, 45156, 43313, 37629, 37245, 43287]
+        items: [37715, 37691, 43401, 37637, 43313, 37629, 37245, 43287]
       - name: Leather
         cost: 10000
-        items: [43403, 37149, 37593, 37652, 43476, 37587, 37714, 45181,
-                43286, 37616, 45159, 37176, 37183, 37634, 37678, 37858]
+        items: [43403, 37149, 37593, 37652, 43476, 37587, 37714, 38616,
+                43286, 37616, 43312, 37176, 37183, 37634, 37678, 37858]
       - name: Mail
         cost: 10000
-        items: [43311, 37592, 37373, 37398, 37144, 43410, 45184, 37868,
-                37262, 37818, 37870, 45183, 40490, 37365, 37614, 43475]
+        items: [43311, 37592, 37373, 37398, 37144, 43410, 37845, 37868,
+                37262, 37818, 37870, 37654, 40490, 37365, 37614, 43475]
       - name: Plate
         cost: 10000
         items: [37849, 43280, 37698, 37376, 37722, 37672, 37826, 37699,
-                37263, 37650, 37367, 43405, 37891, 37288, 37874, 45182]
+                37263, 37650, 37367, 43405, 37891, 37288, 37874, 37729]
       - { name: Shield, cost: 10000, items: [42556, 42557] }
       - { name: Cloak,  cost: 10000, items: [45811, 45810] }
       - name: Weapons
@@ -197,9 +203,7 @@ vendors:
   # exists in the game, so that one leaf falls back to Hateful Gladiator's.
   # -------------------------------------------------------------------------
   - key: epic_gear
-    name: "Quartermaster"
-    subname: "Epic Gear"
-    display_id: 16203
+    name: "Epic Gear"
     teams:
       - { team: 0, entry: 900306, x: 2382.9636, y: 1604.8624, z: 1173.1526, o: 4.3236103 }
       - { team: 1, entry: 900307, x: 1942.9971, y: 1532.0552, z: 1177.4833, o: 1.2605579 }

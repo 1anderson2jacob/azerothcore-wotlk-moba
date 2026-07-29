@@ -137,6 +137,8 @@ Neither is duplicated here. Read them when the task needs them.
 | Neutral camps | `Zones/MobaNeutralData.{h,cpp}`, `scripts/Custom/npc_moba_neutral.cpp` | `neutral_config.yaml` → `gen_neutral_camps.py` → `mod_moba_neutrals.sql` |
 | On-death drops | `Zones/MobaDropData.{h,cpp}`, `GrantDeathDrops` in `BattlegroundMOBA.cpp` | `drops` lists in creep/neutral configs → both generators |
 | Item shop | `Zones/MobaStoreData.{h,cpp}`, `scripts/Custom/npc_moba_store.cpp`, `RecordGrantedItem` + `RemovePlayer` in `BattlegroundMOBA.cpp` | `store_config.yaml` → `gen_store.py` → `mod_moba_store.sql` (vendor NPCs + spawns + gossip catalog) |
+| Item shop | `Zones/MobaStoreData.{h,cpp}`, `scripts/Custom/npc_moba_store.cpp`, `RecordGrantedItem` + `RemovePlayer` in `BattlegroundMOBA.cpp` | `store_config.yaml` → `gen_store.py` → `mod_moba_store.sql` (shopkeeper NPCs + spawns + catalog tables) **and** `client/addons/MobaHUD/Catalog.lua` |
+| HUD bar + shop panel | `client/addons/MobaHUD/`, `scripts/Custom/moba_hud.cpp` | — (client addon; copy the whole folder into `Interface/AddOns/` — `Catalog.lua` is generated into it) |
 
 
 Per-map config bundles live in `apps/moba/maps/<mode>/`; generators in `apps/moba/` (see `apps/moba/README.md`). Adding a map/mode = dropping in a new `maps/<mode>/` bundle — every content table carries a `Map` column. Custom DB entries live at **900000+**. Custom SQL in data/sql/custom/db_world/ (+db_auth/db_characters) and vendored-module SQL auto-apply on worldserver boot (Updates.AutoSetup).

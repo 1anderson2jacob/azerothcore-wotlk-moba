@@ -235,20 +235,35 @@ Both are anchored to the team's base and configured from `base_config.yaml`.
 
 ### Item shop
 
-Gossip vendor NPCs standing in each base — starting gear (free), consumables,
-rare and epic — generated per map from `store_config.yaml` → `gen_store.py` →
-`mod_moba_store.sql`. A player right-clicks, walks a nested menu, and buys;
+One shopkeeper NPC per base, right-clicked to open a League-style panel drawn by
+the MobaHUD addon: four tabs, an icon grid with real item tooltips, sidebar
+filters. Generated per map from `store_config.yaml` → `gen_store.py` →
+`mod_moba_store.sql` **and** `client/addons/MobaHUD/Catalog.lua`.
 `npc_moba_store.cpp` validates, charges, and grants.
 
-- **Gossip, not `npc_vendor`.** The native vendor table is keyed on creature
-  entry, so one NPC gets one flat list and cannot filter per branch. The menu is
-  our own three tables (`mod_moba_store_npc` / `_menu` / `_grant`), walked as an
-  arbitrary-depth `ParentId` chain. `TryPurchase` is deliberately
-  front-end-agnostic, so a shop addon could drive it with a node id and no rewrite.
-- **Team lives in `mod_moba_store_npc`, not in faction.** Vendors are faction 35
-  (friendly to all) and immune; CFBG puts players of either faction on either BG
-  team, so faction cannot express team. The script refuses a mismatched
+- **The addon is required; there is no gossip fallback.** The NPC keeps
+  `npcflag = 1` (`UNIT_NPC_FLAG_GOSSIP`) only because that is what makes it
+  right-clickable and fires `OnGossipHello` — no menu is ever sent. A player
+  without the addon gets a chat message. Maintaining two front ends forever was
+  judged worse than requiring the addon.
+- **The catalog ships with the addon, not over the wire.** Browsing is entirely
+  client-side. The server still resolves every purchase from a node id, so a
+  stale `Catalog.lua` can only earn a refusal, never a wrong grant — but it *can*
+  show a wrong price, which is why regenerating means recopying the addon.
+- **`TabId` is a tab, not an NPC.** One shopkeeper serves all four tabs, so the
+  tab bought from is client-chosen; range and team gate the purchase, and the node
+  must exist for the requested tab. `mod_moba_store_npc` carries only
+  (entry, map, team).
+- **Team lives in `mod_moba_store_npc`, not in faction.** Shopkeepers are faction
+  35 (friendly to all) and immune; CFBG puts players of either faction on either
+  BG team, so faction cannot express team. The script refuses a mismatched
   `GetBgTeamId`.
+- **Usability is the server's verdict, pushed once at `HELLO`.** `NU:` batches
+  name the entries the player cannot use; the addon greys those cards and disables
+  Purchase. It comes from the same `ItemUnusableReason` that issues the refusal,
+  so greying and refusal cannot drift. Affordability is separate and purely
+  client-side (`GetMoney()`) — which is why a card can be white-labelled with a
+  red price.
 - **Two kinds of leaf, one grant table.** A `pieces` group hangs one leaf per
   random suffix and grants a whole bundle under it; an `items` group hangs one
   leaf per fixed named item with no suffix. Which suffixes a base may legally roll
@@ -258,13 +273,17 @@ rare and epic — generated per map from `store_config.yaml` → `gen_store.py` 
 - **Charged last, all-or-nothing.** Bag space is checked for the whole bundle,
   then every item is pre-validated, and only then does money leave — see the
   gotcha index.
-- **Everything granted is tracked and stripped.** Items are soulbound at grant and
-  recorded by GUID in `BattlegroundMOBA::_grantedItems`, so every exit path
-  destroys exactly what the shop handed out and never a world-obtained copy of the
-  same entry.
-- **Vendors spawn from the `creature` table**, not `AddCreature` — they are static
-  props, and this avoids adding `BgCreatures` enum slots (an ordering trap that has
-  caused two boot bugs).
+- **Everything granted is tracked and stripped — by GUID, as a workaround.** Items
+  are soulbound at grant and recorded by GUID in
+  `BattlegroundMOBA::_grantedItems`, so every exit path destroys exactly what the
+  shop handed out and never a world-obtained copy of the same entry. Per-GUID
+  bookkeeping is only necessary because `custom_items` is off and grants use stock
+  entries, which are ambiguous. Once the copies ship, entry alone identifies
+  shop gear and a stateless entry sweep replaces this — see `RemovePlayer`.
+- **Shopkeepers spawn from the `creature` table**, not `AddCreature` — they are
+  static props, and this avoids adding `BgCreatures` enum slots (an ordering trap
+  that has caused two boot bugs). It is also why this generator alone clears a
+  reserved entry window; see the gotcha index.
 - **`custom_items` is off.** The generator can clone every sold item under our own
   entry (`+900000`) to own `SellPrice` and `Bonding`; the machinery is written and
   gated, but the client renders an entry absent from its `Item.dbc` as a "?" icon
@@ -277,6 +296,9 @@ An on-screen bar drawn by the client addon `client/addons/MobaHUD` (`.toc` +
 `.lua`) — no client patch, no DBC/MPQ. The server feeds it `LANG_ADDON` chat
 messages (prefix `MobaHUD`, packet built like `ArenaSpectator::CreatePacket`);
 the 3.3.5a client splits the message on a TAB into `(prefix, payload)`.
+
+The same addon draws the item-shop panel under its own `MobaShop` prefix — see
+Item shop.
 
 - **Payloads**: `T:<seconds>` starts/syncs the clock (the addon counts up locally
   between messages), `S:<ally>,<enemy>,<k>,<d>,<a>,<cs>` updates the scoreboard,
@@ -461,25 +483,36 @@ open"). Changing it moves both — check both after.
 
 ## Recipes: item shop
 
-Every vendor lives in one per-map bundle: `maps/<mode>/store_config.yaml` →
-`gen_store.py` → `mod_moba_store.sql`. Deploy is a **full restart** — the data
-store caches once per worldserver process, so `.debug bg` and a requeue won't do.
+Everything lives in one per-map bundle: `maps/<mode>/store_config.yaml` →
+`gen_store.py` → `mod_moba_store.sql` + `client/addons/MobaHUD/Catalog.lua`.
+Deploy is a **full restart** — the data store caches once per worldserver process,
+so `.debug bg` and a requeue won't do — **and a recopy of the addon**, since the
+catalog ships with it and never crosses the wire.
 
-**Add an item to a vendor** — append its entry to the category's `items` list: a
+**Add an item to a tab** — append its entry to the category's `items` list: a
 bare id, or `{ entry, count, cost, name }` to override. The leaf label defaults to
 the item's own `item_template` name, so most entries need nothing else. Run
 `gen_store.py`; deploy.
 
-**Add a category** — a block under that vendor's `categories` holding exactly one
-of `subcategories` (a branch), `pieces` (suffix bundles) or `items` (fixed items).
-Nest as deep as you like; gossip allows 32 entries per menu and the generator
-fails the run above that.
+**Add a category** — a block under that tab's `categories` holding exactly one of
+`subcategories` (a branch), `pieces` (suffix bundles) or `items` (fixed items).
+A top-level category's `name` becomes a sidebar filter button. Deeper nesting is
+carried in each leaf's `path` but the panel reads only `path[1]`, so a
+subcategory label is invisible — the second filter row derives from the item's own
+class/subclass instead. Nest only where the grammar needs it: under `pieces`, a
+subcategory is what makes each item its own per-suffix leaf rather than one giant
+bundle.
 
-**Add a vendor** — a new `vendors` block: `key`, `name`, `subname`, `display_id`
-(`.morph` to choose one), two `teams` entries with globally unique creature
-entries in the 900300+ window and `.gps` positions, then `categories`. Node ids
-regenerate fresh every run and nothing persistent references them, so there is no
-lockfile here — unlike creep entries and waypoint path ids.
+**Add a tab** — a new `tabs` block: `key` (generator error messages only), `name`
+(the tab button label) and `categories`. List order is `TabId` and the panel opens
+on the first. The addon draws six tab buttons; a seventh tab generates fine and
+never appears.
+
+**Change the shopkeeper** — the `shopkeeper` block owns `name`, `subname`,
+`display_id` and `display_scale`; any of them may be repeated on a `teams` line to
+differ per side. Creature entries must sit inside 900300–900399 and positions come
+from `.gps`. A changed name, subname or model **will not show until the client's
+`Cache/` folder is deleted** — gotcha index.
 
 **Change a price** — `cost` in copper, on the group or per item. `sell_ratio`
 (map-level, overridable per group and per item) only bites once `custom_items` is
@@ -487,9 +520,11 @@ on, because stock entries keep their own `SellPrice`; the generator warns once p
 config when it resolves non-zero while the flag is off.
 
 **Pick items out of `item_template`** — filter on `Quality`, `RequiredLevel` and
-`InventoryType`, but be careful with "usable by everyone": `AllowableClass` and
-`AllowableRace` encode *unrestricted* two different ways, and consumables can be
-profession-gated. Both are in the gotcha index.
+`InventoryType`. Three traps, all in the gotcha index: `AllowableClass` /
+`AllowableRace` encode "unrestricted" two different ways, consumables can be
+profession-gated, and faction-locked items are refused against the player's
+*native* race — the generator now fails the run on those rather than letting them
+ship.
 
 **Verify a generator change without touching the DB** — `build()` is pure
 computation, so a run can be diffed against the committed SQL:
@@ -574,6 +609,22 @@ touching that area:
   already owns is refused there and the gold is already gone. The bundle path also
   needs its own free-slot check, because per-item validation can't see the slots
   the bundle's earlier pieces will take. → `npc_moba_store.cpp`, `TryPurchase`.
+- **Armour proficiency is cumulative upward** — plate implies mail, leather and
+  cloth, so a warrior can wear anything and the check that matters is refusing a
+  *mage* the plate set, never the reverse. Getting this backwards sends you
+  hunting a bug that isn't there. → `npc_moba_store.cpp`, `TryPurchase`.
+- **Faction-locked items are refused against the player's NATIVE race, not their
+  BG team.** `Player::CanUseItem` tests `ITEM_FLAG2_FACTION_HORDE/ALLIANCE`
+  against `GetTeamId(true)`, so under CFBG one player can buy an item their own
+  teammate cannot — unfairness *within* a side, invisible unless looked for. Six
+  Alliance-only items shipped in the rare tier before this was caught. → the
+  faction guard in `gen_store.py`'s `build()`.
+- **A generator that owns `creature` rows must clear a reserved entry WINDOW**,
+  not merely the entries it is about to insert. Deleting only what you insert can
+  add and modify but never remove, so an NPC dropped from a config stays spawned
+  forever. Only the store generator needs this — the others own templates only,
+  and an orphaned template is inert; an orphaned spawn is a live scripted NPC.
+  → `SHOP_ENTRY_MIN` in `gen_store.py`.
 - **Copy whole rows through a staging table, not a hand-listed column set** — an
   upstream column change breaks the enumeration, and `item_template` has already
   lost one. → `emit_item_copies` in `gen_store.py`.
@@ -619,6 +670,18 @@ Traps with no single code home:
   `updates/`. `creature.id1` was renamed `id`; `item_template` lost `StatsCount`.
   When hand-writing generated SQL, trust the `SELECT` in `ObjectMgr.cpp` — it must
   match the live schema or the server wouldn't boot. Cost one failed apply.
+- **The 3.3.5 client caches creature and item data in `Cache/WDB` and never
+  re-asks.** A creature's name, subname and model are one cached record, so
+  renaming or remodelling an entry you have already clicked keeps showing the OLD
+  values until the client's `Cache/` folder is deleted — this looked like "the SQL
+  didn't apply" twice. Items behave the same: until an entry is cached
+  `GetItemInfo` returns nil and `SetHyperlink` renders a lone red "Retrieving item
+  information" line, whose colour is **indistinguishable from a failed
+  requirement** — so anything scanning a tooltip for red reads it as "cannot use",
+  and caching that verdict poisons the item for the session. Never cache a
+  conclusion drawn from client data that may not have arrived; better, ask the
+  server (which is why shop usability is pushed as `NU:` rather than scanned).
+
 
 ## Reference: values that live in code
 
@@ -636,6 +699,7 @@ C++ or are allocation policy:
 | Creep lane corridor | 40 yd, players only; +15 yd self-evade headroom (`npc_moba_creep.cpp`) |
 | HUD resync cadence | 10s (`MOBA_HUD_RESYNC_MS`) |
 | Recall trigger / empower placeholder | Hearthstone item 6948 / spell 8690; aura 1243 |
+| Custom DB entry range | 900000+ — towers 900000–900001, creeps 900010–900017, neutrals 900200–900207, shop 900300–900399 (whole window cleared on every regen; 900300–900301 in use) |
 
 
 ## Fun ideas: a list of interesting ideas that may or may not be implemented

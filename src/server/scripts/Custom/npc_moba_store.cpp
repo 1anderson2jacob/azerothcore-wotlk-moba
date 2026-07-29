@@ -32,7 +32,6 @@
 
 namespace
 {
-    constexpr uint32 NODE_ROOT = 0;
 
     std::string FormatMoney(uint32 copper)
     {
@@ -48,36 +47,6 @@ namespace
         return out.empty() ? "free" : out;
     }
 
-    void ShowNode(Player* player, Creature* creature, MobaStoreNpc const& npc, uint32 nodeId)
-    {
-        ClearGossipMenuFor(player);
-
-        if (std::vector<MobaStoreNode const*> const* children =
-                sMobaStoreDataStore->GetChildren(npc.map, npc.vendorId, nodeId))
-        {
-            for (MobaStoreNode const* child : *children)
-            {
-                std::string text = child->label;
-                if (child->isPurchase && child->costCopper)
-                    text += " - " + FormatMoney(child->costCopper);
-
-                AddGossipItemFor(player, child->isPurchase ? GOSSIP_ICON_MONEY_BAG : GOSSIP_ICON_CHAT,
-                                 text, GOSSIP_SENDER_MAIN, child->nodeId);
-            }
-        }
-
-        // Every real node id is >= 1, so a Back option carrying parentId == 0
-        // unambiguously means "return to the top level".
-        if (nodeId != NODE_ROOT)
-        {
-            MobaStoreNode const* node = sMobaStoreDataStore->GetNode(npc.map, npc.vendorId, nodeId);
-            AddGossipItemFor(player, GOSSIP_ICON_CHAT, "<- Back", GOSSIP_SENDER_MAIN,
-                             node ? node->parentId : NODE_ROOT);
-        }
-
-        SendGossipMenuFor(player, player->GetGossipTextId(creature), creature->GetGUID());
-    }
-
     // What a purchase attempt did, so the caller decides how to report it: gossip
     // prints to chat, the addon sends ERR:. message is empty on success.
     struct PurchaseResult
@@ -86,18 +55,37 @@ namespace
         std::string message;
     };
 
+    // The single source of truth for "can this player equip or consume this".
+    // Both the purchase refusal and the addon's greying read it, so the two can
+    // never disagree. Returns nullptr when usable, else the reason to show.
+    char const* ItemUnusableReason(Player* player, ItemTemplate const* proto)
+    {
+        // Covers class, race, faction, required skill/spell and level.
+        if (player->CanUseItem(proto) != EQUIP_ERR_OK)
+            return "You cannot use that.";
+
+        // Armour and weapon proficiency live only in the Item* overload of
+        // CanUseItem, which needs an item that does not exist yet. The template
+        // exposes the same skill, so check it directly.
+        if (uint32 skill = proto->GetSkill())
+            if (!player->GetSkillValue(skill))
+                return "You lack the proficiency for that.";
+
+        return nullptr;
+    }
+
     // The front-end-agnostic purchase core: validates, charges, and grants.
-    // Takes map/vendor explicitly rather than the npc: with a tabbed panel the tab
-    // being bought from is not necessarily the shopkeeper you are standing at.
-    PurchaseResult TryPurchase(Player* player, uint32 map, uint32 vendorId, MobaStoreNode const& node)
+    // Takes map/tab explicitly rather than the npc: one shopkeeper serves every
+    // tab, so the tab bought from is picked in the panel, not by where you stand.
+    PurchaseResult TryPurchase(Player* player, uint32 map, uint32 tabId, MobaStoreNode const& node)
     {
         std::vector<MobaStoreGrant> const* grants =
-            sMobaStoreDataStore->GetGrants(map, vendorId, node.nodeId);
+            sMobaStoreDataStore->GetGrants(map, tabId, node.nodeId);
 
         if (!grants || grants->empty())
         {
-            LOG_ERROR("sql.sql", "npc_moba_store: purchase node {} (map {}, vendor {}) has no grant rows.",
-                      node.nodeId, map, vendorId);
+            LOG_ERROR("sql.sql", "npc_moba_store: purchase node {} (map {}, tab {}) has no grant rows.",
+                      node.nodeId, map, tabId);
             return { false, "That is unavailable." };
         }
 
@@ -113,8 +101,9 @@ namespace
 
         // Every per-item refusal must be caught BEFORE the money leaves. Nothing in
         // the catalog is maxcount-limited today, so the storage check is a no-op
-        // safety net -- but the usability checks are not: the shop must not sell a
-        // warrior a cloth set.
+        // safety net -- but the usability checks are not: armour proficiency is
+        // cumulative upward (plate implies mail, leather, cloth), so the check that
+        // matters is refusing a mage the plate set, never the reverse.
         for (MobaStoreGrant const& grant : *grants)
         {
             ItemTemplate const* proto = sObjectMgr->GetItemTemplate(grant.itemEntry);
@@ -125,16 +114,8 @@ namespace
                 return { false, "That is unavailable." };
             }
 
-            // Covers class, race, faction, required skill/spell and level.
-            if (player->CanUseItem(proto) != EQUIP_ERR_OK)
-                return { false, "You cannot use that." };
-
-            // Armour and weapon proficiency live only in the Item* overload of
-            // CanUseItem, which needs an item that does not exist yet. The template
-            // exposes the same skill, so check it directly.
-            if (uint32 skill = proto->GetSkill())
-                if (!player->GetSkillValue(skill))
-                    return { false, "You lack the proficiency for that." };
+            if (char const* reason = ItemUnusableReason(player, proto))
+                return { false, reason };
 
             ItemPosCountVec dest;
             InventoryResult msg = player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, grant.itemEntry, grant.count);
@@ -159,8 +140,8 @@ namespace
                 // bundle took the room. The money is already gone, so it must
                 // not fail silently.
                 LOG_ERROR("scripts.moba", "npc_moba_store: item {} refused ({}) after pre-validation "
-                          "on node {} (map {}, vendor {}).",
-                          grant.itemEntry, uint32(msg), node.nodeId, map, vendorId);
+                          "on node {} (map {}, tab {}).",
+                          grant.itemEntry, uint32(msg), node.nodeId, map, tabId);
                 player->SendEquipError(msg, nullptr, nullptr, grant.itemEntry);
                 continue;
             }
@@ -218,6 +199,37 @@ namespace
         if (!batch.empty())
             moba->SendShopMessage(player, "SF:" + batch);
     }
+
+    // Usability is per-player but constant for the match -- class, race and skills
+    // cannot change -- so it is pushed once at HELLO rather than on every open.
+    // Only the UNUSABLE entries go over the wire: the addon treats absent data as
+    // usable, and the server revalidates every purchase regardless.
+    void SendUnusableEntries(Player* player, BattlegroundMOBA* moba, uint32 map)
+    {
+        std::set<uint32> entries;
+        sMobaStoreDataStore->CollectEntries(map, entries);
+
+        std::string batch;
+        for (uint32 entry : entries)
+        {
+            ItemTemplate const* proto = sObjectMgr->GetItemTemplate(entry);
+            if (!proto || !ItemUnusableReason(player, proto))
+                continue;
+
+            if (!batch.empty())
+                batch += ',';
+            batch += std::to_string(entry);
+
+            if (batch.size() > 180)
+            {
+                moba->SendShopMessage(player, "NU:" + batch);
+                batch.clear();
+            }
+        }
+
+        if (!batch.empty())
+            moba->SendShopMessage(player, "NU:" + batch);
+    }
 }
 
 class npc_moba_store : public CreatureScript
@@ -238,60 +250,29 @@ public:
             return true;
         }
 
+        // No menu is ever sent: UNIT_NPC_FLAG_GOSSIP exists purely to make the
+        // shopkeeper right-clickable and fire this hook.
+        CloseGossipMenuFor(player);
+
         if (player->GetBgTeamId() != npc->team)
         {
             ChatHandler(player->GetSession()).PSendSysMessage("This shopkeeper serves the enemy team.");
-            CloseGossipMenuFor(player);
             return true;
         }
 
-        // Addon players get the panel. The gossip walk below is the temporary
-        // fallback and is deleted once the panel ships.
-        if (BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground()))
+        BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground());
+        if (!moba || !moba->HasShopAddon(player))
         {
-            if (moba->HasShopAddon(player))
-            {
-                moba->SetOpenShopkeeper(player, creature->GetGUID());
-                moba->SendShopMessage(player, Acore::StringFormat("OPEN:{},{}", npc->map, npc->vendorId));
-                SendSuffixFactors(player, moba, npc->map);
-                CloseGossipMenuFor(player);
-                return true;
-            }
-        }
-
-        ShowNode(player, creature, *npc, NODE_ROOT);
-        return true;
-    }
-
-    bool OnGossipSelect(Player* player, Creature* creature, uint32 /*sender*/, uint32 action) override
-    {
-        MobaStoreNpc const* npc = sMobaStoreDataStore->GetNpc(creature->GetEntry());
-        if (!npc || player->GetBgTeamId() != npc->team)
-        {
-            CloseGossipMenuFor(player);
+            // The panel is the only shop front end -- there is deliberately no
+            // gossip fallback to keep in sync.
+            ChatHandler(player->GetSession()).PSendSysMessage(
+                "The MobaHUD addon is required to use the shop. Install it, then /reload.");
             return true;
         }
 
-        MobaStoreNode const* node = sMobaStoreDataStore->GetNode(npc->map, npc->vendorId, action);
-        if (!node)
-        {
-            ShowNode(player, creature, *npc, NODE_ROOT);
-            return true;
-        }
-
-        if (!node->isPurchase)
-        {
-            ShowNode(player, creature, *npc, node->nodeId);
-            return true;
-        }
-
-        PurchaseResult result = TryPurchase(player, npc->map, npc->vendorId, *node);
-        if (!result.ok)
-            ChatHandler(player->GetSession()).PSendSysMessage("{}", result.message);
-
-        // Reopen the sibling list rather than the (childless) purchase node, so
-        // several pieces can be bought without renavigating.
-        ShowNode(player, creature, *npc, node->parentId);
+        moba->SetOpenShopkeeper(player, creature->GetGUID());
+        moba->SendShopMessage(player, Acore::StringFormat("OPEN:{}", npc->map));
+        SendSuffixFactors(player, moba, npc->map);
         return true;
     }
 };
@@ -321,7 +302,14 @@ public:
         if (BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground()))
         {
             if (payload == "HELLO")
+            {
                 moba->SetShopAddonReady(player);
+
+                // Every shop row is keyed on the battleground's map id, which is
+                // the map the player is standing on -- there is no NPC to ask yet.
+                sMobaStoreDataStore->LoadIfNeeded();
+                SendUnusableEntries(player, moba, player->GetMapId());
+            }
             else if (payload.compare(0, 4, "BUY:") == 0)
                 HandleBuy(player, moba, payload.substr(4));
         }
@@ -330,7 +318,7 @@ public:
     }
 
 private:
-    // "BUY:<vendorId>,<nodeId>". Nothing here trusts the client beyond those two
+    // "BUY:<tabId>,<nodeId>". Nothing here trusts the client beyond those two
     // numbers -- the shopkeeper is whichever one the server remembers the player
     // opened, so a node can never be bought from across the map.
     static void HandleBuy(Player* player, BattlegroundMOBA* moba, std::string const& args)
@@ -341,9 +329,9 @@ private:
 
         // Parse defensively: this is client-supplied text, so a malformed pair is
         // dropped rather than coerced to 0.
-        Optional<uint32> vendorId = Acore::StringTo<uint32>(args.substr(0, comma));
-        Optional<uint32> nodeId   = Acore::StringTo<uint32>(args.substr(comma + 1));
-        if (!vendorId || !nodeId)
+        Optional<uint32> tabId  = Acore::StringTo<uint32>(args.substr(0, comma));
+        Optional<uint32> nodeId = Acore::StringTo<uint32>(args.substr(comma + 1));
+        if (!tabId || !nodeId)
             return;
 
         Creature* creature = player->GetNPCIfCanInteractWith(moba->GetOpenShopkeeper(player), UNIT_NPC_FLAG_GOSSIP);
@@ -364,19 +352,19 @@ private:
             return;
         }
 
-        // Any shopkeeper sells any tab: the panel is tabbed, so the tab bought from
-        // is not necessarily the NPC standing in front of you. Range and team still
-        // gate it, and the node must exist for the requested vendor.
-        MobaStoreNode const* node = sMobaStoreDataStore->GetNode(npc->map, *vendorId, *nodeId);
+        // One shopkeeper sells every tab, so the tab is client-chosen and cannot be
+        // inferred from the NPC. Range and team still gate it, and the node must
+        // exist for the requested tab.
+        MobaStoreNode const* node = sMobaStoreDataStore->GetNode(npc->map, *tabId, *nodeId);
         if (!node || !node->isPurchase)
         {
             moba->SendShopMessage(player, "ERR:That is unavailable.");
             return;
         }
 
-        PurchaseResult result = TryPurchase(player, npc->map, *vendorId, *node);
+        PurchaseResult result = TryPurchase(player, npc->map, *tabId, *node);
         moba->SendShopMessage(player, result.ok
-            ? Acore::StringFormat("OK:{},{}", *vendorId, *nodeId)
+            ? Acore::StringFormat("OK:{},{}", *tabId, *nodeId)
             : "ERR:" + result.message);
     }
 };

@@ -25,30 +25,28 @@
 #include <vector>
 #include <set>
 
-// A vendor NPC. One creature entry per team; the team lives here rather than in
-// the creature's faction because CFBG puts players of either faction on either
+// The shopkeeper NPC. One creature entry per team; the team lives here rather than
+// in the creature's faction because CFBG puts players of either faction on either
 // BG team, so faction cannot express team membership.
 struct MobaStoreNpc
 {
     uint32 entry = 0;
     uint32 map = 0;
     TeamId team = TEAM_ALLIANCE;
-    uint32 vendorId = 0;
 };
 
-// One gossip node: either a category (has children, no grants) or a purchase
-// (has grants). Depth is unbounded -- ParentId chains upward to 0.
+// One catalog node. Labels, parents and ordering exist only to DRAW the shop, and
+// the addon ships that in its generated Catalog.lua -- the server keeps only what
+// it needs to validate a purchase named by node id.
 struct MobaStoreNode
 {
     uint32 nodeId = 0;
-    uint32 parentId = 0;        // 0 = top level
-    std::string label;
     bool isPurchase = false;
     uint32 costCopper = 0;
 };
 
 // One item a purchase node hands over. A starting-gear bundle is many of these
-// sharing a node; a fixed-item vendor has exactly one.
+// sharing a node; a fixed-item tab has exactly one.
 struct MobaStoreGrant
 {
     uint32 itemEntry = 0;
@@ -66,31 +64,32 @@ public:
     void LoadIfNeeded();
 
     MobaStoreNpc const* GetNpc(uint32 creatureEntry) const;
-    MobaStoreNode const* GetNode(uint32 map, uint32 vendorId, uint32 nodeId) const;
-    // Children of parentId (0 = top level), in config order. Null if none.
-    std::vector<MobaStoreNode const*> const* GetChildren(uint32 map, uint32 vendorId, uint32 parentId) const;
-    std::vector<MobaStoreGrant> const* GetGrants(uint32 map, uint32 vendorId, uint32 nodeId) const;
-    // Every item entry this map's vendors hand out with a random suffix. The shop
+    MobaStoreNode const* GetNode(uint32 map, uint32 tabId, uint32 nodeId) const;
+    std::vector<MobaStoreGrant> const* GetGrants(uint32 map, uint32 tabId, uint32 nodeId) const;
+    // Every item entry this map's shop hands out with a random suffix. The shop
     // addon needs each one's suffix factor: the client multiplies a suffix's
     // allocation by it to get real stat values, and it lives in RandPropPoints.dbc
     // with no Lua accessor, so an addon-built item link renders +0 without it.
     void CollectSuffixedEntries(uint32 map, std::set<uint32>& out) const;
 
+    // Every item entry this map's shop can hand out. Usability is the server's
+    // verdict, so it needs the full set to tell the addon what to grey.
+    void CollectEntries(uint32 map, std::set<uint32>& out) const;
+
 private:
     MobaStoreDataStore() = default;
 
-    // Node ids are per-vendor and small, so one composite key beats three
+    // Node ids are per-tab and small, so one composite key beats three
     // levels of nested maps.
-    static uint64 MakeKey(uint32 map, uint32 vendorId, uint32 id)
+    static uint64 MakeKey(uint32 map, uint32 tabId, uint32 id)
     {
-        return (static_cast<uint64>(map) << 40) | (static_cast<uint64>(vendorId) << 20) | id;
+        return (static_cast<uint64>(map) << 40) | (static_cast<uint64>(tabId) << 20) | id;
     }
 
     bool _loaded = false;
     std::unordered_map<uint32, MobaStoreNpc> _npcs;
     std::vector<MobaStoreNode> _nodes;
     std::unordered_map<uint64, MobaStoreNode const*> _byNode;
-    std::unordered_map<uint64, std::vector<MobaStoreNode const*>> _byParent;
     std::unordered_map<uint64, std::vector<MobaStoreGrant>> _grants;
 };
 
