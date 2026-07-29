@@ -133,13 +133,10 @@ Neither is duplicated here. Read them when the task needs them.
 | Towers / inhibitors / base | `Zones/MobaTowerData.{h,cpp}`, `scripts/Custom/npc_moba_tower.cpp` + `moba_tower_aggro.cpp` | `tower_config.yaml` → `gen_tower_data.py` → `mod_moba_towers.sql` (creature templates + models + per-map placement) |
 | Lane creeps | `Zones/MobaCreepData.{h,cpp}`, `scripts/Custom/npc_moba_creep.cpp` | `creep_config.yaml` → `gen_creep_roster.py` → `mod_moba_creeps.sql`; lanes: `lane_config.yaml` → `gen_creep_paths.py` → `mod_moba_creep_paths.sql` |
 | Respawn, recall, fountain | `Zones/MobaBaseData.{h,cpp}`, `scripts/Custom/moba_respawn.cpp` + `moba_recall.cpp` | `base_config.yaml` → `gen_base.py` → `mod_moba_base.sql` |
-| HUD bar | `client/addons/MobaHUD/`, `scripts/Custom/moba_hud.cpp` | — (client addon; copy into `Interface/AddOns/`) |
 | Neutral camps | `Zones/MobaNeutralData.{h,cpp}`, `scripts/Custom/npc_moba_neutral.cpp` | `neutral_config.yaml` → `gen_neutral_camps.py` → `mod_moba_neutrals.sql` |
 | On-death drops | `Zones/MobaDropData.{h,cpp}`, `GrantDeathDrops` in `BattlegroundMOBA.cpp` | `drops` lists in creep/neutral configs → both generators |
-| Item shop | `Zones/MobaStoreData.{h,cpp}`, `scripts/Custom/npc_moba_store.cpp`, `RecordGrantedItem` + `RemovePlayer` in `BattlegroundMOBA.cpp` | `store_config.yaml` → `gen_store.py` → `mod_moba_store.sql` (vendor NPCs + spawns + gossip catalog) |
-| Item shop | `Zones/MobaStoreData.{h,cpp}`, `scripts/Custom/npc_moba_store.cpp`, `RecordGrantedItem` + `RemovePlayer` in `BattlegroundMOBA.cpp` | `store_config.yaml` → `gen_store.py` → `mod_moba_store.sql` (shopkeeper NPCs + spawns + catalog tables) **and** `client/addons/MobaHUD/Catalog.lua` |
-| HUD bar + shop panel | `client/addons/MobaHUD/`, `scripts/Custom/moba_hud.cpp` | — (client addon; copy the whole folder into `Interface/AddOns/` — `Catalog.lua` is generated into it) |
-
+| Item shop (server) | `Zones/MobaStoreData.{h,cpp}`, `scripts/Custom/npc_moba_store.cpp`, `RecordGrantedItem` + `RemovePlayer` in `BattlegroundMOBA.cpp` | `store_config.yaml` → `gen_store.py` → `mod_moba_store.sql` (shopkeeper NPCs + spawns + catalog tables) **and** `client/addons/MobaHUD/Catalog.lua` |
+| Client addon (HUD bar, feeds, shop panel) | `client/addons/MobaHUD/` — `Core.lua` (shared `ns`), `Bar.lua`, `Feed.lua`, `Shop.lua`, `MobaHUD.lua` (orchestrator); server side in `scripts/Custom/moba_hud.cpp` | — (copy the whole folder into `Interface/AddOns/`; `Catalog.lua` is generated into it) |
 
 Per-map config bundles live in `apps/moba/maps/<mode>/`; generators in `apps/moba/` (see `apps/moba/README.md`). Adding a map/mode = dropping in a new `maps/<mode>/` bundle — every content table carries a `Map` column. Custom DB entries live at **900000+**. Custom SQL in data/sql/custom/db_world/ (+db_auth/db_characters) and vendored-module SQL auto-apply on worldserver boot (Updates.AutoSetup).
 

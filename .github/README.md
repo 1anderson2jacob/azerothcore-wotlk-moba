@@ -54,10 +54,10 @@ Code/doc chores — cleanups, audits, convention passes — that don't change ga
 
 - [x] Docs / code-comment pass — cut duplication and per-session context cost
 - [x] `GetBgTeamId` vs `GetTeamId` audit across `BattlegroundMOBA`
+- [x] Split `MobaHUD.lua` into one file per UI — `Bar` / `Feed` / `Shop` over a shared `Core` namespace, orchestrated by `MobaHUD.lua`; an error in one UI no longer takes the others down
 - [ ] Remove all creep types being set to beast
 - [ ] `BG_MOBA_Score` enum holds only the Flurry achievement ID — decide whether EotS achievements should fire at all in this mode
 - [ ] Remove leftover `m_BuffChange = true` from the `BattlegroundMOBA` constructor (buffs were removed; harmless)
-- [ ] Split the shop out of `MobaHUD.lua` (~1300 lines) into `Shop.lua` — it is one file, so a shop error currently takes the HUD down with it
 
 ## Key changed files
 
@@ -66,7 +66,7 @@ Code/doc chores — cleanups, audits, convention passes — that don't change ga
 | `src/server/game/Battlegrounds/Zones/BattlegroundMOBA.{h,cpp}` | New battleground class (cloned from EotS, being reshaped) |
 | `src/server/game/Battlegrounds/BattlegroundMgr.cpp` | `BATTLEGROUND_EY` factory entries point to `BattlegroundMOBA` |
 | `src/server/game/Movement/MotionMaster.{h,cpp}` | Added public `MoveWaypoint(WaypointPath&, bool)` overload (mid-route path resume for lane creeps) |
-| `client/addons/MobaHUD/` | Client addon: HUD bar (KDA, CS, clock), revive countdown, and kill/death feed — fed by server `LANG_ADDON` messages |
+| `client/addons/MobaHUD/` | Client addon, one file per UI over a shared `Core.lua` namespace: HUD bar (KDA, CS, clock), revive countdown, kill/death feed, and the item-shop panel — fed by server `LANG_ADDON` messages |
 | `src/server/scripts/Custom/moba_hud.cpp` | Answers the addon's "ready" ping with current HUD state (group-chat `OnPlayerCanUseChat` hook) |
 
 ## Building (macOS, Apple Silicon)

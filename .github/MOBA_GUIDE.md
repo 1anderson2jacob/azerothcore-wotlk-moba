@@ -292,13 +292,17 @@ filters. Generated per map from `store_config.yaml` → `gen_store.py` →
 
 ### HUD bar
 
-An on-screen bar drawn by the client addon `client/addons/MobaHUD` (`.toc` +
-`.lua`) — no client patch, no DBC/MPQ. The server feeds it `LANG_ADDON` chat
-messages (prefix `MobaHUD`, packet built like `ArenaSpectator::CreatePacket`);
-the 3.3.5a client splits the message on a TAB into `(prefix, payload)`.
+An on-screen bar drawn by the client addon `client/addons/MobaHUD` — no client
+patch, no DBC/MPQ. The server feeds it `LANG_ADDON` chat messages (prefix
+`MobaHUD`, packet built like `ArenaSpectator::CreatePacket`); the 3.3.5a client
+splits the message on a TAB into `(prefix, payload)`.
 
-The same addon draws the item-shop panel under its own `MobaShop` prefix — see
-Item shop.
+The addon is one file per UI over a shared namespace: `Bar.lua` (this bar),
+`Feed.lua` (revive countdown, kill feed), and `Shop.lua` (the item-shop panel,
+under its own `MobaShop` prefix — see Item shop). `MobaHUD.lua` loads last and
+draws nothing: it owns the payload dispatch, the event frame and `/mobahud`.
+Anything shared between modules must be published on the `ns` table in
+`Core.lua` (Lua locals do not cross file boundaries).
 
 - **Payloads**: `T:<seconds>` starts/syncs the clock (the addon counts up locally
   between messages), `S:<ally>,<enemy>,<k>,<d>,<a>,<cs>` updates the scoreboard,
@@ -546,9 +550,10 @@ Always confirm the committed SQL matches its generator before committing.
 **Retune or extend the HUD** — resync cadence is `MOBA_HUD_RESYNC_MS` (anonymous
 namespace in `BattlegroundMOBA.cpp`, default 10000); it's only a safety net now
 that the ping handles joins, so lower it only if you see drift. New payloads: add
-a sender beside `SendHudMessage`, extend `BuildScoreboardBody`, handle it in the
-addon's `HandlePayload`. `MobaHUD.lua` plus `RenderStatic()`/`RenderClock()` — 
-pure client, `/reload` only.
+a sender beside `SendHudMessage`, extend `BuildScoreboardBody`, then handle it in
+`HandlePayload` (`MobaHUD.lua`) and add the drawing to the owning module —
+`Bar.lua`'s `RenderStatic()`/`RenderClock()` for bar content. Pure client,
+`/reload` only.
 
 **Move the HUD on screen** — `/mobahud unlock`, drag, `/mobahud lock`. Position
 and lock persist per character (`MobaHUDDB`); `/mobahud reset` recenters.

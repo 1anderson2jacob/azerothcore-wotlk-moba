@@ -5,5 +5,9 @@
 ## Version: 0.2
 ## SavedVariables: MobaHUDDB
 
+Core.lua
 Catalog.lua
+Shop.lua
+Bar.lua
+Feed.lua
 MobaHUD.lua
