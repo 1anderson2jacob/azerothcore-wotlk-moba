@@ -637,6 +637,11 @@ touching that area:
   recreating it** — field changes made in the tick a player leaves never reach it,
   so stripped gear stays rendered until relog. `ForceValuesUpdateAtIndex` does not
   help; it only marks fields dirty. → `RemovePlayer` in `BattlegroundMOBA.cpp`.
+  - **A Texture whose path does not resolve draws nothing at all** — no error, no
+  placeholder square, so wrong art is indistinguishable from a region you forgot
+  to show or size, and candidates have to be tried in the running client one at a
+  time. Only verified paths belong in committed code.
+  → `headerBand` in `Shop.lua`.
 
 Traps with no single code home:
 

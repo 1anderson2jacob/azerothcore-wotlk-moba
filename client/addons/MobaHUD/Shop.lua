@@ -14,14 +14,40 @@ local SHOP_PREFIX = ns.SHOP_PREFIX
 -- Everything drawn here comes from Catalog.lua; the server is contacted only to
 -- buy. Quality is uniform per tab so it is not a filter -- the tab is the filter.
 
-local SHOP_W,  SHOP_H   = 800, 520
 local SIDE_W,  DETAIL_W = 140, 200
 local CARD_W,  CARD_H   = 64, 78
 local PITCH_X, PITCH_Y  = 70, 84
 local GRID_COLS, GRID_ROWS = 6, 5
 local MAX_PIECES = 9            -- largest bundle in the catalog
 local ROW_H      = 13           -- sidebar filter row pitch
-local CONTENT_Y  = -66          -- first row below the tab strip (tabs end at -54)
+
+-- The vertical layout hangs off the header band: retuning HEADER_H slides the tab
+-- strip and everything under it down together and grows the panel to match, so
+-- nothing below has to be re-derived by hand.
+local INSET_TOP  = 12                        -- the backdrop's own top inset
+local HEADER_H   = 33                        -- band above the tabs; the gold total sits in it
+local TAB_H      = 20
+local TAB_PAD    = 4                                    -- equal air above and below the strip
+local TAB_Y      = -(INSET_TOP + HEADER_H + TAB_PAD)    -- top of the tab strip
+local TAB_SEP_Y  = TAB_Y - TAB_H - TAB_PAD              -- the rule under it
+local CONTENT_Y  = TAB_SEP_Y - 8                        -- first row below that rule
+local BOTTOM_PAD = 34                        -- status line and the Purchase button
+local SHOP_W     = 800
+local SHOP_H     = -CONTENT_Y + GRID_ROWS * PITCH_Y + BOTTOM_PAD
+
+-- Sidebar column. Both filter sections are positioned at render time: the lists
+-- change length with the tab and the selected category, so any fixed anchor
+-- either strands a gap between them or clips the lower one out of sight.
+local SIDE_TOP    = CONTENT_Y - 26   -- below the search box
+local SIDE_BOTTOM = 30 - SHOP_H      -- where the vertical separators end
+local HEAD_H      = 22               -- rule + pinned header above a section's first row
+local SECTION_GAP = 8
+local SIDE_ROW_W  = SIDE_W - 38      -- rows stop 14 short of the rule, as the grid does
+local SIDE_POOL   = 30               -- more rows than the tallest section can display
+
+-- A bundle grants nine items, so any one piece's icon (it was the helm) reads as
+-- that piece alone. Swap this to retexture every set card at once.
+local SET_ICON = "Interface\\Icons\\INV_Crate_01"
 
 local QUALITY_COLOR = {
     [0] = "|cff9d9d9d", [1] = "|cffffffff", [2] = "|cff1eff00",
@@ -62,8 +88,18 @@ shop:EnableMouse(true)
 shop:Hide()
 tinsert(UISpecialFrames, "MobaShopFrame")   -- Esc closes it
 
+-- A texture whose path does not resolve draws nothing at all -- no error, no
+-- placeholder -- so wrong art is indistinguishable from a region that was never
+-- shown or sized. Only paths verified in the running client belong here.
+-- Authored as a horizontal strip, so it needs no TexCoord slice to fill a band.
+local headerBand = shop:CreateTexture(nil, "ARTWORK")
+headerBand:SetTexture("Interface\\AchievementFrame\\UI-Achievement-Parchment-Horizontal")
+headerBand:SetVertexColor(0.8, 0.75, 0.68, 0.25)
+headerBand:SetPoint("TOPLEFT", shop, "TOPLEFT", 11, -INSET_TOP)
+headerBand:SetPoint("BOTTOMRIGHT", shop, "TOPRIGHT", -12, -(INSET_TOP + HEADER_H))
+
 local shopGold = shop:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-shopGold:SetPoint("TOP", shop, "TOP", 0, -18)
+shopGold:SetPoint("CENTER", headerBand, "CENTER", 0, 0)
 
 local shopClose = CreateFrame("Button", nil, shop, "UIPanelCloseButton")
 shopClose:SetPoint("TOPRIGHT", shop, "TOPRIGHT", -6, -6)
@@ -78,6 +114,7 @@ local filtered = {}
 local tabButtons, catButtons, subButtons, cards, pieceRows = {}, {}, {}, {}, {}
 local suffixFactor = {}   -- entry -> RandPropPoints factor, pushed by the server
 local RenderShop          -- forward declaration; the widgets below call it
+local catSep, subSep      -- section rules, created with the other separators
 
 -- ---- catalog helpers -----------------------------------------------------
 local function Cat()      return MobaShopCatalog and MobaShopCatalog[shop.mapId] end
@@ -112,6 +149,7 @@ local function LeafLabel(leaf)
 end
 
 local function LeafIcon(leaf)
+    if #leaf.pieces > 1 then return SET_ICON end
     local entry = leaf.pieces[1] and leaf.pieces[1].entry
     if not entry then return "Interface\\Icons\\INV_Misc_QuestionMark" end
     -- GetItemIcon reads client DBCs and needs no item cache; GetItemInfo's texture
@@ -165,23 +203,44 @@ local function Matches(leaf)
 end
 
 -- ---- sidebar -------------------------------------------------------------
-local searchBox = CreateFrame("EditBox", nil, shop, "InputBoxTemplate")
-searchBox:SetWidth(SIDE_W - 40)
-searchBox:SetHeight(18)
-searchBox:SetPoint("TOPLEFT", shop, "TOPLEFT", 30, CONTENT_Y)
-searchBox:SetAutoFocus(false)
-searchBox:SetScript("OnTextChanged", function(self)
-    fSearch = self:GetText() or ""
-    scrollOffset = 0
-    RenderShop()
-end)
-searchBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+-- Two independently scrolling filter lists under headers that never scroll.
+-- Each section owns a FauxScrollFrame purely for its bar; the rows are ordinary
+-- children of shop, positioned per render, which is the same fixed-button-pool
+-- pattern the grid uses.
+local catHeader = shop:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+catHeader:SetText("|cffffd100CATEGORY|r")
+local subHeader = shop:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 
-local function FilterButton(store, parentAnchorY, index)
+local function SidebarScrollFrame(name)
+    local f = CreateFrame("ScrollFrame", name, shop, "FauxScrollFrameTemplate")
+    f:SetWidth(SIDE_ROW_W)
+    f:SetHeight(ROW_H)
+    f:SetScript("OnVerticalScroll", function(self, offset)
+        FauxScrollFrame_OnVerticalScroll(self, offset, ROW_H, RenderShop)
+    end)
+    -- The row buttons sit on top but never enable the wheel, so it falls through.
+    f:EnableMouseWheel(true)
+    f:SetScript("OnMouseWheel", function(self, delta)
+        local bar = _G[self:GetName() .. "ScrollBar"]
+        bar:SetValue(bar:GetValue() - delta * ROW_H)
+    end)
+    return f
+end
+
+local catScroll = SidebarScrollFrame("MobaShopCatScroll")
+local subScroll = SidebarScrollFrame("MobaShopSubScroll")
+
+-- Moving the bar is what writes the frame's cached row offset, so resetting the
+-- bar is the whole reset; a bar already at 0 fires nothing and is already 0.
+local function ResetScroll(frame)
+    local bar = _G[frame:GetName() .. "ScrollBar"]
+    if bar then bar:SetValue(0) end
+end
+
+local function FilterButton(store, index)
     local b = CreateFrame("Button", nil, shop)
-    b:SetWidth(SIDE_W - 24)
-    b:SetHeight(14)
-    b:SetPoint("TOPLEFT", shop, "TOPLEFT", 20, parentAnchorY - (index - 1) * ROW_H)
+    b:SetWidth(SIDE_ROW_W)
+    b:SetHeight(ROW_H)
     b:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
     local t = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     t:SetPoint("LEFT", b, "LEFT", 2, 0)
@@ -192,15 +251,82 @@ local function FilterButton(store, parentAnchorY, index)
     return b
 end
 
-local CAT_TOP, SUB_TOP = -110, -266
-local catHeader = shop:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-catHeader:SetPoint("TOPLEFT", shop, "TOPLEFT", 20, CAT_TOP + 16)
-catHeader:SetText("|cffffd100CATEGORY|r")
-local subHeader = shop:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-subHeader:SetPoint("TOPLEFT", shop, "TOPLEFT", 20, SUB_TOP + 16)
+for i = 1, SIDE_POOL do FilterButton(catButtons, i) end
+for i = 1, SIDE_POOL do FilterButton(subButtons, i) end
 
-for i = 1, 10 do FilterButton(catButtons, CAT_TOP, i) end
-for i = 1, 18 do FilterButton(subButtons, SUB_TOP, i) end
+-- Vertical budget for the two lists. A short list hands its slack to the other,
+-- so the common case shows everything and no bar appears; the space is only
+-- split when both overflow.
+local function SidebarCaps(nCat, nSub)
+    local space = (SIDE_TOP - SIDE_BOTTOM) - HEAD_H
+    if nSub > 0 then space = space - HEAD_H - SECTION_GAP end
+    local cap = math.floor(space / ROW_H)
+    if nSub == 0 then return math.min(nCat, cap), 0 end
+    if nCat + nSub <= cap then return nCat, nSub end
+    local subCap = math.min(nSub, cap - math.min(nCat, math.floor(cap / 2)))
+    return math.min(nCat, cap - subCap), subCap
+end
+
+-- The rule marks the section's top edge with the header hanging below it:
+-- anchoring the rule anywhere below `top` puts it through the header's glyphs.
+local function LayoutSection(sep, header, scroll, buttons, top, cap)
+    sep:ClearAllPoints()
+    sep:SetPoint("TOPLEFT", shop, "TOPLEFT", 20, top)
+    sep:Show()
+    header:ClearAllPoints()
+    header:SetPoint("TOPLEFT", shop, "TOPLEFT", 20, top - 6)
+    header:Show()
+    scroll:ClearAllPoints()
+    scroll:SetPoint("TOPLEFT", shop, "TOPLEFT", 20, top - HEAD_H)
+    scroll:SetHeight(math.max(cap, 1) * ROW_H)
+    for i, b in ipairs(buttons) do
+        b:ClearAllPoints()
+        b:SetPoint("TOPLEFT", shop, "TOPLEFT", 20, top - HEAD_H - (i - 1) * ROW_H)
+    end
+end
+
+local function FillSection(buttons, list, cap, offset, active, onClick)
+    for i, b in ipairs(buttons) do
+        local r = (i <= cap) and list[offset + i] or nil
+        if r then
+            local mark = (active == r.value) and "|cffffd100>|r " or "   "
+            b.text:SetText(string.format("%s%s |cff808080%d|r", mark, r.label, r.count))
+            b.value = r.value
+            b:SetScript("OnClick", onClick)
+            b:Show()
+        else
+            b.value = nil
+            b:Hide()
+        end
+    end
+end
+
+local function OnCategoryClick(self)
+    fCategory, fSub, selected, scrollOffset = self.value, nil, nil, 0
+    ResetScroll(subScroll)
+    RenderShop()
+end
+
+local function OnSubClick(self)
+    fSub, selected, scrollOffset = self.value, nil, 0
+    RenderShop()
+end
+
+local searchBox = CreateFrame("EditBox", nil, shop, "InputBoxTemplate")
+-- InputBoxTemplate's border art hangs 5 units past the frame's left edge, so the
+-- frame is inset by that much to make the *visible* box share the rows' column.
+searchBox:SetWidth(SIDE_ROW_W - 5)
+searchBox:SetHeight(18)
+searchBox:SetPoint("TOPLEFT", shop, "TOPLEFT", 25, CONTENT_Y)
+searchBox:SetAutoFocus(false)
+searchBox:SetScript("OnTextChanged", function(self)
+    fSearch = self:GetText() or ""
+    scrollOffset = 0
+    ResetScroll(catScroll)
+    ResetScroll(subScroll)
+    RenderShop()
+end)
+searchBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
 -- ---- grid ----------------------------------------------------------------
 local GRID_X = SIDE_W + 4
@@ -292,12 +418,18 @@ dTitleBtn:SetScript("OnEnter", function(self)
 end)
 dTitleBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
+-- The subtitle's box is reserved space, not text: the piece list and the inline
+-- tooltip both hang off its bottom edge. RenderDetail sizes it to the branch --
+-- two lines for a bundle summary that wraps, one for a bare price.
+local SUB_H_LINE, SUB_H_WRAP = 14, 26
+
 local dSub = shop:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 dSub:SetPoint("TOPLEFT", dTitleBtn, "BOTTOMLEFT", 0, -2)
 dSub:SetWidth(DETAIL_W - 8)
-dSub:SetHeight(26)
+dSub:SetHeight(SUB_H_WRAP)
 dSub:SetJustifyH("LEFT")
 dSub:SetJustifyV("TOP")
+
 -- A real tooltip embedded in the pane, so a single item shows its full stats
 -- without needing to be hovered. Bundles keep the piece list instead.
 -- Hidden scanner: showing the tooltip frame itself sizes to its own content and
@@ -382,11 +514,12 @@ local function Separator(x, y, w, h)
     return t
 end
 
-Separator(16, -58, SHOP_W - 32, 1)                    -- under the tab strip
-Separator(SIDE_W - 4, -62, 1, SHOP_H - 92)            -- sidebar | grid
-Separator(DETAIL_X - 10, -62, 1, SHOP_H - 92)         -- grid | detail
-Separator(20, CAT_TOP + 12, SIDE_W - 34, 1)           -- above CATEGORY
-local subSep = Separator(20, SUB_TOP + 12, SIDE_W - 34, 1)   -- hidden with the filter
+Separator(16, TAB_SEP_Y, SHOP_W - 32, 1)                                  -- under the tab strip
+Separator(SIDE_W - 4, CONTENT_Y + 4, 1, CONTENT_Y + 4 - SIDE_BOTTOM)      -- sidebar | grid
+Separator(DETAIL_X - 10, CONTENT_Y + 4, 1, CONTENT_Y + 4 - SIDE_BOTTOM)   -- grid | detail
+-- Both sidebar rules are re-anchored every render; see LayoutSection.
+catSep = Separator(20, SIDE_TOP, SIDE_ROW_W, 1)
+subSep = Separator(20, SIDE_TOP, SIDE_ROW_W, 1)
 
 for i = 1, MAX_PIECES do
     local b = CreateFrame("Button", nil, shop)
@@ -427,12 +560,14 @@ end)
 -- ---- tabs ----------------------------------------------------------------
 for i = 1, 6 do
     local b = CreateFrame("Button", nil, shop, "UIPanelButtonTemplate")
-    b:SetHeight(20)
-    b:SetPoint("TOPLEFT", shop, "TOPLEFT", 20 + (i - 1) * 116, -34)
+    b:SetHeight(TAB_H)
+    b:SetPoint("TOPLEFT", shop, "TOPLEFT", 20 + (i - 1) * 116, TAB_Y)
     b:SetWidth(112)
     b:SetScript("OnClick", function(self)
         shop.tabId = self.tabId
         fCategory, fSub, selected, scrollOffset = nil, nil, nil, 0
+        ResetScroll(catScroll)
+        ResetScroll(subScroll)
         RenderShop()
     end)
     b:Hide()
@@ -471,22 +606,6 @@ local function RenderSidebar(tab)
     local rows = { { label = "All", value = nil, count = total } }
     for _, k in ipairs(order) do
         table.insert(rows, { label = k, value = k, count = cats[k] })
-    end
-
-    for i, b in ipairs(catButtons) do
-        local r = rows[i]
-        if r then
-            local mark = (fCategory == r.value) and "|cffffd100>|r " or "   "
-            b.text:SetText(string.format("%s%s |cff808080%d|r", mark, r.label, r.count))
-            b.value = r.value
-            b:SetScript("OnClick", function(self)
-                fCategory, fSub, selected, scrollOffset = self.value, nil, nil, 0
-                RenderShop()
-            end)
-            b:Show()
-        else
-            b:Hide()
-        end
     end
 
     -- Lower filter: weapon types under Weapons, equipment slots elsewhere. Slots
@@ -534,39 +653,40 @@ local function RenderSidebar(tab)
     end
     local useful = narrows and (isWeapons or not hasBundle)
 
-    if not useful then
+    local subRows = {}
+    if useful then
+        table.sort(names, function(a, b) return rank[a] < rank[b] end)
+        subRows[1] = { label = "All", value = nil, count = subTotal }
+        for _, n in ipairs(names) do
+            table.insert(subRows, { label = n, value = n, count = count[n] })
+        end
+    else
         fSub = nil
+    end
+
+    local catCap, subCap = SidebarCaps(#rows, #subRows)
+
+    LayoutSection(catSep, catHeader, catScroll, catButtons, SIDE_TOP, catCap)
+    FauxScrollFrame_Update(catScroll, #rows, catCap, ROW_H)
+    local catOff = math.min(FauxScrollFrame_GetOffset(catScroll) or 0,
+                            math.max(0, #rows - catCap))
+    FillSection(catButtons, rows, catCap, catOff, fCategory, OnCategoryClick)
+
+    if not useful then
         subHeader:Hide()
         subSep:Hide()
+        subScroll:Hide()
         for _, b in ipairs(subButtons) do b:Hide() end
         return
     end
 
     subHeader:SetText(isWeapons and "|cffffd100WEAPON TYPE|r" or "|cffffd100SLOT|r")
-    subHeader:Show()
-    subSep:Show()
-    table.sort(names, function(a, b) return rank[a] < rank[b] end)
-
-    local subRows = { { label = "All", value = nil, count = subTotal } }
-    for _, n in ipairs(names) do
-        table.insert(subRows, { label = n, value = n, count = count[n] })
-    end
-
-    for i, b in ipairs(subButtons) do
-        local r = subRows[i]
-        if r then
-            local mark = (fSub == r.value) and "|cffffd100>|r " or "   "
-            b.text:SetText(string.format("%s%s |cff808080%d|r", mark, r.label, r.count))
-            b.value = r.value
-            b:SetScript("OnClick", function(self)
-                fSub, selected, scrollOffset = self.value, nil, 0
-                RenderShop()
-            end)
-            b:Show()
-        else
-            b:Hide()
-        end
-    end
+    LayoutSection(subSep, subHeader, subScroll, subButtons,
+                  SIDE_TOP - HEAD_H - catCap * ROW_H - SECTION_GAP, subCap)
+    FauxScrollFrame_Update(subScroll, #subRows, subCap, ROW_H)
+    local subOff = math.min(FauxScrollFrame_GetOffset(subScroll) or 0,
+                            math.max(0, #subRows - subCap))
+    FillSection(subButtons, subRows, subCap, subOff, fSub, OnSubClick)
 end
 
 local function RenderGrid(tab)
@@ -616,6 +736,7 @@ local function RenderDetail()
     if not selected then
         dTitle:SetText("")
         dTitleBtn.piece = nil
+        dSub:SetHeight(SUB_H_LINE)
         dSub:SetText("|cff808080Select an item.|r")
         for _, r in ipairs(pieceRows) do r:Hide(); r.piece = nil end
         HideInfo()
@@ -643,6 +764,7 @@ local function RenderDetail()
     dTitleBtn.piece = nil   -- stats are inline now, so no hover-to-magnify
 
     if isBundle then
+        dSub:SetHeight(SUB_H_WRAP)
         dSub:SetText(string.format("|cffffffff%s set|r  %d pieces  %s%s",
             LeafName(selected), #selected.pieces, cost, warn))
         HideInfo()
@@ -662,6 +784,7 @@ local function RenderDetail()
             end
         end
     else
+        dSub:SetHeight(SUB_H_LINE)
         dSub:SetText(cost .. warn)
         for _, r in ipairs(pieceRows) do r:Hide(); r.piece = nil end
         RenderInfo(PieceLink(selected.pieces[1]))
@@ -693,6 +816,8 @@ local function HandleShopPayload(payload)
         shop.tabId = c and c.tabs[1] and c.tabs[1].tabId or 0
         fCategory, fSub, fSearch, selected, scrollOffset = nil, nil, "", nil, 0
         searchBox:SetText("")
+        ResetScroll(catScroll)
+        ResetScroll(subScroll)
         shopStatus:SetText("")
         RenderShop()
         shop:Show()
