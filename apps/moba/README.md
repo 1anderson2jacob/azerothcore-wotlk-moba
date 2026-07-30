@@ -9,6 +9,12 @@ those and emit one combined SQL file per content type into
 
 > **Requires PyYAML** (configs are YAML): `pip3 install pyyaml`.
 
+> **Run `apps/moba/gen_all.sh`** to regenerate everything. It cds to the repo
+> root itself (generators resolve their output paths relative to it) and runs
+> `gen_creep_paths.py` before `gen_creep_roster.py` — the roster reads each
+> creep's `WaypointPathId` out of the lane lockfile, and it is the only ordering
+> constraint between generators. Each script stays runnable alone.
+
 **Workflows live in `.github/MOBA_GUIDE.md`** — walking a lane, adding a creep,
 moving a tower. This file is the field-level reference those recipes point at:
 what each config key means, and the lockfile rules.
@@ -51,12 +57,29 @@ Only walk each lane once.
 
 ## `creep_config.yaml` — human-owned
 
-All creeps in a file inherit its top-level `map` and spawn only on that map. Each
-creep block names its `lane`/`slot` (both must already exist in the lane
-lockfile), its role, and its tuning — `attack_range` / `attack_interval_ms` /
-`attack_spell_id` for casters, plus modifiers, level, equipment, and display.
-Team 0 uses the slot's `forward` path, team 1 `reverse`. An optional per-creep
-`rank` overrides the source creature's (siege ships with 1 = elite).
+All creeps in a file inherit its top-level `map` and spawn only on that map.
+
+`units` define what a creep **is**: name, team, role, source dump, display,
+level, modifiers, equipment, drops, and the caster fields (`attack_range` /
+`attack_interval_ms` / `attack_spell_id`). `creeps` rows **place** one — a `key`,
+the `unit` to use, and a `lane`/`slot` that already exists in the lane lockfile.
+Team 0 walks the slot's `forward` path, team 1 `reverse`.
+
+A row may override any field its unit sets. Overrides are wholesale per field,
+never merged: a row restating `drops` replaces the list rather than adding to it,
+and `drops: []` means none. A row may also omit `unit` and spell out every field
+itself. Units may not set `key`, `lane`, or `slot` — those place a creep, and two
+creeps resolving to the same team's lane/slot would share one waypoint path and
+spawn on top of each other (the generator rejects that).
+
+**One row = one unit per wave.** Wave size is the config's business, not the
+C++'s: add a row and a slot to field more of something. Roles differ only in when
+they spawn — melee and casters every wave, siege every third, super while the
+enemy inhibitor is down.
+
+Optional on either a unit or a row: `rank` (overrides the source's; siege ships
+`1` = elite), `creature_type` (enum `CreatureType`), and `speed_walk` /
+`speed_run` (multipliers on the source's).
 
 ## `neutral_config.yaml` — human-owned
 
@@ -80,9 +103,7 @@ Copying everything and overriding only what's needed removes that whole bug clas
 forgotten: `AIName`/`ScriptName`, loot columns, `npcflag`, `VehicleId`,
 difficulty-entry references and `IconName` cleared, `RegenHealth = 0` (damage
 persists between fights, LoL-style), faction from team, and
-`minlevel = maxlevel = level`. It also warns when a map's wave composition
-deviates from what `BattlegroundMOBA` expects — exactly 2 melee + 1 caster per
-team, siege optional.
+`minlevel = maxlevel = level`.
 
 Source dumps live in `apps/moba/sources/` as committed, immutable reference data.
 

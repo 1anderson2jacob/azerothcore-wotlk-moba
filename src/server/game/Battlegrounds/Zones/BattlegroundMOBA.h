@@ -24,6 +24,7 @@
 #include "WorldStateDefines.h"
 #include "ObjectGuid.h"
 #include "MobaNeutralData.h"
+#include "MobaCreepData.h"
 #include "MobaTowerData.h"
 #include "MobaPlayerDropData.h"
 #include <vector>
@@ -96,15 +97,15 @@ struct MobaTowerState
     bool destroyed = false;
 };
 
-// Cached once in SetupBattleground() from mod_moba_creep_data: which entry
-// to spawn for each role, per team, so wave-spawn doesn't need to re-query.
+// Cached once in SetupBattleground() from mod_moba_creep_data: every entry to
+// spawn for each role, per team, so wave-spawn doesn't need to re-query. Wave
+// size is data-driven -- one row (one creep_config.yaml creep) is one unit per
+// wave, so a role holds as many entries as the config placed. Roles differ only
+// in when they spawn: siege every third wave, super while the enemy inhibitor is
+// down. See SpawnWave.
 struct MobaWaveComposition
 {
-    uint32 meleeEntry = 0;
-    uint32 meleeEntry2 = 0;
-    uint32 casterEntry = 0;
-    uint32 siegeEntry = 0; // 0 = not configured, skip even on siege waves
-    uint32 superEntry = 0; // 0 = none; spawned per wave while the enemy inhibitor is down
+    std::vector<uint32> byRole[MOBA_CREEP_ROLE_MAX];
 };
 
 // Runtime state of one neutral (jungle) camp: the static member list from

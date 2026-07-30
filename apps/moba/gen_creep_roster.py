@@ -2,12 +2,17 @@
 """
 MOBA creep-roster generator.
 
-Reads a human-owned creep config (per-creep choices: stats tuning, role,
-team, display, equipment, lane/formation slot) plus verbatim source-creature
-stat dumps, and generates data/sql/custom/db_world/mod_moba_creeps.sql wholesale:
+Reads a human-owned creep config (reusable unit definitions plus per-creep
+placement and overrides) plus verbatim source-creature stat dumps, and
+generates data/sql/custom/db_world/mod_moba_creeps.sql wholesale:
 creature_template (full-stat copy of the source with a fixed set of
 deliberate overrides), creature_template_model, creature_equip_template,
 and the mod_moba_creep_data config table.
+
+Wave size is data-driven: one creep row is one unit spawned per wave, so
+fielding a second siege minion is a creep row plus a lane slot to walk. A
+creep may name a `unit` from the config's `units` section and override any
+field it sets; overrides are wholesale per field, never merged.
 
 WaypointPathId is resolved from each map bundle's lane generator lockfile
 (lane_config.lock.json): a creep uses its lane/slot's "forward" path for
@@ -30,7 +35,9 @@ pickpocketloot/skinloot=0, VehicleId=0, AIName='',
 ScriptName='npc_moba_creep', HealthModifier/ArmorModifier from config,
 RegenHealth=0 (LoL-style: damage persists), movementId=0,
 CreatureImmunitiesId=0, VerifiedBuild=0. A per-creep "rank" field in the
-config optionally overrides the source creature's rank (0=normal, 1=elite).
+config optionally overrides the source creature's rank (0=normal, 1=elite),
+"creature_type" its creature type (enum CreatureType), and
+"speed_walk"/"speed_run" its movement speeds.
 
 Loot columns are driven by the optional per-creature "drops" list (machinery
 shared with gen_neutral_camps.py): "item" drops become native
@@ -67,6 +74,10 @@ CREEP_REQUIRED = ["key", "name", "subname", "team", "role", "source", "display_i
                   "display_scale", "level", "health_modifier", "armor_modifier",
                   "equip", "despawn_ms", "lane", "slot"]
 CASTER_REQUIRED = ["attack_range", "attack_interval_ms", "attack_spell_id"]
+# Placement fields can never live in a unit definition: two creeps sharing a unit
+# that carried them would resolve to the same waypoint path and spawn on top of
+# each other (shipped once as super minions riding the siege slot).
+UNIT_FORBIDDEN_FIELDS = ["key", "lane", "slot"]
 # unit_flags override: OR in UNIT_FLAG_PLAYER_CONTROLLED (0x8) so players can cast
 # helpful spells (heals/buffs) on their own minions. The WoW client silently self-casts
 # a helpful spell aimed at a plain friendly NPC; this is the flag the engine puts on the
@@ -77,13 +88,13 @@ CASTER_REQUIRED = ["attack_range", "attack_interval_ms", "attack_spell_id"]
 CREEP_UNIT_FLAG_PLAYER_CONTROLLED = 0x8
 
 
-# Columns the generator overrides -- must exist in every source dump.
+# Columns the generator overrides or reads -- must exist in every source dump.
 OVERRIDDEN_COLUMNS = ["entry", "name", "subname", "minlevel", "maxlevel", "faction",
                       "difficulty_entry_1", "difficulty_entry_2", "difficulty_entry_3", "IconName",
                       "npcflag", "lootid", "pickpocketloot", "skinloot", "mingold", "maxgold",
                       "flags_extra", "VehicleId", "AIName", "ScriptName", "HealthModifier",
                       "ArmorModifier", "RegenHealth", "movementId", "CreatureImmunitiesId",
-                      "unit_flags", "type", "VerifiedBuild"]
+                      "unit_flags", "type", "speed_walk", "speed_run", "VerifiedBuild"]
 
 
 def fail(msg):
@@ -93,6 +104,45 @@ def fail(msg):
 
 def note(msg):
     print(f"  {msg}")
+
+
+def resolve_units(cfg, path):
+    """Merge each creep row over its named unit definition -- row wins per field."""
+    units = cfg.get("units", {})
+    if not isinstance(units, dict):
+        fail(f'{path}: "units" must be a mapping of unit name -> fields')
+    for name, unit in units.items():
+        if not isinstance(unit, dict):
+            fail(f'{path}: unit "{name}" must be a mapping of fields')
+        for field in UNIT_FORBIDDEN_FIELDS:
+            if field in unit:
+                fail(f'{path}: unit "{name}" sets "{field}" -- a unit describes what '
+                     "a creep is, not where it spawns; put it on the creep row")
+
+    creeps = cfg.get("creeps")
+    if not isinstance(creeps, list) or not creeps:
+        fail('config "creeps" must be a non-empty list')
+
+    resolved = []
+    used = set()
+    for creep in creeps:
+        if not isinstance(creep, dict):
+            fail(f'{path}: every entry under "creeps" must be a mapping')
+        name = creep.get("unit")
+        if name is None:
+            resolved.append(dict(creep))
+            continue
+        if name not in units:
+            fail(f'creep "{creep.get("key")}": unknown unit "{name}" '
+                 f"(defined: {', '.join(sorted(units)) or 'none'})")
+        used.add(name)
+        merged = dict(units[name])
+        merged.update({k: v for k, v in creep.items() if k != "unit"})
+        resolved.append(merged)
+
+    for name in sorted(set(units) - used):
+        note(f'WARNING: unit "{name}" is defined but no creep uses it')
+    return resolved
 
 
 # ---------------------------------------------------------------- validation
@@ -105,6 +155,7 @@ def validate_config(cfg, path):
     if not isinstance(creeps, list) or not creeps:
         fail('config "creeps" must be a non-empty list')
     keys = set()
+    placements = {}
     for creep in creeps:
         key = creep.get("key")
         if not isinstance(key, str) or not key:
@@ -129,24 +180,32 @@ def validate_config(cfg, path):
             fail(f'creep "{key}": "equip" must be [item1, item2, item3] (0 = empty slot)')
         if "rank" in creep and not isinstance(creep["rank"], int):
             fail(f'creep "{key}": "rank" must be an integer (0=normal, 1=elite)')
+        if "creature_type" in creep and not isinstance(creep["creature_type"], int):
+            fail(f'creep "{key}": "creature_type" must be an integer '
+                 "(enum CreatureType; 7 = Humanoid, 9 = Mechanical)")
+
+        # One waypoint path per team/lane/slot, so two creeps sharing one would
+        # spawn and walk on top of each other.
+        spot = (creep["team"], creep["lane"], creep["slot"])
+        if spot in placements:
+            fail(f'creeps "{placements[spot]}" and "{key}" both sit at team '
+                 f'{spot[0]} lane/slot "{spot[1]}/{spot[2]}" -- they would spawn on '
+                 "top of each other; give one its own slot in lane_config.yaml")
+        placements[spot] = key
+
         validate_drops(creep, f'creep "{key}"')
 
-    warn_composition(creeps)
+    validate_composition(creeps)
 
 
-def warn_composition(creeps):
-    # BattlegroundMOBA::SetupBattleground requires 2 melee + 1 caster per
-    # team (fails BG creation otherwise) and warns if siege is missing.
+def validate_composition(creeps):
+    # Wave size is the config's business now (one creep row = one unit per wave),
+    # so there is no expected shape to check -- but a team with no creeps at all
+    # fields no waves, and BattlegroundMOBA fails to create on it.
     for team, label in ((0, "Alliance"), (1, "Horde")):
-        roles = [c["role"] for c in creeps if c["team"] == team]
-        if roles.count("melee") != 2 or roles.count("caster") != 1:
-            note(f"WARNING: {label} has {roles.count('melee')} melee / "
-                 f"{roles.count('caster')} caster -- BattlegroundMOBA expects "
-                 f"exactly 2 melee + 1 caster per team and will fail to create "
-                 f"the battleground otherwise")
-        if roles.count("siege") != 1:
-            note(f"WARNING: {label} has {roles.count('siege')} siege units -- "
-                 f"expected 1 (BG only warns, waves just spawn without siege)")
+        if not any(c["team"] == team for c in creeps):
+            fail(f"{label} has no creeps -- BattlegroundMOBA fails to create the "
+                 "battleground for a team with no wave units")
 
 
 # --------------------------------------------------------------- source dumps
@@ -248,7 +307,7 @@ def validate_drops(block, label):
                 fail(f'{where}: "count" must be an integer >= 1')
             if drop["item"] in item_ids:
                 fail(f'{where}: duplicate item {drop["item"]} -- creature_loot_template '
-                     f'keys on (Entry, Item); raise "count" instead')
+                     'keys on (Entry, Item); raise "count" instead')
             item_ids.add(drop["item"])
 
 
@@ -340,7 +399,7 @@ def sql_value(col, raw):
         return "'" + raw.replace("'", "''") + "'"
     if not NUMBER_RE.match(raw):
         fail(f"column {col}: non-numeric value {raw!r} in a numeric column "
-             f"(new string column? add it to STRING_COLUMNS)")
+             "(new string column? add it to STRING_COLUMNS)")
     return raw
 
 
@@ -369,15 +428,16 @@ def build_template_row(creep, entry, source_cols):
         "movementId": "0",
         "CreatureImmunitiesId": "0",
         "unit_flags": str(int(source_cols["unit_flags"]) | CREEP_UNIT_FLAG_PLAYER_CONTROLLED),
-        # All minions Humanoid regardless of source: the siege source (Demolisher) is
-        # Mechanical, and Mechanical creatures are hard-immune to direct heal effects
-        # (Creature::IsImmunedToSpellEffect) -- Flash Heal said IMMUNE on siege only.
-        "type": "7",  # CREATURE_TYPE_HUMANOID
         "VerifiedBuild": "0",
     })
     # Optional per-creep overrides (default: source creature's value)
     if "rank" in creep:
         row["rank"] = str(creep["rank"])
+    if "creature_type" in creep:
+        row["type"] = str(creep["creature_type"])
+    for field in ("speed_walk", "speed_run"):
+        if field in creep:
+            row[field] = str(creep[field])
     apply_loot_overrides(row, entry, source_cols, creep.get("drops", []))
     return row
 
@@ -387,7 +447,7 @@ def emit_sql(roster, column_order):
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE -- do not hand-edit.",
-        f"-- Produced by apps/moba/gen_creep_roster.py from apps/moba/maps/*/creep_config.yaml.",
+        "-- Produced by apps/moba/gen_creep_roster.py from apps/moba/maps/*/creep_config.yaml.",
         "-- Stats are full copies of real source creatures (see the config's",
         "-- \"source\" fields) with a fixed override list enforced in code --",
         "-- see the generator's docstring for the list and rationale.",
@@ -488,6 +548,7 @@ def main():
     column_order = None
     for cp in configs:
         cfg = yaml.safe_load(cp.read_text())
+        cfg["creeps"] = resolve_units(cfg, cp)
         validate_config(cfg, cp)
         lock = locks[cp]
 
@@ -510,7 +571,7 @@ def main():
                 column_order = order
             elif order != column_order:
                 fail(f'source dumps disagree on column order ("{creep["source"]}" vs earlier) '
-                     f"-- were they taken from the same schema?")
+                     "-- were they taken from the same schema?")
 
             entry, _ = get_entry(lock, creep["key"], used, ID_RANGE, assigned_log)
             roster.append((creep, entry, build_template_row(creep, entry, source_cols)))

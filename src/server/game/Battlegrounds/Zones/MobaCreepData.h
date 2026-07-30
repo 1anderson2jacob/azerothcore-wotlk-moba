@@ -12,6 +12,7 @@ enum MobaCreepRole : uint8
     MOBA_CREEP_ROLE_CASTER = 1,
     MOBA_CREEP_ROLE_SIEGE  = 2,
     MOBA_CREEP_ROLE_SUPER  = 3,
+    MOBA_CREEP_ROLE_MAX    = 4,
 };
 
 struct MobaCreepConfig

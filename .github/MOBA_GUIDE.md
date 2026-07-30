@@ -393,25 +393,36 @@ so re-walking an existing lane needs no `mod_moba_creep_data` changes. Full fiel
 and lockfile reference: `apps/moba/README.md`.
 
 **Add a creep type** — dump the source creature to `apps/moba/sources/`, add a
-block to `creep_config.yaml` (copy a similar role's, including equipment item IDs
-from its `creature_equip_template` row — weapons aren't in `creature_template`
-and melee swing unarmed without them). A new formation slot must be added to
-`lmaps/<mode>/lane_config.yaml` and `gen_creep_paths.py` run first. Then
-`gen_creep_roster.py`; deploy. Full field reference: `apps/moba/README.md`.
-`BattlegroundMOBA` expects exactly 2 melee + 1 caster per team (siege optional);
-the generator warns otherwise.
+`units:` entry to `creep_config.yaml` (equipment item IDs come from the source's
+`creature_equip_template` row — weapons aren't in `creature_template`, and melee
+swing unarmed without them), then a `creeps:` row placing it: `key`, `unit`,
+`lane`, `slot`. A unit says what a creep is, the row says where it walks, so
+`lane`/`slot` inside a unit is rejected. New slots go in
+`lmaps/<mode>/lane_config.yaml` first. Run `apps/moba/gen_all.sh`; deploy. Full
+field reference: `apps/moba/README.md`.
+
+**Field more of a creep** — one `creeps:` row is one unit per wave. Add a row
+with its own `key` pointing at the same `unit`, and give it a slot no other creep
+on that team uses — two rows sharing a team's lane/slot is rejected, because they
+would spawn on one waypoint path on top of each other. Run
+`apps/moba/gen_all.sh`; deploy.
+
+**Change a creep's movement speed** — `speed_run` in `creep_config.yaml`, a
+multiplier where 1.0 is baseline. Every unit in a wave needs the same value or the
+formation pulls apart as it walks. Run `apps/moba/gen_all.sh`; deploy.
 
 **Change a creep's attack range/interval/spell** — `attack_range` /
 `attack_interval_ms` / `attack_spell_id` in `creep_config.yaml` (casters only;
 melee and siege attack speed comes from the source creature's `BaseAttackTime`).
 Run `gen_creep_roster.py`; deploy.
 
-**Change wave cadence or composition** — all C++ in `BattlegroundMOBA.cpp`.
-Spawn interval: the `Milliseconds(30000)` in `_bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, …)`
-— **two call sites** (`StartingEventOpenDoors` for the first wave, and the
-reschedule inside `PostUpdateImpl`'s event case), both must change together.
-Siege cadence: `_waveCount % 3 == 0` in `PostUpdateImpl`. Unit counts: the calls
-in `SpawnWave()` — not data-driven currently.
+**Change wave cadence or composition** — cadence is C++ in
+`BattlegroundMOBA.cpp`. Spawn interval: the `Milliseconds(30000)` in
+`_bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, …)` — **two call sites**
+(`StartingEventOpenDoors` for the first wave, and the reschedule inside
+`PostUpdateImpl`'s event case), both must change together. Siege cadence:
+`_waveCount % 3 == 0` in `PostUpdateImpl`. Unit counts are not C++ — see "Field
+more of a creep".
 
 **Change the lane-corridor width** — `MOBA_CREEP_LANE_CORRIDOR` at the top of
 `npc_moba_creep.cpp` (yards from the lane; the self-evade check adds +15
@@ -589,7 +600,7 @@ touching that area:
 - **Stat buffs do nothing on creatures** (`Creature::UpdateStats` is a no-op).
   → `npc_moba_creep.cpp`, `moba_creep_spell_gate` comment.
 - **Mechanical-type creatures are hard-immune to direct heals.**
-  → `gen_creep_roster.py`, `"type"` override comment.
+  → `creep_config.yaml`, `creature_type` legend.
 - **`battleground_template.StartMaxDist` must stay 0** — any non-zero value arms the
   core's prep-phase leash, which teleports players back to spawn every 9s. Shipped as
   a real bug: it read as a random position/orientation reset ~8s after loading in.
@@ -647,6 +658,9 @@ touching that area:
   to show or size, and candidates have to be tried in the running client one at a
   time. Only verified paths belong in committed code.
   → `headerBand` in `Shop.lua`.
+- **Lane waypoints are emitted `move_type = RUN`**, so `speed_run` governs lane
+  pacing and `speed_walk` is inert — source creatures whose `speed_run` differs
+  drift out of formation. → `creep_config.yaml`, `speed_run` legend.
 
 Traps with no single code home:
 
@@ -720,3 +734,4 @@ C++ or are allocation policy:
 ## Fun ideas: a list of interesting ideas that may or may not be implemented
 
 - creep waves have a buff (uncleansable) that reduces AOE dmg by 50% when corresponding lane inhib is up
+- creep waves reform after skirmishes

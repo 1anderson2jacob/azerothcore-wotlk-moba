@@ -17,6 +17,10 @@
       "siege": {
         "forward": 900112,
         "reverse": 900122
+      },
+      "super": {
+        "forward": 900102,
+        "reverse": 900103
       }
     }
   }

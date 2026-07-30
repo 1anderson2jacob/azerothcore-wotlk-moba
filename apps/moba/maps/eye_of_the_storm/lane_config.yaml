@@ -16,6 +16,7 @@ slots:
   - {name: melee_right, lateral_offset: -3.0, longitudinal_offset:  6.0}
   - {name: caster,      lateral_offset:  0.0, longitudinal_offset:  0.0}
   - {name: siege,       lateral_offset:  0.0, longitudinal_offset: -6.0}
+  - {name: super,       lateral_offset:  0.0, longitudinal_offset:  12.0}
 
 # One entry per lane: `name`, `points` (walked centerline as [x, y, z] triples in
 # walk order), and optionally its own `slots` overriding the default above.

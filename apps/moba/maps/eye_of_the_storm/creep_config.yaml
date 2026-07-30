@@ -3,106 +3,78 @@
 # Field reference (units/ranges) lives in apps/moba/README.md; legend below is
 # the quick version.
 #
+#   units           reusable definitions of what a creep IS. A creep row names
+#                   one with `unit:` and may override any field it sets --
+#                   wholesale per field, never merged (a row restating `drops`
+#                   replaces the list; `drops: []` means none). A unit may not
+#                   set `key`, `lane`, or `slot`: those place a creep.
 #   team            0 = Alliance, 1 = Horde
-#   role            melee | caster | siege  (caster needs the attack_* fields)
-#   lane / slot     must already exist in lane_config.lock.json
+#   role            melee | caster | siege | super  (caster needs the attack_* fields)
+#   lane / slot     must already exist in lane_config.lock.json; unique per team
 #   rank            optional; overrides source rank (siege uses 1 = elite)
+#   creature_type   optional; overrides source type (enum CreatureType).
+#                   Mechanical (9) creatures are immune to direct heals.
+#   speed_walk      optional; overrides source speed (multiplier, 1.0 = baseline).
+#   speed_run       Lane paths use move_type RUN, so speed_run is what holds
+#                   formation -- mismatched sources drift apart.
 #   *_modifier      multiplier on the source creature's stat (0.15 = 15%)
 #   attack_range    yards; caster-only
 #   attack_*_ms     milliseconds
 #   despawn_ms      corpse despawn after death
 #   drops[].chance  optional, (0, 1], default 1.0; rolled per kill
+#
+# One creep row = one unit per wave. To field more of something, add a row and
+# give it its own slot in lane_config.yaml.
 
 map: 566
 
-creeps:
-  - key: alliance_melee_right
+units:
+  alliance_footman:
     name: Alliance Footman
     subname: MOBA Minion
     team: 0
     role: melee
-    lane: mid
-    slot: melee_right
     source: apps/moba/sources/creature_template_2279.txt
     display_id: 164
     display_scale: 1.0
     level: 80
     health_modifier: 0.15
     armor_modifier: 0.25
-    equip: [1899, 143, 0]
-    despawn_ms: 60000
-    drops:
-      - {type: gold, copper: 5000}
-      - {type: item, item: 33470, count: 1, chance: 0.5}
-
-  - key: alliance_melee_left
-    name: Alliance Footman
-    subname: MOBA Minion
-    team: 0
-    role: melee
-    lane: mid
-    slot: melee_left
-    source: apps/moba/sources/creature_template_2279.txt
-    display_id: 164
-    display_scale: 1.0
-    level: 80
-    health_modifier: 0.15
-    armor_modifier: 0.25
+    speed_run: 0.98571
     equip: [1899, 143, 0]
     despawn_ms: 60000
     drops:
       - {type: gold, copper: 5000}
 
-  - key: horde_melee_right
+  horde_grunt:
     name: Horde Grunt
     subname: MOBA Minion
     team: 1
     role: melee
-    lane: mid
-    slot: melee_right
     source: apps/moba/sources/creature_template_2279.txt
     display_id: 496
     display_scale: 1.0
     level: 80
     health_modifier: 0.15
     armor_modifier: 0.25
-    equip: [2183, 2051, 0]
-    despawn_ms: 60000
-    drops:
-      - {type: gold, copper: 5000}
-      - {type: item, item: 33470, count: 1, chance: 0.5}
-
-  - key: horde_melee_left
-    name: Horde Grunt
-    subname: MOBA Minion
-    team: 1
-    role: melee
-    lane: mid
-    slot: melee_left
-    source: apps/moba/sources/creature_template_2279.txt
-    display_id: 496
-    display_scale: 1.0
-    level: 80
-    health_modifier: 0.15
-    armor_modifier: 0.25
+    speed_run: 0.98571
     equip: [2183, 2051, 0]
     despawn_ms: 60000
     drops:
       - {type: gold, copper: 5000}
 
-  - key: alliance_caster
+  alliance_mage:
     name: Alliance Mage
     subname: MOBA Minion
     team: 0
     role: caster
-    lane: mid
-    slot: caster
     source: apps/moba/sources/creature_template_1914.txt
     display_id: 3559
     display_scale: 1.0
     level: 80
     health_modifier: 0.15
     armor_modifier: 0.25
+    speed_run: 0.98571
     attack_range: 20
     attack_interval_ms: 2000
     attack_spell_id: 20793
@@ -111,19 +83,18 @@ creeps:
     drops:
       - {type: gold, copper: 5000}
 
-  - key: horde_caster
+  horde_shaman:
     name: Horde Shaman
     subname: MOBA Minion
     team: 1
     role: caster
-    lane: mid
-    slot: caster
     source: apps/moba/sources/creature_template_11683.txt
     display_id: 11865
     display_scale: 1.0
     level: 80
     health_modifier: 0.15
     armor_modifier: 0.25
+    speed_run: 0.98571
     attack_range: 20
     attack_interval_ms: 2000
     attack_spell_id: 20805
@@ -132,78 +103,135 @@ creeps:
     drops:
       - {type: gold, copper: 5000}
 
-  - key: alliance_siege
+  alliance_demolisher:
     name: Alliance Demolisher
     subname: MOBA Minion
     team: 0
     role: siege
-    lane: mid
-    slot: siege
     source: apps/moba/sources/creature_template_34775.txt
     display_id: 27658
     display_scale: 1.0
     level: 80
     rank: 1
+    creature_type: 7
     health_modifier: 0.3
     armor_modifier: 0.25
+    speed_run: 0.98571
     equip: [0, 0, 0]
     despawn_ms: 60000
     drops:
       - {type: gold, copper: 5000}
 
-  - key: horde_siege
+  horde_demolisher:
     name: Horde Demolisher
     subname: MOBA Minion
     team: 1
     role: siege
-    lane: mid
-    slot: siege
     source: apps/moba/sources/creature_template_34775.txt
     display_id: 27658
     display_scale: 1.0
     level: 80
     rank: 1
+    creature_type: 7
     health_modifier: 0.3
     armor_modifier: 0.25
+    speed_run: 0.98571
     equip: [0, 0, 0]
     despawn_ms: 60000
     drops:
       - {type: gold, copper: 5000}
 
-  - key: alliance_super
+  alliance_super_minion:
     name: Alliance Super Minion
     subname: MOBA Minion
     team: 0
     role: super
-    lane: mid
-    slot: siege
     source: apps/moba/sources/creature_template_34775.txt
     display_id: 8395
     display_scale: 1.5
     level: 80
     rank: 1
+    creature_type: 7
     health_modifier: 0.6
     armor_modifier: 0.5
+    speed_run: 0.98571
     equip: [0, 0, 0]
     despawn_ms: 60000
     drops:
       - {type: gold, copper: 8000}
 
-  - key: horde_super
+  horde_super_minion:
     name: Horde Super Minion
     subname: MOBA Minion
     team: 1
     role: super
-    lane: mid
-    slot: siege
     source: apps/moba/sources/creature_template_34775.txt
     display_id: 12818
     display_scale: 1.5
     level: 80
     rank: 1
+    creature_type: 7
     health_modifier: 0.6
     armor_modifier: 0.5
+    speed_run: 0.98571
     equip: [0, 0, 0]
     despawn_ms: 60000
     drops:
       - {type: gold, copper: 8000}
+
+creeps:
+  - key: alliance_melee_right
+    unit: alliance_footman
+    lane: mid
+    slot: melee_right
+    drops:
+      - {type: gold, copper: 5000}
+      - {type: item, item: 33470, count: 1, chance: 0.5}
+
+  - key: alliance_melee_left
+    unit: alliance_footman
+    lane: mid
+    slot: melee_left
+
+  - key: horde_melee_right
+    unit: horde_grunt
+    lane: mid
+    slot: melee_right
+    drops:
+      - {type: gold, copper: 5000}
+      - {type: item, item: 33470, count: 1, chance: 0.5}
+
+  - key: horde_melee_left
+    unit: horde_grunt
+    lane: mid
+    slot: melee_left
+
+  - key: alliance_caster
+    unit: alliance_mage
+    lane: mid
+    slot: caster
+
+  - key: horde_caster
+    unit: horde_shaman
+    lane: mid
+    slot: caster
+
+  - key: alliance_siege
+    unit: alliance_demolisher
+    lane: mid
+    slot: siege
+
+  - key: horde_siege
+    unit: horde_demolisher
+    lane: mid
+    slot: siege
+
+  - key: alliance_super
+    unit: alliance_super_minion
+    lane: mid
+    slot: super
+
+  - key: horde_super
+    unit: horde_super_minion
+    lane: mid
+    slot: super

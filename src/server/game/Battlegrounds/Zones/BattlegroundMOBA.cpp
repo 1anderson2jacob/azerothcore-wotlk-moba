@@ -324,21 +324,8 @@ bool BattlegroundMOBA::SetupBattleground()
     // creep wave composition (data-driven; see mod_moba_creep_data / MobaCreepData.h)
     sMobaCreepDataStore->LoadIfNeeded();
     for (MobaCreepConfig const& cfg : sMobaCreepDataStore->GetForMap(GetMapId()))
-    {
-        MobaWaveComposition& comp = _waveComposition[cfg.team];
-        switch (cfg.role)
-        {
-            case MOBA_CREEP_ROLE_MELEE:
-                if (!comp.meleeEntry)
-                    comp.meleeEntry = cfg.entry;
-                else
-                    comp.meleeEntry2 = cfg.entry;
-                break;
-            case MOBA_CREEP_ROLE_CASTER: comp.casterEntry = cfg.entry; break;
-            case MOBA_CREEP_ROLE_SIEGE:  comp.siegeEntry  = cfg.entry; break;
-            case MOBA_CREEP_ROLE_SUPER:  comp.superEntry  = cfg.entry; break;
-        }
-    }
+        if (cfg.role < MOBA_CREEP_ROLE_MAX && cfg.team < 2)
+            _waveComposition[cfg.team].byRole[cfg.role].push_back(cfg.entry);
 
     bool hasInhibitor[2] = {false, false};
     for (MobaTowerConfig const& cfg : towerConfigs)
@@ -347,16 +334,19 @@ bool BattlegroundMOBA::SetupBattleground()
 
     for (uint32 team = 0; team < 2; ++team)
     {
-        if (!_waveComposition[team].meleeEntry || !_waveComposition[team].meleeEntry2 || !_waveComposition[team].casterEntry)
+        MobaWaveComposition const& comp = _waveComposition[team];
+
+        std::size_t unitCount = 0;
+        for (uint32 role = 0; role < MOBA_CREEP_ROLE_MAX; ++role)
+            unitCount += comp.byRole[role].size();
+
+        if (!unitCount)
         {
-            LOG_ERROR("sql.sql", "BattlegroundMOBA: map {} team {} is missing a melee or caster entry in `mod_moba_creep_data`, battleground not created!", GetMapId(), team);
+            LOG_ERROR("sql.sql", "BattlegroundMOBA: map {} team {} has no rows in `mod_moba_creep_data`, battleground not created!", GetMapId(), team);
             return false;
         }
 
-        if (!_waveComposition[team].siegeEntry)
-            LOG_WARN("sql.sql", "BattlegroundMOBA: map {} team {} has no siege entry in `mod_moba_creep_data` -- siege waves will be skipped for that team.", GetMapId(), team);
-
-        if (hasInhibitor[team] && !_waveComposition[team].superEntry)
+        if (hasInhibitor[team] && comp.byRole[MOBA_CREEP_ROLE_SUPER].empty())
             LOG_WARN("sql.sql", "BattlegroundMOBA: map {} team {} has an inhibitor but no super creep (role=super) in `mod_moba_creep_data` -- taking that inhibitor will field no super minions.", GetMapId(), team);
     }
 
@@ -780,16 +770,20 @@ void BattlegroundMOBA::SpawnWave(TeamId team, bool includeSiege)
 {
     MobaWaveComposition const& comp = _waveComposition[team];
 
-    SpawnCreep(comp.meleeEntry);
-    SpawnCreep(comp.meleeEntry2);
-    SpawnCreep(comp.casterEntry);
+    for (uint32 entry : comp.byRole[MOBA_CREEP_ROLE_MELEE])
+        SpawnCreep(entry);
 
-    if (includeSiege && comp.siegeEntry)
-        SpawnCreep(comp.siegeEntry);
+    for (uint32 entry : comp.byRole[MOBA_CREEP_ROLE_CASTER])
+        SpawnCreep(entry);
 
-    // While the enemy inhibitor is down, this team fields a super minion each wave.
-    if (_superMinionsActive[team] && comp.superEntry)
-        SpawnCreep(comp.superEntry);
+    if (includeSiege)
+        for (uint32 entry : comp.byRole[MOBA_CREEP_ROLE_SIEGE])
+            SpawnCreep(entry);
+
+    // While the enemy inhibitor is down, this team fields its super minions each wave.
+    if (_superMinionsActive[team])
+        for (uint32 entry : comp.byRole[MOBA_CREEP_ROLE_SUPER])
+            SpawnCreep(entry);
 }
 
 // Creeps are TempSummons, not Battleground::AddCreature/BgCreatures -- that
