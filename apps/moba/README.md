@@ -88,6 +88,15 @@ stats, display, and `drops`. The ranges are denormalized per creature
 entry at generation time (proximity aggro is `creature_template.detection_range`
 — one value per entry), so a mob key placed in camps that disagree on ranges
 fails the run: give each camp its own keys. Mobs placed in no camp are skipped.
+
+Mobs use the same `units` mechanism as creeps: `units` define what a mob **is**,
+a `mobs` row names one with `unit:` and may override any field it sets, wholesale
+per field. A unit may not set `key` — placement lives on the camp's members, out
+of a unit's reach, so `key` is the only field that names one individual. `rank`
+and `creature_type` are optional on a unit or a mob and override the source's,
+same as on creeps — the jungle sources are Humanoid, so the units set
+`creature_type: 1` to keep camps Beasts.
+
 Entry lockfile rules are identical to the creep lockfile above.
 
 ### The full-copy + override policy

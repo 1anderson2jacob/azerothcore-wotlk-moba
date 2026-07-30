@@ -20,6 +20,10 @@ and three data tables:
 "item" drops additionally emit native creature_loot_template rows -- the
 drops machinery is shared with gen_creep_roster.py; see its docstring.
 
+A mob may name a `unit` from the config's `units` section and override any
+field it sets; overrides are wholesale per field, never merged. Same
+machinery as the creep roster.
+
 aggro_range / leash_range are authored on the CAMP and denormalized onto each
 member's per-entry rows here, because proximity aggro lives in
 creature_template.detection_range -- one value per entry. A mob key placed in
@@ -37,7 +41,6 @@ Override deltas vs the creep generator:
     term cancels)
   - unit_flags copied verbatim: no PLAYER_CONTROLLED OR-in -- that flag
     exists so players can heal their own lane minions; neutrals are hostile
-  - type defaults to 1 (Beast); per-mob "creature_type" overrides
   - ScriptName = 'npc_moba_neutral'
   - equip optional (beasts carry nothing), default [0, 0, 0]
 
@@ -59,7 +62,8 @@ from pathlib import Path
 from gen_creep_roster import (apply_loot_overrides, build_drop_rows,
                               collect_used_entries, emit_drops_table_sql,
                               emit_loot_template_sql, fail, get_entry, note,
-                              parse_vertical_dump, sql_value, validate_drops)
+                              parse_vertical_dump, resolve_units, sql_value,
+                              validate_drops)
 
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_neutrals.sql")
@@ -69,6 +73,9 @@ SCAN_SQL_DIRS = ["data/sql/custom/db_world"]
 MOB_REQUIRED = ["key", "name", "subname", "source", "display_id", "display_scale",
                 "level", "health_modifier", "armor_modifier"]
 CAMP_REQUIRED = ["key", "respawn_ms", "aggro_range", "leash_range", "members"]
+# Placement is the camp's ("members[].pos"), somewhere a unit cannot reach, so
+# "key" is the only field a shared unit must not carry.
+NEUTRAL_UNIT_FORBIDDEN_FIELDS = ["key"]
 
 
 # ---------------------------------------------------------------- validation
@@ -97,6 +104,9 @@ def validate_config(cfg, path):
             if (not isinstance(equip, list) or len(equip) != 3
                     or not all(isinstance(v, int) for v in equip)):
                 fail(f'mob "{key}": "equip" must be [item1, item2, item3] (0 = empty slot)')
+        if "creature_type" in mob and not isinstance(mob["creature_type"], int):
+            fail(f'mob "{key}": "creature_type" must be an integer '
+                 "(enum CreatureType; 1 = Beast, 7 = Humanoid)")
         if mob["display_id"] == 0:
             note(f'WARNING: mob "{key}" has display_id 0 (placeholder) -- '
                  f'invisible in-game; pick one with .morph and fill it in')
@@ -162,9 +172,8 @@ def resolve_camp_ranges(cfg):
 # ------------------------------------------------------------------ sql emit
 
 def build_template_row(mob, entry, source_cols):
-    for col in ("detection_range", "type"):
-        if col not in source_cols:
-            fail(f'{mob["source"]}: missing expected column {col}')
+    if "detection_range" not in source_cols:
+        fail(f'{mob["source"]}: missing expected column detection_range')
     row = dict(source_cols)
     row.update({
         "entry": str(entry),
@@ -189,11 +198,13 @@ def build_template_row(mob, entry, source_cols):
         "movementId": "0",
         "CreatureImmunitiesId": "0",
         "detection_range": str(mob["_aggro_range"]),
-        "type": str(mob.get("creature_type", 1)),  # CREATURE_TYPE_BEAST
         "VerifiedBuild": "0",
     })
+    # Optional per-mob overrides (default: source creature's value)
     if "rank" in mob:
         row["rank"] = str(mob["rank"])
+    if "creature_type" in mob:
+        row["type"] = str(mob["creature_type"])
     apply_loot_overrides(row, entry, source_cols, mob.get("drops", []))
     return row
 
@@ -338,6 +349,7 @@ def main():
     column_order = None
     for cp in configs:
         cfg = yaml.safe_load(cp.read_text())
+        cfg["mobs"] = resolve_units(cfg, cp, "mobs", "mob", NEUTRAL_UNIT_FORBIDDEN_FIELDS)
         validate_config(cfg, cp)
         ranges = resolve_camp_ranges(cfg)
         lock = locks[cp]

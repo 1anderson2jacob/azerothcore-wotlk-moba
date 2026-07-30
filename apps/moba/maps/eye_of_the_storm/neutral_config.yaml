@@ -3,9 +3,18 @@
 # a mob `key`; `pos` is [x, y, z, orientation]. A mob placed in no camp is
 # skipped. Ranges/lockfile rules: apps/moba/README.md.
 #
+#   units                          reusable definitions of what a mob IS. A mob
+#                                  names one with `unit:` and may override any
+#                                  field it sets -- wholesale per field, never
+#                                  merged (a row restating `drops` replaces the
+#                                  list; `drops: []` means none). A unit may not
+#                                  set `key`.
 #   respawn_ms / initial_spawn_ms  milliseconds
 #   aggro_range / leash_range      yards
 #   *_modifier                     multiplier on the source creature's stat
+#   creature_type                  optional; overrides source type (enum
+#                                  CreatureType). The jungle sources are
+#                                  Humanoid (7), so Beast (1) is explicit.
 #   drops[].type                   buff | gold | item
 
 map: 566
@@ -45,95 +54,76 @@ camps:
       - {mob: boar_small, pos: [2046.6493, 1371.3636, 1194.5441, 1.7294422]}
       - {mob: boar_small, pos: [2053.9358, 1372.2905, 1194.548,  1.7467208]}
 
-mobs:
-  - key: worg_large
-    name: Ravenous Worg
+units:
+  jungle_large:
     subname: MOBA Jungle
     source: apps/moba/sources/creature_template_2279.txt
-    display_id: 9563
-    display_scale: 1.8
+    display_scale: 1.5
     level: 80
+    creature_type: 1
     health_modifier: 0.6
     armor_modifier: 0.25
+    drops:
+      - {type: gold, copper: 5000}
+
+  jungle_small:
+    subname: MOBA Jungle
+    source: apps/moba/sources/creature_template_2279.txt
+    display_scale: 1.0
+    level: 80
+    creature_type: 1
+    health_modifier: 0.2
+    armor_modifier: 0.25
+    drops:
+      - {type: gold, copper: 5000}
+
+mobs:
+  - key: worg_large
+    unit: jungle_large
+    name: Ravenous Worg
+    display_id: 9563
+    display_scale: 1.8
     drops:
       - {type: buff, spell: 23505}
       - {type: gold, copper: 5000}
+
   - key: worg_small
+    unit: jungle_small
     name: Worg Pup
-    subname: MOBA Jungle
-    source: apps/moba/sources/creature_template_2279.txt
     display_id: 9572
-    display_scale: 1.0
-    level: 80
-    health_modifier: 0.2
-    armor_modifier: 0.25
-    drops:
-      - {type: gold, copper: 5000}
+
   - key: wyrm_large
+    unit: jungle_large
     name: Greater Mana Wyrm
-    subname: MOBA Jungle
-    source: apps/moba/sources/creature_template_2279.txt
     display_id: 16217
-    display_scale: 1.5
-    level: 80
-    health_modifier: 0.6
-    armor_modifier: 0.25
     drops:
       - {type: buff, spell: 23493}
       - {type: gold, copper: 5000}
+
   - key: wyrm_small
+    unit: jungle_small
     name: Mana Wyrmling
-    subname: MOBA Jungle
-    source: apps/moba/sources/creature_template_2279.txt
     display_id: 16217
-    display_scale: 1.0
-    level: 80
-    health_modifier: 0.2
-    armor_modifier: 0.25
-    drops:
-      - {type: gold, copper: 5000}
+
   - key: ray_large
+    unit: jungle_large
     name: Nether Ray Matriarch
-    subname: MOBA Jungle
-    source: apps/moba/sources/creature_template_2279.txt
     display_id: 19407
-    display_scale: 1.5
-    level: 80
-    health_modifier: 0.6
-    armor_modifier: 0.25
     drops:
       - {type: buff, spell: 23451}
       - {type: gold, copper: 5000}
+
   - key: ray_small
+    unit: jungle_small
     name: Nether Ray
-    subname: MOBA Jungle
-    source: apps/moba/sources/creature_template_2279.txt
     display_id: 19407
-    display_scale: 1.0
-    level: 80
-    health_modifier: 0.2
-    armor_modifier: 0.25
-    drops:
-      - {type: gold, copper: 5000}
+
   - key: boar_large
+    unit: jungle_large
     name: Thornfang Boar
-    subname: MOBA Jungle
-    source: apps/moba/sources/creature_template_2279.txt
     display_id: 193
-    display_scale: 1.5
-    level: 80
-    health_modifier: 0.6
-    armor_modifier: 0.25
-    drops:
-      - {type: gold, copper: 5000}
+
   - key: boar_small
+    unit: jungle_small
     name: Young Boar
-    subname: MOBA Jungle
-    source: apps/moba/sources/creature_template_2279.txt
     display_id: 193
-    display_scale: 1.0
-    level: 80
-    health_modifier: 0.2
-    armor_modifier: 0.25
-    drops:
-      - {type: gold, copper: 5000}

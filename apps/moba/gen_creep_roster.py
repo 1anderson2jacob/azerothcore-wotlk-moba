@@ -77,7 +77,7 @@ CASTER_REQUIRED = ["attack_range", "attack_interval_ms", "attack_spell_id"]
 # Placement fields can never live in a unit definition: two creeps sharing a unit
 # that carried them would resolve to the same waypoint path and spawn on top of
 # each other (shipped once as super minions riding the siege slot).
-UNIT_FORBIDDEN_FIELDS = ["key", "lane", "slot"]
+CREEP_UNIT_FORBIDDEN_FIELDS = ["key", "lane", "slot"]
 # unit_flags override: OR in UNIT_FLAG_PLAYER_CONTROLLED (0x8) so players can cast
 # helpful spells (heals/buffs) on their own minions. The WoW client silently self-casts
 # a helpful spell aimed at a plain friendly NPC; this is the flag the engine puts on the
@@ -106,42 +106,47 @@ def note(msg):
     print(f"  {msg}")
 
 
-def resolve_units(cfg, path):
-    """Merge each creep row over its named unit definition -- row wins per field."""
+def resolve_units(cfg, path, list_key, noun, forbidden):
+    """Merge each cfg[list_key] row over its named unit definition -- row wins per field.
+
+    Shared with gen_neutral_camps.py. `forbidden` is the caller's list of fields
+    that name or place one individual, so a shared unit must not carry them.
+    """
     units = cfg.get("units", {})
     if not isinstance(units, dict):
         fail(f'{path}: "units" must be a mapping of unit name -> fields')
     for name, unit in units.items():
         if not isinstance(unit, dict):
             fail(f'{path}: unit "{name}" must be a mapping of fields')
-        for field in UNIT_FORBIDDEN_FIELDS:
+        for field in forbidden:
             if field in unit:
-                fail(f'{path}: unit "{name}" sets "{field}" -- a unit describes what '
-                     "a creep is, not where it spawns; put it on the creep row")
+                fail(f'{path}: unit "{name}" sets "{field}" -- a unit is shared by many '
+                     f'{noun}s, and "{field}" names or places a single one; put it on '
+                     f"the {noun} row")
 
-    creeps = cfg.get("creeps")
-    if not isinstance(creeps, list) or not creeps:
-        fail('config "creeps" must be a non-empty list')
+    rows = cfg.get(list_key)
+    if not isinstance(rows, list) or not rows:
+        fail(f'config "{list_key}" must be a non-empty list')
 
     resolved = []
     used = set()
-    for creep in creeps:
-        if not isinstance(creep, dict):
-            fail(f'{path}: every entry under "creeps" must be a mapping')
-        name = creep.get("unit")
+    for row in rows:
+        if not isinstance(row, dict):
+            fail(f'{path}: every entry under "{list_key}" must be a mapping')
+        name = row.get("unit")
         if name is None:
-            resolved.append(dict(creep))
+            resolved.append(dict(row))
             continue
         if name not in units:
-            fail(f'creep "{creep.get("key")}": unknown unit "{name}" '
+            fail(f'{noun} "{row.get("key")}": unknown unit "{name}" '
                  f"(defined: {', '.join(sorted(units)) or 'none'})")
         used.add(name)
         merged = dict(units[name])
-        merged.update({k: v for k, v in creep.items() if k != "unit"})
+        merged.update({k: v for k, v in row.items() if k != "unit"})
         resolved.append(merged)
 
     for name in sorted(set(units) - used):
-        note(f'WARNING: unit "{name}" is defined but no creep uses it')
+        note(f'WARNING: unit "{name}" is defined but no {noun} uses it')
     return resolved
 
 
@@ -548,7 +553,7 @@ def main():
     column_order = None
     for cp in configs:
         cfg = yaml.safe_load(cp.read_text())
-        cfg["creeps"] = resolve_units(cfg, cp)
+        cfg["creeps"] = resolve_units(cfg, cp, "creeps", "creep", CREEP_UNIT_FORBIDDEN_FIELDS)
         validate_config(cfg, cp)
         lock = locks[cp]
 
