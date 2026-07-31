@@ -186,12 +186,15 @@ creeps:
     slot: melee_right
     drops:
       - {type: gold, copper: 5000}
-      - {type: item, item: 33470, count: 1, chance: 0.5}
+      - {type: item, item: 33470, count: 1, chance: 1, sell: 100}
 
   - key: alliance_melee_left
     unit: alliance_footman
     lane: mid
     slot: melee_left
+    drops:
+      - {type: gold, copper: 5000}
+      - {type: item, item: 33470, count: 1, chance: 1, sell: 100}
 
   - key: horde_melee_right
     unit: horde_grunt
@@ -199,12 +202,15 @@ creeps:
     slot: melee_right
     drops:
       - {type: gold, copper: 5000}
-      - {type: item, item: 33470, count: 1, chance: 0.5}
+      - {type: item, item: 33470, count: 1, chance: 1, sell: 100}
 
   - key: horde_melee_left
     unit: horde_grunt
     lane: mid
     slot: melee_left
+    drops:
+      - {type: gold, copper: 5000}
+      - {type: item, item: 33470, count: 1, chance: 1, sell: 100}
 
   - key: alliance_caster
     unit: alliance_mage

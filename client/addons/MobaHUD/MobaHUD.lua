@@ -88,7 +88,11 @@ ev:SetScript("OnEvent", function(self, event, ...)
         end
     elseif event == "ADDON_LOADED" then
         local name = ...
-        if name == ADDON_NAME then ns.Bar.InitSavedVars() end
+        if name == ADDON_NAME then
+            ns.InitDB()               -- must precede both: it owns the sub-tables
+            ns.Bar.InitSavedVars()
+            ns.Shop.InitSavedVars()
+        end
     end
 end)
 
@@ -132,7 +136,9 @@ SlashCmdList["MOBAHUD"] = function(msg)
     elseif msg == "unlock" then
         ns.Bar.SetLocked(false); Print("unlocked (drag to move).")
     elseif msg == "reset" then
-        ns.Bar.ResetPosition(); Print("position reset.")
+        ns.Bar.ResetPosition()
+        ns.Shop.ResetPosition()
+        Print("bar and shop positions reset.")
     else
         Print("commands: test | time <m:ss> | kill | death | stop | lock | unlock | reset")
     end

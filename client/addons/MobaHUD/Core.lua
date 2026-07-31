@@ -18,3 +18,25 @@ ns.C_END   = "|r"
 function ns.Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99MobaHUD|r: " .. tostring(msg))
 end
+
+-- Saved variables do not exist at file-load time -- they arrive at ADDON_LOADED --
+-- so every module's InitSavedVars runs from there, and this runs first. MobaHUDDB
+-- was flat back when the bar was the only movable frame; the migration below is
+-- idempotent, so a second /reload is a no-op and an upgraded client keeps its bar
+-- where the player left it.
+function ns.InitDB()
+    MobaHUDDB = MobaHUDDB or {}
+
+    if MobaHUDDB.point then
+        MobaHUDDB.bar = {
+            point = MobaHUDDB.point, relPoint = MobaHUDDB.relPoint,
+            x     = MobaHUDDB.x,     y        = MobaHUDDB.y,
+            locked = MobaHUDDB.locked,
+        }
+        MobaHUDDB.point, MobaHUDDB.relPoint = nil, nil
+        MobaHUDDB.x, MobaHUDDB.y, MobaHUDDB.locked = nil, nil, nil
+    end
+
+    MobaHUDDB.bar  = MobaHUDDB.bar  or {}
+    MobaHUDDB.shop = MobaHUDDB.shop or {}
+end

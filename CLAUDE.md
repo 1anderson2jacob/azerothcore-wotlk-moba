@@ -178,9 +178,15 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 ## Conventions & lessons learned
 
 - **Enums that size `BgObjects` must stay contiguous** — `SetupBattleground()`'s validation loops walk 0..MAX and fail the whole BG on any empty slot. When deleting entries, renumber and update `*_MAX`. This has caused two boot-on-entry bugs. Keep the slot index in those `LOG_ERROR` messages; it saves real debugging time.
-- **Data stores cache once per worldserver process**, not per battleground — a SQL change needs a full restart, not `.debug bg` + requeue.
+- **Data stores cache once per worldserver process**, not per battleground — a SQL
+  change needs a full restart, not `.debug bg` + requeue. They load lazily from
+  `SetupBattleground()`, so their `Loaded N …` lines appear when the first BG
+  instance is created, not during boot.
 - **The compiler is the refactoring checklist**: edit headers first, then let build errors enumerate every `.cpp` to clean up. 2–3 iterations on a big cut is the workflow, not a failure.
-- **When behavior contradicts the code, `grep` what's actually on disk** before deeper theories — an unsaved editor buffer caused one bug.
+- **When behavior contradicts the code, `grep` what's actually on disk** before
+  deeper theories — an unsaved editor buffer caused one bug, and a skipped
+  `make install` sent us hunting a phantom item-tracking bug for two rounds.
+  Confirm the running binary is current before believing a symptom.
 - `creature_template` on this revision has no `scale` column (use `creature_template_model.DisplayScale`); immunities via `CreatureImmunitiesId`.
 - `AddCreature(entry, type, x, y, z, o, respawntime = 0, transport = nullptr)` — no TeamId param; faction comes from the template.
 - The original `BattlegroundEY.{h,cpp}` is untouched — reference for how spawning/worldstates worked before the strip-down.
@@ -198,12 +204,7 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 | `.github/README.md` | The roadmap; the public-facing overview | Internal recipes |
 | `.github/MOBA_*_PLAN.md` | Work not yet built; the mid-feature handoff | Anything shipped |
 
-- **Every feature starts with a plan file.** Before writing code, create
-  `.github/MOBA_<FEATURE>_PLAN.md` holding the goal, decisions already made (so
-  they are not relitigated), what is built, what is left, and any hard-won facts
-  discovered along the way. Keep it current as work proceeds — it is the handoff
-  if a session ends mid-feature. **Delete it when the feature lands**; it is
-  never committed.
+- **Every feature starts with a plan file.** Before writing code, create `.github/MOBA_<FEATURE>_PLAN.md` holding the goal, decisions already made (so they are not relitigated), what is built, what is left, and any hard-won facts discovered along the way. Keep it current as work proceeds — it is the handoff if a session ends mid-feature. **Delete it when the feature lands**; it is never committed.
 - Never explain something in two places. Link instead.
 - Comments state constraints, not narration — never "what the next line does", never "why this change is correct".
 - Prefer deleting a stale line over updating it.
@@ -214,3 +215,5 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 - Tower `DisplayScale` 5.0 too large; tower positions temporary (mid-lane placement planned, via `.gps`)
 - **Client-patch bundle** — all blocked on the same MPQ/DBC work, so do them together: the recall tooltip still reads "Returns you to \<bind\>"; recall and fountain have no custom spell visuals; custom battle sounds (a doors-open cue and a first-wave-only cue — two `PlaySoundToAll` calls, ~10 min once `SoundEntries.dbc` rows exist); Twisted Treeline music; the leftover EotS grey point-icons; the item shop's `custom_items` flag (`Item.dbc` rows for the `+900000` copies).
 - Shop bag-space check counts empty slots only (`GetFreeInventorySpace`), so buying a stack of consumables with a full bag is refused even when a partial stack could absorb them
+- **The match-granted ledger drifts** — `_grantedCounts` grows on grant and shrinks only on sell or exit, so consuming or destroying a granted item leaves the claim behind, and it is then spent on the player's own copies of the same entry. Reproduced both on the sell path and the exit sweep. Being fixed next; `custom_items` would close it for shop items but not for looted drops, which keep stock entries.
+- Equipped items cannot be sold — the Lua→engine slot mapping cannot name EQUIPMENT_SLOT_*` by construction. Unequip first.

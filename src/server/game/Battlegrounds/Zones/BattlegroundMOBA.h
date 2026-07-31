@@ -201,9 +201,18 @@ public:
     void RecordAllyBuff(Player* ally, Player* buffer, int32 buffMaxDurationMs);
     void HandlePlayerDeath(Player* victim, Unit* killer);
 
-    // Remember an item the shop handed a player, so RemovePlayer can destroy
-    // exactly those items on exit. Called from npc_moba_store.
-    void RecordGrantedItem(Player* player, Item* item);
+    // Remember that the match handed `count` of `item` to the player. Called from
+    // npc_moba_store -- for shop purchases, and via the loot hook for creep and
+    // neutral item drops. `count` is what we GAVE, which is not item->GetCount()
+    // when the grant merged into a stack the player already held.
+    void RecordGrantedItem(Player* player, Item* item, uint32 count);
+
+    // How many of an entry the match still owes: what may be sold, and what will
+    // be destroyed on exit. 0 = the player brought every copy in themselves.
+    uint32 GetGrantedCount(Player* player, uint32 itemEntry) const;
+
+    // Give up the claim on `count` of an item after selling it.
+    void ForgetGrantedItem(Player* player, Item* item, uint32 count);
 
     // League camp-link: called from npc_moba_neutral::JustEngagedWith so
     // hitting one camp member pulls the rest onto the attacker.
@@ -283,11 +292,15 @@ private:
     // (not just the latest) so assist-split and bounties can read it later.
     std::unordered_map<ObjectGuid, std::unordered_map<ObjectGuid, uint32>> _recentAttackers;
 
-    // Items the shop handed each player, destroyed when they leave. Keyed by
-    // item GUID rather than entry: the shop hands out stock entries while
-    // custom_items is off, so an entry-based sweep would also destroy a
-    // player's own world-obtained copies.
+    // What the match handed each player. Two views, because neither alone is
+    // right: GUIDs identify WHICH item (gear carries a random suffix, so the
+    // entry is ambiguous), and the per-entry ledger says HOW MANY (splitting a
+    // stack clones it under a new GUID -- Player::SplitItem -> Item::CloneItem --
+    // and looting merges ours into theirs, so a GUID's count is not our count).
+    // Gear never stacks and stackables never carry a suffix, so the two failure
+    // modes are disjoint and the pair is exact for both.
     std::unordered_map<ObjectGuid, std::vector<ObjectGuid>> _grantedItems;
+    std::unordered_map<ObjectGuid, std::unordered_map<uint32, uint32>> _grantedCounts;
 
     // ally GUID -> (supporter GUID -> last heal/short-buff time, ms). Feeds the LoL
     // assist chain: healing or a short combat buff on a kill participant links the

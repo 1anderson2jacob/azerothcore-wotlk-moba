@@ -143,9 +143,11 @@ DELETE FROM `creature_loot_template` WHERE `Entry` IN (900200, 900201, 900202, 9
 -- Buff/gold drops, rolled and delivered by BattlegroundMOBA::
 -- GrantDeathDrops at the killing blow: Type 0 = buff (aura on the
 -- killer; DurationMs 0 = the spell's default), 1 = gold (Copper
--- injected into the corpse loot). "item" drops are NOT here -- they
--- are the native creature_loot_template rows above. Chance is a
--- percent (config coefficient x 100).
+-- injected into the corpse loot). Type 2 = item is the ODD ONE: the
+-- item itself comes from the creature_loot_template rows above, so a
+-- type-2 row grants nothing and carries only Item + Sell, the per-unit
+-- price npc_moba_store refunds. An item drop with no `sell` gets no row
+-- here and cannot be sold back. Chance is a percent (config x 100).
 DROP TABLE IF EXISTS `mod_moba_neutral_drops`;
 CREATE TABLE `mod_moba_neutral_drops` (
     `CreatureEntry` INT UNSIGNED NOT NULL,
@@ -155,31 +157,33 @@ CREATE TABLE `mod_moba_neutral_drops` (
     `DurationMs`    INT UNSIGNED NOT NULL DEFAULT 0,
     `Copper`        INT UNSIGNED NOT NULL DEFAULT 0,
     `Chance`        FLOAT NOT NULL DEFAULT 100,
+    `Item`          INT UNSIGNED NOT NULL DEFAULT 0,   -- type 2 only
+    `Sell`          INT UNSIGNED NOT NULL DEFAULT 0,   -- type 2 only, PER UNIT
     PRIMARY KEY (`CreatureEntry`, `Idx`)
 );
 
 INSERT INTO `mod_moba_neutral_drops`
-(`CreatureEntry`, `Idx`, `Type`, `Spell`, `DurationMs`, `Copper`, `Chance`)
+(`CreatureEntry`, `Idx`, `Type`, `Spell`, `DurationMs`, `Copper`, `Chance`, `Item`, `Sell`)
 VALUES
 -- worg_large
-(900200, 0, 0, 23505, 0, 0, 100),
+(900200, 0, 0, 23505, 0, 0, 100, 0, 0),
 -- worg_large
-(900200, 1, 1, 0, 0, 5000, 100),
+(900200, 1, 1, 0, 0, 5000, 100, 0, 0),
 -- worg_small
-(900201, 0, 1, 0, 0, 5000, 100),
+(900201, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- wyrm_large
-(900202, 0, 0, 23493, 0, 0, 100),
+(900202, 0, 0, 23493, 0, 0, 100, 0, 0),
 -- wyrm_large
-(900202, 1, 1, 0, 0, 5000, 100),
+(900202, 1, 1, 0, 0, 5000, 100, 0, 0),
 -- wyrm_small
-(900203, 0, 1, 0, 0, 5000, 100),
+(900203, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- ray_large
-(900204, 0, 0, 23451, 0, 0, 100),
+(900204, 0, 0, 23451, 0, 0, 100, 0, 0),
 -- ray_large
-(900204, 1, 1, 0, 0, 5000, 100),
+(900204, 1, 1, 0, 0, 5000, 100, 0, 0),
 -- ray_small
-(900205, 0, 1, 0, 0, 5000, 100),
+(900205, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- boar_large
-(900206, 0, 1, 0, 0, 5000, 100),
+(900206, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- boar_small
-(900207, 0, 1, 0, 0, 5000, 100);
+(900207, 0, 1, 0, 0, 5000, 100, 0, 0);

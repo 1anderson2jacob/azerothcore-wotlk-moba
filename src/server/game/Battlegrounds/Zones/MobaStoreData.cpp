@@ -114,8 +114,21 @@ void MobaStoreDataStore::LoadIfNeeded()
     else
         LOG_ERROR("sql.sql", "MobaStoreDataStore: table `mod_moba_store_grant` is empty or missing.");
 
-    LOG_INFO("server.loading", ">> Loaded {} MOBA shopkeeper(s), {} catalog node(s).",
-             _npcs.size(), _nodes.size());
+    if (QueryResult sells = WorldDatabase.Query(
+        "SELECT Map, ItemEntry, Copper FROM mod_moba_store_sell"))
+    {
+        do
+        {
+            Field* fields = sells->Fetch();
+            _sellByItem[MakeItemKey(fields[0].Get<uint32>(), fields[1].Get<uint32>())] =
+                fields[2].Get<uint32>();
+        } while (sells->NextRow());
+    }
+    else
+        LOG_ERROR("sql.sql", "MobaStoreDataStore: table `mod_moba_store_sell` is empty or missing.");
+
+    LOG_INFO("server.loading", ">> Loaded {} MOBA shopkeeper(s), {} catalog node(s), {} sell price(s).",
+             _npcs.size(), _nodes.size(), _sellByItem.size());
 }
 
 void MobaStoreDataStore::CollectSuffixedEntries(uint32 map, std::set<uint32>& out) const
@@ -160,4 +173,14 @@ std::vector<MobaStoreGrant> const* MobaStoreDataStore::GetGrants(uint32 map, uin
 {
     auto itr = _grants.find(MakeKey(map, tabId, nodeId));
     return itr != _grants.end() ? &itr->second : nullptr;
+}
+
+bool MobaStoreDataStore::GetSellValue(uint32 map, uint32 itemEntry, uint32& out) const
+{
+    auto itr = _sellByItem.find(MakeItemKey(map, itemEntry));
+    if (itr == _sellByItem.end())
+        return false;
+
+    out = itr->second;
+    return true;
 }

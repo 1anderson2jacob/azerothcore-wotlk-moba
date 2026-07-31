@@ -277,7 +277,9 @@ def get_entry(lock, key, used, id_range, assigned_log):
 # Optional per-creature "drops" list, shared by the creep and neutral
 # generators. "buff"/"gold" are rolled and delivered in C++ at the killing
 # blow (mod_moba_*_drops -> GrantDeathDrops); "item" rides the native loot
-# system (creature_loot_template, whose Chance column the engine rolls).
+# system (creature_loot_template, whose Chance column the engine rolls) and
+# additionally emits a type-2 drops row IF it carries a `sell` price, which
+# is the only way a looted item can be sold back at the shop.
 DROP_REQUIRED = {"buff": "spell", "gold": "copper", "item": "item"}
 DROP_TYPE_IDS = {"buff": 0, "gold": 1, "item": 2}
 
@@ -307,9 +309,15 @@ def validate_drops(block, label):
             fail(f'{where}: "chance" must be in (0, 1] -- a coefficient, not a percent')
         if drop["type"] == "buff" and not isinstance(drop.get("duration_ms", 0), int):
             fail(f'{where}: "duration_ms" must be an integer (0 = the spell\'s default)')
+        if drop["type"] != "item" and "sell" in drop:
+            fail(f'{where}: "sell" applies only to item drops')
         if drop["type"] == "item":
             if not isinstance(drop.get("count", 1), int) or drop.get("count", 1) < 1:
                 fail(f'{where}: "count" must be an integer >= 1')
+            # Optional per-unit sell-back price. Omitted means the item has no
+            # price anywhere, and npc_moba_store refuses to buy it back.
+            if not isinstance(drop.get("sell", 0), int) or drop.get("sell", 0) < 0:
+                fail(f'{where}: "sell" must be an integer >= 0 (copper, PER UNIT)')
             if drop["item"] in item_ids:
                 fail(f'{where}: duplicate item {drop["item"]} -- creature_loot_template '
                      'keys on (Entry, Item); raise "count" instead')
@@ -337,10 +345,16 @@ def build_drop_rows(key, entry, drops):
             count = drop.get("count", 1)
             loot.append(f"({entry}, {drop['item']}, 0, {chance}, 0, 1, 0, "
                         f"{count}, {count}, '{key} (moba drop)')")
+            # A PRICED item drop also gets a drops row. Type 2 grants nothing --
+            # the loot row above hands the item over -- it exists only to carry
+            # the sell-back price. No price, no row, and the item cannot be sold.
+            if drop.get("sell"):
+                grant.append(f"-- {key}\n({entry}, {len(grant)}, {DROP_TYPE_IDS['item']}, "
+                             f"0, 0, 0, {chance}, {drop['item']}, {drop['sell']})")
         else:
             grant.append(f"-- {key}\n({entry}, {len(grant)}, {DROP_TYPE_IDS[drop['type']]}, "
                          f"{drop.get('spell', 0)}, {drop.get('duration_ms', 0)}, "
-                         f"{drop.get('copper', 0)}, {chance})")
+                         f"{drop.get('copper', 0)}, {chance}, 0, 0)")
     return grant, loot
 
 
@@ -369,9 +383,11 @@ def emit_drops_table_sql(table, grant_rows):
         "-- Buff/gold drops, rolled and delivered by BattlegroundMOBA::",
         "-- GrantDeathDrops at the killing blow: Type 0 = buff (aura on the",
         "-- killer; DurationMs 0 = the spell's default), 1 = gold (Copper",
-        "-- injected into the corpse loot). \"item\" drops are NOT here -- they",
-        "-- are the native creature_loot_template rows above. Chance is a",
-        "-- percent (config coefficient x 100).",
+        "-- injected into the corpse loot). Type 2 = item is the ODD ONE: the",
+        "-- item itself comes from the creature_loot_template rows above, so a",
+        "-- type-2 row grants nothing and carries only Item + Sell, the per-unit",
+        "-- price npc_moba_store refunds. An item drop with no `sell` gets no row",
+        "-- here and cannot be sold back. Chance is a percent (config x 100).",
         f"DROP TABLE IF EXISTS `{table}`;",
         f"CREATE TABLE `{table}` (",
         "    `CreatureEntry` INT UNSIGNED NOT NULL,",
@@ -381,6 +397,8 @@ def emit_drops_table_sql(table, grant_rows):
         "    `DurationMs`    INT UNSIGNED NOT NULL DEFAULT 0,",
         "    `Copper`        INT UNSIGNED NOT NULL DEFAULT 0,",
         "    `Chance`        FLOAT NOT NULL DEFAULT 100,",
+        "    `Item`          INT UNSIGNED NOT NULL DEFAULT 0,   -- type 2 only",
+        "    `Sell`          INT UNSIGNED NOT NULL DEFAULT 0,   -- type 2 only, PER UNIT",
         "    PRIMARY KEY (`CreatureEntry`, `Idx`)",
         ");",
     ]
@@ -388,7 +406,8 @@ def emit_drops_table_sql(table, grant_rows):
         lines += [
             "",
             f"INSERT INTO `{table}`",
-            "(`CreatureEntry`, `Idx`, `Type`, `Spell`, `DurationMs`, `Copper`, `Chance`)",
+            "(`CreatureEntry`, `Idx`, `Type`, `Spell`, `DurationMs`, `Copper`, `Chance`,"
+            " `Item`, `Sell`)",
             "VALUES",
             ",\n".join(grant_rows) + ";",
         ]

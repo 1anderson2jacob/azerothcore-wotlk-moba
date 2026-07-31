@@ -76,6 +76,11 @@ public:
     // verdict, so it needs the full set to tell the addon what to grey.
     void CollectEntries(uint32 map, std::set<uint32>& out) const;
 
+    // What ONE UNIT of an item sells back for on this map. False = the shop never
+    // sold it, so npc_moba_store refuses the sale; true with out == 0 means it was
+    // free and refunds nothing.
+    bool GetSellValue(uint32 map, uint32 itemEntry, uint32& out) const;
+
 private:
     MobaStoreDataStore() = default;
 
@@ -86,11 +91,19 @@ private:
         return (static_cast<uint64>(map) << 40) | (static_cast<uint64>(tabId) << 20) | id;
     }
 
+    // Sell prices are per (map, item) with no tab or node, so they cannot share
+    // MakeKey's node-shaped packing.
+    static uint64 MakeItemKey(uint32 map, uint32 itemEntry)
+    {
+        return (static_cast<uint64>(map) << 32) | itemEntry;
+    }
+
     bool _loaded = false;
     std::unordered_map<uint32, MobaStoreNpc> _npcs;
     std::vector<MobaStoreNode> _nodes;
     std::unordered_map<uint64, MobaStoreNode const*> _byNode;
     std::unordered_map<uint64, std::vector<MobaStoreGrant>> _grants;
+    std::unordered_map<uint64, uint32> _sellByItem;
 };
 
 #define sMobaStoreDataStore MobaStoreDataStore::instance()

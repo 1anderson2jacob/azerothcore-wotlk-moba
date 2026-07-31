@@ -9,6 +9,10 @@ enum MobaDropType : uint8
 {
     MOBA_DROP_BUFF = 0,
     MOBA_DROP_GOLD = 1,
+    // The item itself comes from creature_loot_template, never from here: a
+    // type-2 row exists ONLY to price the drop for the shop's sell panel, and
+    // is filtered out before _byEntry.
+    MOBA_DROP_ITEM = 2,
 };
 
 struct MobaDropInfo
@@ -32,12 +36,18 @@ public:
 
     void LoadIfNeeded();
     std::vector<MobaDropInfo> const* GetDrops(uint32 entry) const;
+    // What ONE UNIT of a looted item sells back for. False = nothing in the
+    // match drops it at a price, so npc_moba_store refuses the sale.
+    bool GetItemSellValue(uint32 itemEntry, uint32& out) const;
 
 private:
     MobaDropDataStore() = default;
 
     bool _loaded = false;
     std::unordered_map<uint32, std::vector<MobaDropInfo>> _byEntry;
+    // Flattened across both tables: sell price is a property of the ITEM, not of
+    // whichever creature happened to drop it.
+    std::unordered_map<uint32, uint32> _sellByItem;
 };
 
 #define sMobaDropDataStore MobaDropDataStore::instance()

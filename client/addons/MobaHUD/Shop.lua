@@ -31,7 +31,7 @@ local TAB_PAD    = 4                                    -- equal air above and b
 local TAB_Y      = -(INSET_TOP + HEADER_H + TAB_PAD)    -- top of the tab strip
 local TAB_SEP_Y  = TAB_Y - TAB_H - TAB_PAD              -- the rule under it
 local CONTENT_Y  = TAB_SEP_Y - 8                        -- first row below that rule
-local BOTTOM_PAD = 34                        -- status line and the Purchase button
+local BOTTOM_PAD = 48                        -- status line, Purchase button, sell slot
 local SHOP_W     = 800
 local SHOP_H     = -CONTENT_Y + GRID_ROWS * PITCH_Y + BOTTOM_PAD
 
@@ -73,6 +73,10 @@ local WEAPON_NAME = {
 
 local WEAPON_CATEGORY = "Weapons"
 
+-- The anchor /mobahud reset restores. The SetPoint below is a valid starting
+-- anchor only; ApplyShopPosition overrides it once saved vars load.
+local SHOP_DEFAULTS = { point = "CENTER", relPoint = "CENTER", x = 0, y = 0 }
+
 local shop = CreateFrame("Frame", "MobaShopFrame", UIParent)
 shop:SetWidth(SHOP_W)
 shop:SetHeight(SHOP_H)
@@ -85,8 +89,33 @@ shop:SetBackdrop({
 })
 shop:SetToplevel(true)
 shop:EnableMouse(true)
+shop:SetMovable(true)
+shop:SetClampedToScreen(true)
+shop:RegisterForDrag("LeftButton")
 shop:Hide()
 tinsert(UISpecialFrames, "MobaShopFrame")   -- Esc closes it
+
+-- Unlike the bar, the panel has no lock: Bar.lua locks by disabling mouse input,
+-- which here would kill the tabs, cards and buttons along with the drag.
+shop:SetScript("OnDragStart", function(self)
+    -- An item on the cursor means this press is a DROP, not a reposition. Without
+    -- this guard the click-pickup/click-drop path drags the whole panel away
+    -- instead of selling.
+    if GetCursorInfo() then return end
+    self:StartMoving()
+end)
+shop:SetScript("OnDragStop", function(self)
+    self:StopMovingOrSizing()
+    local point, _, relPoint, x, y = self:GetPoint()
+    local db = MobaHUDDB.shop
+    db.point, db.relPoint, db.x, db.y = point, relPoint, x, y
+end)
+
+local function ApplyShopPosition()
+    local db = MobaHUDDB.shop
+    shop:ClearAllPoints()
+    shop:SetPoint(db.point, UIParent, db.relPoint, db.x, db.y)
+end
 
 -- A texture whose path does not resolve draws nothing at all -- no error, no
 -- placeholder -- so wrong art is indistinguishable from a region that was never
@@ -547,7 +576,7 @@ for i = 1, MAX_PIECES do
 end
 
 local buyButton = CreateFrame("Button", nil, shop, "UIPanelButtonTemplate")
-buyButton:SetWidth(DETAIL_W - 8)
+buyButton:SetWidth(DETAIL_W - 48)
 buyButton:SetHeight(24)
 buyButton:SetPoint("BOTTOMLEFT", shop, "BOTTOMLEFT", DETAIL_X, 14)
 buyButton:SetText("Purchase")
@@ -556,6 +585,87 @@ buyButton:SetScript("OnClick", function()
     shopStatus:SetText("...")
     SendAddonMessage(SHOP_PREFIX, "BUY:" .. shop.tabId .. "," .. selected.node, "BATTLEGROUND")
 end)
+
+-- ---- sell slot -----------------------------------------------------------
+-- GetCursorInfo names the item on the cursor but NOT where it came from, and
+-- 3.3.5 exposes no item GUIDs to Lua -- yet the server needs a specific slot,
+-- because two random-suffix items share one entry and only the slot tells them
+-- apart. Every bag pickup routes through PickupContainerItem, so the last call
+-- to it names the slot the cursor item left. The entry rides along as a
+-- checksum: the server refuses a mismatch rather than resolving it, so a stale
+-- pair can only ever earn a refusal, never sell the wrong item.
+local lastBag, lastSlot
+
+hooksecurefunc("PickupContainerItem", function(bag, slot) lastBag, lastSlot = bag, slot end)
+hooksecurefunc("SplitContainerItem",  function(bag, slot) lastBag, lastSlot = bag, slot end)
+-- Anything that is not a bag pickup clears the pair. Equipped gear is not
+-- sellable -- the server's slot mapping cannot even name those slots -- and a
+-- pair left over from an earlier pickup must never be reused.
+hooksecurefunc("PickupInventoryItem", function() lastBag, lastSlot = nil, nil end)
+hooksecurefunc("ClearCursor",         function() lastBag, lastSlot = nil, nil end)
+
+-- Anchored off the Purchase button rather than the panel: the two share a row,
+-- and the right edge is the closest point on the panel to where the bags open.
+local sellSlot = CreateFrame("Button", nil, shop)
+sellSlot:SetWidth(28)
+sellSlot:SetHeight(28)
+sellSlot:SetPoint("LEFT", buyButton, "RIGHT", 8, 0)
+-- Drawn, not textured: UI-Slot-Background's art does not fill its own box, so
+-- sizing the button to it leaves the visible square inset and sitting low.
+sellSlot:SetBackdrop({
+    bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 16, edgeSize = 12,
+    insets = { left = 3, right = 3, top = 3, bottom = 3 },
+})
+sellSlot:SetBackdropColor(0, 0, 0, 0.6)
+sellSlot:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+sellSlot:SetHighlightTexture("Interface\\Buttons\\CheckButtonHilight", "ADD")
+local sellHi = sellSlot:GetHighlightTexture()
+sellHi:ClearAllPoints()
+sellHi:SetAllPoints(sellSlot)
+
+-- A hint, not an item: alpha'd back so the slot still reads as empty and a
+-- dropped item is what draws the eye. TexCoord trims the icon art's own baked-in
+-- border, which would otherwise double up with the backdrop's edge.
+local sellIcon = sellSlot:CreateTexture(nil, "ARTWORK")
+sellIcon:SetTexture("Interface\\Icons\\INV_Misc_Coin_01")
+sellIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+sellIcon:SetPoint("TOPLEFT", sellSlot, "TOPLEFT", 5, -5)
+sellIcon:SetPoint("BOTTOMRIGHT", sellSlot, "BOTTOMRIGHT", -5, 5)
+sellIcon:SetAlpha(0.75)
+
+local function TrySell()
+    local kind, itemId = GetCursorInfo()
+    if kind ~= "item" then return end
+
+    if not lastBag then
+        ClearCursor()
+        shopStatus:SetText("|cffff3333Pick the item up from a bag first.|r")
+        return
+    end
+
+    -- Copy before clearing: the ClearCursor hook above nils the pair, and the
+    -- message still needs it.
+    local bag, slot = lastBag, lastSlot
+    ClearCursor()
+    shopStatus:SetText("...")
+    SendAddonMessage(SHOP_PREFIX,
+        string.format("SELL:%d,%d,%d", bag, slot, itemId), "BATTLEGROUND")
+end
+
+-- Both drop gestures land here: press-drag-release fires OnReceiveDrag, while
+-- click-to-pick-up then click fires OnClick.
+sellSlot:SetScript("OnReceiveDrag", TrySell)
+sellSlot:SetScript("OnClick", TrySell)
+sellSlot:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText("Sell")
+    GameTooltip:AddLine("Drag an item here to sell it back.", 1, 1, 1)
+    GameTooltip:AddLine("Only items this match gave you.", 0.6, 0.6, 0.6)
+    GameTooltip:Show()
+end)
+sellSlot:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 -- ---- tabs ----------------------------------------------------------------
 for i = 1, 6 do
@@ -846,6 +956,14 @@ local function HandleShopPayload(payload)
         if shop:IsShown() then RenderShop() end
         return
     end
+    local sold = string.match(payload, "^SOLD:(%d+)$")
+    if sold then
+        local copper = tonumber(sold)
+        shopStatus:SetText(copper > 0
+            and ("|cff33ff99Sold for " .. GetCoinTextureString(copper) .. "|r")
+            or "|cff33ff99Sold.|r")
+        return   -- PLAYER_MONEY re-renders affordability on its own
+    end
     local err = string.match(payload, "^ERR:(.+)$")
     if err then shopStatus:SetText("|cffff3333" .. err .. "|r"); return end
     if string.match(payload, "^OK:") then
@@ -862,4 +980,17 @@ ns.Shop = {
     Render  = RenderShop,
     Hide    = function() shop:Hide() end,
     IsShown = function() return shop:IsShown() end,
+
+    -- ns.InitDB has already created MobaHUDDB.shop.
+    InitSavedVars = function()
+        for k, v in pairs(SHOP_DEFAULTS) do
+            if MobaHUDDB.shop[k] == nil then MobaHUDDB.shop[k] = v end
+        end
+        ApplyShopPosition()
+    end,
+
+    ResetPosition = function()
+        for k, v in pairs(SHOP_DEFAULTS) do MobaHUDDB.shop[k] = v end
+        ApplyShopPosition()
+    end,
 }

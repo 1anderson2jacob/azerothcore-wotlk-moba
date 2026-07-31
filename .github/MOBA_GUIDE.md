@@ -279,6 +279,15 @@ filters. Generated per map from `store_config.yaml` → `gen_store.py` →
   bookkeeping is only necessary because `custom_items` is off and grants use stock
   entries, which are ambiguous. Once the copies ship, entry alone identifies
   shop gear and a stateless entry sweep replaces this — see `RemovePlayer`.
+- **Sell is drag-and-drop, and only for what the match gave you.** A slot beside
+  the Purchase button takes a bag item and refunds `sell_ratio` of what it cost;
+  looted drops refund the `sell` on their drop config. 3.3.5 gives Lua no item
+  GUIDs and `GetCursorInfo` no source slot, so the addon hooks
+  `PickupContainerItem` to remember where the cursor item came from and sends
+  `SELL:<bag>,<slot>,<entry>`; the entry is a checksum the server refuses on
+  mismatch rather than resolving, so a stale pickup can only earn a refusal. The
+  slot mapping cannot name equipment slots, so equipped gear must be unequipped
+  first.
 - **Shopkeepers spawn from the `creature` table**, not `AddCreature` — they are
   static props, and this avoids adding `BgCreatures` enum slots (an ordering trap
   that has caused two boot bugs). It is also why this generator alone clears a
@@ -532,9 +541,15 @@ from `.gps`. A changed name, subname or model **will not show until the client's
 `Cache/` folder is deleted** — gotcha index.
 
 **Change a price** — `cost` in copper, on the group or per item. `sell_ratio`
-(map-level, overridable per group and per item) only bites once `custom_items` is
-on, because stock entries keep their own `SellPrice`; the generator warns once per
-config when it resolves non-zero while the flag is off.
+(map-level, overridable per group and per item) sets what it refunds, emitted to
+`mod_moba_store_sell`. Both are **per unit**: a leaf granting a stack divides by
+its `count`, and a `pieces` bundle divides by how many items the leaf actually
+grants. Getting that wrong mints gold — gotcha index.
+
+**Price a looted drop** — `sell:` on an `item` drop in `creep_config.yaml` or
+`neutral_config.yaml`, in copper per unit. Omit it and the item cannot be sold
+back at all. One entry carries one price globally: the same item priced
+differently by two creatures logs an error and keeps the first.
 
 **Pick items out of `item_template`** — filter on `Quality`, `RequiredLevel` and
 `InventoryType`. Three traps, all in the gotcha index: `AllowableClass` /
@@ -550,8 +565,8 @@ computation, so a run can be diffed against the committed SQL:
 python3 -c "
 import sys; sys.path.insert(0,'apps/moba')
 import gen_store as g
-cfgs=g.load_configs(); npc,menu,grant,meta,copies=g.build(cfgs)
-print('sql matches disk:', g.emit(npc,menu,grant,copies)==open('data/sql/custom/db_world/mod_moba_store.sql').read())
+cfgs=g.load_configs(); npc,menu,grant,sell,meta,copies=g.build(cfgs)
+print('sql matches disk:', g.emit(npc,menu,grant,sell,copies)==open('data/sql/custom/db_world/mod_moba_store.sql').read())
 print('lua matches disk:', g.emit_catalog(menu,grant,meta)==open('client/addons/MobaHUD/Catalog.lua').read())
 "
 ```
@@ -661,6 +676,16 @@ touching that area:
 - **Lane waypoints are emitted `move_type = RUN`**, so `speed_run` governs lane
   pacing and `speed_walk` is inert — source creatures whose `speed_run` differs
   drift out of formation. → `creep_config.yaml`, `speed_run` legend.
+- **Splitting a stack CLONES it under a new GUID** (`Player::SplitItem` →
+  `Item::CloneItem`), and looting MERGES into a stack the player already held. So
+  an item GUID names a stack but not whose items are inside it, and a granted
+  stack can end up under a GUID the match never recorded. Tracking match-granted
+  items needs a GUID set *and* a per-entry count — neither alone is right.
+  → `_grantedItems` / `_grantedCounts` in `BattlegroundMOBA.h`.
+- **Sell prices are per unit, as `item_template.SellPrice` is** — writing a whole
+  node's price onto each item it grants is a money printer. A 5-potion leaf
+  refunded 6250 on a 5000 purchase; a priced 9-piece bundle would have refunded
+  2.25x. → `note_sell` in `gen_store.py`.
 
 Traps with no single code home:
 

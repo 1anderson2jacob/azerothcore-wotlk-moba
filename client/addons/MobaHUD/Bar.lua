@@ -1,5 +1,6 @@
 -- Bar: the scoreboard bar -- team score, KDA, creep score, match clock. Also owns
--- the saved position and lock, since MobaHUDDB exists only to persist this frame.
+-- its saved position and lock, which live under MobaHUDDB.bar (ns.InitDB owns the
+-- table and migrated the flat layout this file used to assume).
 
 local ADDON_NAME, ns = ...
 
@@ -144,16 +145,18 @@ frame:SetScript("OnDragStart", function(self) if self:IsMovable() then self:Star
 frame:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
     local point, _, relPoint, x, y = self:GetPoint()
-    MobaHUDDB.point, MobaHUDDB.relPoint, MobaHUDDB.x, MobaHUDDB.y = point, relPoint, x, y
+    local db = MobaHUDDB.bar
+    db.point, db.relPoint, db.x, db.y = point, relPoint, x, y
 end)
 
 local function ApplyPosition()
+    local db = MobaHUDDB.bar
     frame:ClearAllPoints()
-    frame:SetPoint(MobaHUDDB.point, UIParent, MobaHUDDB.relPoint, MobaHUDDB.x, MobaHUDDB.y)
+    frame:SetPoint(db.point, UIParent, db.relPoint, db.x, db.y)
 end
 
 local function ApplyLock()
-    frame:EnableMouse(not MobaHUDDB.locked)
+    frame:EnableMouse(not MobaHUDDB.bar.locked)
 end
 
 local function ShowBar()
@@ -192,23 +195,24 @@ ns.Bar = {
     FormatTime       = FormatTime,
     RelayoutForScale = RelayoutForScale,
 
+    -- ns.InitDB has already created MobaHUDDB.bar; this only fills the gaps.
     InitSavedVars = function()
-        MobaHUDDB = MobaHUDDB or {}
         for k, v in pairs(DEFAULTS) do
-            if MobaHUDDB[k] == nil then MobaHUDDB[k] = v end
+            if MobaHUDDB.bar[k] == nil then MobaHUDDB.bar[k] = v end
         end
         ApplyPosition()
         ApplyLock()
     end,
 
     SetLocked = function(locked)
-        MobaHUDDB.locked = locked
+        MobaHUDDB.bar.locked = locked
         ApplyLock()
     end,
 
     ResetPosition = function()
-        MobaHUDDB.point, MobaHUDDB.relPoint = DEFAULTS.point, DEFAULTS.relPoint
-        MobaHUDDB.x, MobaHUDDB.y = DEFAULTS.x, DEFAULTS.y
+        local db = MobaHUDDB.bar
+        db.point, db.relPoint = DEFAULTS.point, DEFAULTS.relPoint
+        db.x, db.y = DEFAULTS.x, DEFAULTS.y
         ApplyPosition()
     end,
 }

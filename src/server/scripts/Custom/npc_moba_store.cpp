@@ -20,6 +20,7 @@
 #include "Item.h"
 #include "Log.h"
 #include "MobaStoreData.h"
+#include "MobaDropData.h"
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "ScriptedGossip.h"
@@ -29,6 +30,7 @@
 #include "SharedDefines.h"
 #include "ItemEnchantmentMgr.h"
 #include "ObjectMgr.h"
+#include <algorithm>
 
 namespace
 {
@@ -72,6 +74,48 @@ namespace
                 return "You lack the proficiency for that.";
 
         return nullptr;
+    }
+
+    // Lua bag/slot -> engine bag/slot. Lua numbers bags 0 = backpack and 1-4 =
+    // the equipped bags, with 1-based slots. The engine keeps the backpack's
+    // contents in the pseudo-bag INVENTORY_SLOT_BAG_0 at
+    // INVENTORY_SLOT_ITEM_START..END, and an equipped bag's contents at 0-based
+    // indices under the inventory slot that bag occupies.
+    //
+    // Equipped gear is unreachable BY CONSTRUCTION: bag 0 maps to slot 23 upward,
+    // so nothing the client can say names EQUIPMENT_SLOT_* (0-18). Unequip to sell.
+    bool ResolveBagSlot(uint32 luaBag, uint32 luaSlot, uint8& bag, uint8& slot)
+    {
+        if (!luaSlot)
+            return false;
+
+        if (luaBag == 0)
+        {
+            if (luaSlot > INVENTORY_SLOT_ITEM_END - INVENTORY_SLOT_ITEM_START)
+                return false;
+
+            bag  = INVENTORY_SLOT_BAG_0;
+            slot = uint8(INVENTORY_SLOT_ITEM_START + luaSlot - 1);
+            return true;
+        }
+
+        if (luaBag > INVENTORY_SLOT_BAG_END - INVENTORY_SLOT_BAG_START)
+            return false;
+
+        bag  = uint8(INVENTORY_SLOT_BAG_START + luaBag - 1);
+        slot = uint8(luaSlot - 1);
+        return true;
+    }
+
+    // What one unit of an entry sells for: the shop's price if the shop sold it,
+    // else a drop's configured price. False for anything neither priced, which is
+    // the whole gate on what can be sold.
+    bool ResolveSellValue(uint32 map, uint32 itemEntry, uint32& out)
+    {
+        if (sMobaStoreDataStore->GetSellValue(map, itemEntry, out))
+            return true;
+
+        return sMobaDropDataStore->GetItemSellValue(itemEntry, out);
     }
 
     // The front-end-agnostic purchase core: validates, charges, and grants.
@@ -163,7 +207,7 @@ namespace
                 // Nothing else tracks these -- the battleground destroys exactly
                 // these item GUIDs when the player leaves.
                 if (BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground()))
-                    moba->RecordGrantedItem(player, item);
+                    moba->RecordGrantedItem(player, item, grant.count);
 
                 player->SendNewItem(item, grant.count, true, false);
             }
@@ -312,6 +356,8 @@ public:
             }
             else if (payload.compare(0, 4, "BUY:") == 0)
                 HandleBuy(player, moba, payload.substr(4));
+            else if (payload.compare(0, 5, "SELL:") == 0)
+                HandleSell(player, moba, payload.substr(5));
         }
 
         return false; // consume: never broadcast shop traffic to battleground chat
@@ -367,10 +413,129 @@ private:
             ? Acore::StringFormat("OK:{},{}", *tabId, *nodeId)
             : "ERR:" + result.message);
     }
+
+    // "SELL:<luaBag>,<luaSlot>,<itemEntry>". The bag/slot names WHICH item; the
+    // entry is a checksum. The client learned that slot from hooking its own last
+    // bag pickup, and the cursor may have moved on since -- so a mismatch is
+    // refused outright rather than resolved, and a desynced client can never sell
+    // something other than what the player dragged.
+    static void HandleSell(Player* player, BattlegroundMOBA* moba, std::string const& args)
+    {
+        std::string::size_type first = args.find(',');
+        if (first == std::string::npos)
+            return;
+
+        std::string::size_type second = args.find(',', first + 1);
+        if (second == std::string::npos)
+            return;
+
+        Optional<uint32> luaBag  = Acore::StringTo<uint32>(args.substr(0, first));
+        Optional<uint32> luaSlot = Acore::StringTo<uint32>(args.substr(first + 1, second - first - 1));
+        Optional<uint32> entry   = Acore::StringTo<uint32>(args.substr(second + 1));
+        if (!luaBag || !luaSlot || !entry)
+            return;
+
+        // Same gate as buying: the shopkeeper the SERVER remembers, still in range.
+        Creature* creature = player->GetNPCIfCanInteractWith(moba->GetOpenShopkeeper(player), UNIT_NPC_FLAG_GOSSIP);
+        if (!creature)
+        {
+            moba->SendShopMessage(player, "CLOSE:You are too far from the shopkeeper.");
+            return;
+        }
+
+        sMobaStoreDataStore->LoadIfNeeded();
+        sMobaDropDataStore->LoadIfNeeded();
+
+        MobaStoreNpc const* npc = sMobaStoreDataStore->GetNpc(creature->GetEntry());
+        if (!npc || player->GetBgTeamId() != npc->team)
+        {
+            moba->SendShopMessage(player, "ERR:That shopkeeper cannot trade with you.");
+            return;
+        }
+
+        uint8 bag = 0, slot = 0;
+        if (!ResolveBagSlot(*luaBag, *luaSlot, bag, slot))
+        {
+            moba->SendShopMessage(player, "ERR:Sell items out of a bag.");
+            return;
+        }
+
+        Item* item = player->GetItemByPos(bag, slot);
+        if (!item)
+        {
+            moba->SendShopMessage(player, "ERR:There is nothing there.");
+            return;
+        }
+
+        if (item->GetEntry() != *entry)
+        {
+            moba->SendShopMessage(player, "ERR:That item moved. Try again.");
+            return;
+        }
+
+        uint32 owed = moba->GetGrantedCount(player, item->GetEntry());
+        if (!owed)
+        {
+            moba->SendShopMessage(player, "ERR:Only items from this match can be sold.");
+            return;
+        }
+
+        uint32 unitPrice = 0;
+        if (!ResolveSellValue(npc->map, item->GetEntry(), unitPrice))
+        {
+            moba->SendShopMessage(player, "ERR:That cannot be sold.");
+            return;
+        }
+
+        // Sell only what the match gave. The rest of the stack is the player's
+        // own, merged in by StoreNewItem or StoreLootItem, and is not ours to
+        // take. DestroyItemCount ZEROES its count argument, so price it first.
+        uint32 sellCount = std::min(item->GetCount(), owed);
+        uint32 payout    = unitPrice * sellCount;
+
+        moba->ForgetGrantedItem(player, item, sellCount);
+        player->DestroyItemCount(item, sellCount, true);
+
+        if (payout)
+            player->ModifyMoney(int32(payout));
+
+        moba->SendShopMessage(player, Acore::StringFormat("SOLD:{}", payout));
+    }
+};
+
+// Everything the match hands a player is match-only, not just shop purchases.
+// Creep and neutral item drops ride the NATIVE loot system
+// (creature_loot_template), so they never pass through TryPurchase and
+// GrantDeathDrops never sees them -- recording them here is what lets
+// RemovePlayer strip them on exit, and what makes them sellable.
+//
+// It lives in this file rather than its own because npc_moba_store already owns
+// the "what did this match hand the player" bookkeeping; split it out if the
+// item lifecycle grows past this one hook.
+//
+// The recall Hearthstone is deliberately NOT caught: AddPlayer hands it over
+// with AddItem, not loot, so it never reaches this hook -- which is what keeps
+// it out of the sellable set.
+class moba_loot_playerscript : public PlayerScript
+{
+public:
+    moba_loot_playerscript() : PlayerScript("moba_loot_playerscript", { PLAYERHOOK_ON_LOOT_ITEM }) { }
+
+    // `item` is what the loot actually landed in, which for a stackable is the
+    // MERGED stack -- so a player who brought their own copy of a dropped item
+    // has that whole stack recorded, and loses it on exit. Same root cause as
+    // BattlegroundMOBA::_grantedItems keying on GUID: stock entries are
+    // ambiguous until custom_items ships.
+    void OnPlayerLootItem(Player* player, Item* item, uint32 count, ObjectGuid /*lootguid*/) override
+    {
+        if (BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground()))
+            moba->RecordGrantedItem(player, item, count);
+    }
 };
 
 void AddSC_npc_moba_store()
 {
     new npc_moba_store();
     new moba_shop_playerscript();
+    new moba_loot_playerscript();
 }

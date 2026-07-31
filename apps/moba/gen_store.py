@@ -14,6 +14,7 @@ generates data/sql/custom/db_world/mod_moba_store.sql in full:
   * mod_moba_store_npc    -- creature entry -> (map, team)
   * mod_moba_store_menu   -- the catalog tree, arbitrary depth, keyed per tab
   * mod_moba_store_grant  -- the item(s) behind each purchase node
+  * mod_moba_store_sell   -- per-unit sell-back price for every item sold here
 plus client/addons/MobaHUD/Catalog.lua, which is what the shop panel browses.
 
 ONE shopkeeper per team serves every tab, so TabId keys the menu and grant tables
@@ -357,7 +358,7 @@ def build(configs):
         fail("faction-locked items in the catalog -- both teams must see the same "
              "shop:\n" + "\n".join(locked))
 
-    npc_rows, menu_rows, grant_rows, tabs_meta, item_copies = [], [], [], [], []
+    npc_rows, menu_rows, grant_rows, sell_rows, tabs_meta, item_copies = [], [], [], [], [], []
 
     for path, cfg in configs:
         map_id = cfg["map"]
@@ -426,18 +427,18 @@ def build(configs):
                 # consumables are named items, not random-suffix bases.
                 fixed = group.get("items")
                 if fixed:
-                    leaves = []
-                    for spec in (item_spec(s) for s in fixed):
-                        cost = spec.get("cost", group.get("cost", 0))
-                        leaves.append((spec, cost,
-                                       int(round(cost * spec.get("sell_ratio", group_ratio)))))
-
-                    for i, (spec, cost, sell) in enumerate(leaves):
+                    for i, spec in enumerate(item_spec(s) for s in fixed):
                         entry = spec["entry"]
                         count = spec.get("count", 1)
+                        cost  = spec.get("cost", group.get("cost", 0))
                         label = spec.get("name", items[entry]["name"])
                         if count > 1:
                             label += f" x{count}"
+
+                        # PER UNIT, like item_template.SellPrice: one leaf may grant
+                        # a stack, and the sell handler multiplies by the stack size
+                        # it destroys. 5 potions for 5000 at ratio 0.25 -> 250 each.
+                        sell = int(round(cost * spec.get("sell_ratio", group_ratio) / count))
 
                         next_node += 1
                         leaf = next_node
@@ -450,7 +451,6 @@ def build(configs):
 
                 pieces = group["pieces"]
                 cost = group.get("cost", 0)
-                sell = int(round(cost * group_ratio))
 
                 # A piece that rolls none of the configured suffixes is a config
                 # error (wrong entry, or an id that item cannot roll).
@@ -467,6 +467,13 @@ def build(configs):
                         continue          # e.g. cloth or wand under a physical suffix
                     if group.get("append_cloak") and cloak and s["id"] in rolls(cloak):
                         bundle.append(cloak)
+
+                    # One node price, many items: split it across what the leaf
+                    # actually grants. len(bundle), NOT len(pieces) -- the appended
+                    # cloak is a piece you paid for. Should a future cloak fail to
+                    # roll some suffix, sibling leaves split differently and
+                    # note_sell fails the run rather than minting the difference.
+                    sell = int(round(cost * group_ratio / len(bundle)))
 
                     next_node += 1
                     leaf = next_node
@@ -490,15 +497,17 @@ def build(configs):
 
             tabs_meta.append((path, map_id, tab_id, v, purchases))
 
-        if not custom_items and any(item_sell.values()):
-            warn(f"{path}: sell prices resolve non-zero but custom_items is off -- "
-                 f"stock items keep their own SellPrice")
+        # Keyed on the entry actually GRANTED -- the +900000 copy when custom_items
+        # is on -- because that is the entry the sell handler finds in the bag.
+        # note_sell has already proved each one resolves to a single price.
+        sell_rows.extend((map_id, entry + entry_offset, copper)
+                         for entry, copper in sorted(item_sell.items()))
 
         if custom_items:
             item_copies.extend((entry, entry + ITEM_ENTRY_OFFSET, item_sell.get(entry, 0))
                                for entry in sorted(cfg_items))
 
-    return npc_rows, menu_rows, grant_rows, tabs_meta, item_copies
+    return npc_rows, menu_rows, grant_rows, sell_rows, tabs_meta, item_copies
 
 
 def emit_item_copies(item_copies):
@@ -645,7 +654,7 @@ def emit_catalog(menu_rows, grant_rows, tabs_meta):
     return "\n".join(lines) + "\n"
 
 
-def emit(npc_rows, menu_rows, grant_rows, item_copies):
+def emit(npc_rows, menu_rows, grant_rows, sell_rows, item_copies):
     # The reserved window, not entries_csv: deleting only what we insert would
     # leave a removed shopkeeper spawned in the DB forever.
     window = f"BETWEEN {SHOP_ENTRY_MIN} AND {SHOP_ENTRY_MAX}"
@@ -781,6 +790,25 @@ def emit(npc_rows, menu_rows, grant_rows, item_copies):
         f"({m}, {tid}, {nid}, {item}, {suffix}, {count})"
         for m, tid, nid, item, suffix, count in grant_rows) + ";")
 
+    lines += [
+        "",
+        "DROP TABLE IF EXISTS `mod_moba_store_sell`;",
+        "CREATE TABLE `mod_moba_store_sell` (",
+        "    `Map`       INT UNSIGNED NOT NULL,",
+        "    `ItemEntry` INT UNSIGNED NOT NULL,",
+        "    -- PER UNIT, as item_template.SellPrice is: the sell handler multiplies",
+        "    -- by the stack size it destroys. An entry absent from this table was",
+        "    -- never sold here, and cannot be sold back.",
+        "    `Copper`    INT UNSIGNED NOT NULL DEFAULT 0,",
+        "    PRIMARY KEY (`Map`, `ItemEntry`)",
+        ");",
+        "",
+        "INSERT INTO `mod_moba_store_sell` (`Map`, `ItemEntry`, `Copper`)",
+        "VALUES",
+    ]
+    lines.append(",\n".join(
+        f"({m}, {entry}, {copper})" for m, entry, copper in sell_rows) + ";")
+
     if item_copies:
         lines += emit_item_copies(item_copies)
 
@@ -789,9 +817,9 @@ def emit(npc_rows, menu_rows, grant_rows, item_copies):
 
 def main():
     configs = load_configs()
-    npc_rows, menu_rows, grant_rows, tabs_meta, item_copies = build(configs)
+    npc_rows, menu_rows, grant_rows, sell_rows, tabs_meta, item_copies = build(configs)
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(emit(npc_rows, menu_rows, grant_rows, item_copies))
+    OUTPUT.write_text(emit(npc_rows, menu_rows, grant_rows, sell_rows, item_copies))
     CATALOG_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     CATALOG_OUTPUT.write_text(emit_catalog(menu_rows, grant_rows, tabs_meta))
 
@@ -801,7 +829,7 @@ def main():
         print(f"  map {map_id} tab {tab_id} ({v['key']}): "
               f"{len(v['categories'])} categories, {purchases} purchase nodes")
     print(f"  {len(npc_rows)} shopkeeper NPCs, {len(menu_rows)} menu nodes, "
-          f"{len(grant_rows)} grant rows")
+          f"{len(grant_rows)} grant rows, {len(sell_rows)} sell prices")
     if item_copies:
         print(f"  {len(item_copies)} custom item copies (source entry + {ITEM_ENTRY_OFFSET})")
     else:

@@ -15,7 +15,8 @@ and three data tables:
     mod_moba_neutral_camps    -- per camp: spawn timing
     mod_moba_neutral_members  -- per placement: camp, entry, position
     mod_moba_neutral_data     -- per entry: behavior (aggro, leash)
-    mod_moba_neutral_drops    -- per entry: on-death buff/gold drops
+    mod_moba_neutral_drops    -- per entry: on-death buff/gold drops, and the
+                                 sell-back price of any priced item drop
 
 "item" drops additionally emit native creature_loot_template rows -- the
 drops machinery is shared with gen_creep_roster.py; see its docstring.
