@@ -19,13 +19,14 @@
 --                                        pov 0 = you died, 1 = bystander
 --                                        vSide/vClass as in K:  (side colour, class emblem)
 --                                        cat 0=environment 1=tower 2=lane creep 3=neutral
---   E                                  hide the bar (match end / left the match)
+--   E                                  match over -- freeze the bar; it hides when
+--                                      you leave the instance, not on this
 
 local ADDON_NAME, ns = ...
 
 local PREFIX      = ns.PREFIX
 local SHOP_PREFIX = ns.SHOP_PREFIX
-local HIDE_MSG    = "E"
+local END_MSG     = "E"
 local Print       = ns.Print
 
 local function HideAll()
@@ -34,8 +35,17 @@ local function HideAll()
     ns.Shop.Hide()
 end
 
+-- The server sends E for both "match ended" and "you left", so it cannot mean hide --
+-- the bar has to survive the end-of-match scoreboard screen. Freeze it and drop the
+-- match-time affordances; leaving the instance is what tears the HUD down.
+local function EndMatch()
+    ns.Bar.Freeze()
+    ns.Feed.Clear()
+    ns.Shop.Hide()
+end
+
 local function HandlePayload(payload)
-    if payload == HIDE_MSG then HideAll(); return end
+    if payload == END_MSG then EndMatch(); return end
     local sec = tonumber(string.match(payload, "^T:(%d+)$"))
     if sec then ns.Bar.StartClock(sec); return end
     local rsec = tonumber(string.match(payload, "^R:(%d+)$"))
@@ -84,10 +94,14 @@ ev:SetScript("OnEvent", function(self, event, ...)
     elseif event == "PLAYER_ENTERING_WORLD" then
         -- One-shot "ready" ping; the server answers with current state. Only in a
         -- battleground (covers entering the BG, joining mid-match, and /reload).
+        -- Anywhere else means we just left one, which is what hides the HUD -- the
+        -- E payload only freezes it.
         local _, instanceType = IsInInstance()
         if instanceType == "pvp" then
             SendAddonMessage(PREFIX, "REQ", "BATTLEGROUND")
             SendAddonMessage(SHOP_PREFIX, "HELLO", "BATTLEGROUND")
+        else
+            HideAll()
         end
     elseif event == "ADDON_LOADED" then
         local name = ...
@@ -123,6 +137,16 @@ SlashCmdList["MOBAHUD"] = function(msg)
         else
             Print("usage: /mhud time <seconds|m:ss>  e.g. /mhud time 10:00")
         end
+    elseif msg == "sb" or msg:match("^sb%s") then
+        -- Feeds the payload to the same handler the server's S: packet lands on, so
+        -- this tests the real parse-and-render path, not a shortcut around it.
+        local payload = msg:match("^sb%s+(.+)$")
+        if payload and payload:match("^%d+,%d+,%d+,%d+,%d+,%d+$") then
+            ns.Bar.Scoreboard(payload)
+            Print("scoreboard set to " .. payload .. ".")
+        else
+            Print("usage: /mhud sb <ally,enemy,k,d,a,cs>  e.g. /mhud sb 9,9,9,9,9,99")
+        end
     elseif msg == "death" then
         ns.Feed.Respawn(10); Print("revive countdown test (10s).")
     elseif msg == "kill" then
@@ -143,6 +167,6 @@ SlashCmdList["MOBAHUD"] = function(msg)
         ns.Shop.ResetPosition()
         Print("bar and shop positions reset.")
     else
-        Print("commands: test | time <m:ss> | kill | death | stop | lock | unlock | reset")
+        Print("commands: test | time <m:ss> | sb <a,e,k,d,a,cs> | kill | death | stop | lock | unlock | reset")
     end
 end

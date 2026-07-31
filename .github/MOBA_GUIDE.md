@@ -694,6 +694,10 @@ touching that area:
   node's price onto each item it grants is a money printer. A 5-potion leaf
   refunded 6250 on a 5000 purchase; a priced 9-piece bundle would have refunded
   2.25x. → `note_sell` in `gen_store.py`.
+- **A `FontString` wider than its `SetWidth` wraps — it does not clip** — the
+  overflow becomes a second line that spills out of the parent's backdrop. Measure
+  the widest glyph at the live scale; never assume a font's digits are tabular, and
+  never hardcode 8. → `client/addons/MobaHUD/Bar.lua`, `WidestDigit`.
 
 Traps with no single code home:
 

@@ -19,15 +19,31 @@ local function Icon(path, size)
     size = size or 14
     return string.format("|T%s:%d:%d:0:%d|t", path, size, size, ICON_Y)
 end
-local ICON_KDA   = Icon("Interface\\Icons\\INV_Sword_04")
-local ICON_CS    = Icon("Interface\\Icons\\INV_Misc_Bone_01")
+local ICON_KDA = Icon("Interface\\Icons\\INV_Sword_04")
+local ICON_CS  = Icon("Interface\\Icons\\INV_Misc_Bone_01")
 
-local BAR_PAD      = 10        -- inner horizontal padding (inside the border)
-local ICON_W       = 14        -- clock icon size
-local ICON_LEAD    = 6         -- gap between the CS segment and the clock icon
-local ICON_DIGIT   = 3         -- gap between the clock icon and the digit box
-local DIGIT_SAMPLE = "88:88"   -- widest MM:SS; its MEASURED width sizes the digit box
-                               -- (measuring beats hardcoding -- correct at any UI scale)
+local BAR_PAD   = 10        -- inner horizontal padding (inside the border)
+local SEP_PAD   = 6         -- breathing room either side of a || separator
+local ICON_GAP  = 4         -- gap between a column's icon and its number
+local CLOCK_GAP = 12        -- gap between the CS segment and the clock
+local COL_SLACK = 2         -- per-column overflow guard; see EnsureReserves
+
+-- The clock is the ONE thing on the bar that redraws while nothing has happened, so
+-- it is the one thing that must not reflow. FRIZQT__ is proportional -- its digits
+-- have different advance widths, so 0:02 and 0:03 do not measure the same and the
+-- string visibly breathes. ARIALN has tabular figures, which is why Blizzard uses it
+-- for floating combat numbers. It is deliberately the only non-FRIZQT__ font in this
+-- addon; the clock is dimmed anyway, so reading as a separate element is fine.
+-- ARIALN renders narrower than FRIZQT__ at the same pt -- CLOCK_SIZE is the knob if
+-- it looks small next to the scores.
+--
+-- CLOCK_Y is the same trick as ICON_Y, for the same reason: FontStrings centre their
+-- BOUNDING BOX, not their baseline, and ARIALN's descent is proportionally deeper
+-- than FRIZQT__'s. A digits-only string never uses that reserved descender space, so
+-- centring the boxes leaves the clock sitting low. Re-tune it if CLOCK_SIZE changes.
+local CLOCK_FONT = "Fonts\\ARIALN.TTF"
+local CLOCK_SIZE = 17
+local CLOCK_Y    = 0.5
 
 local frame = CreateFrame("Frame", "MobaHUDFrame", UIParent)
 frame:SetHeight(30)
@@ -47,89 +63,164 @@ frame:SetBackdropColor(0, 0, 0, 0.7)
 frame:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
 frame:Hide()
 
--- Static segments (score | kda | cs), pinned to the left edge.
-local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-label:SetPoint("LEFT", frame, "LEFT", BAR_PAD, 0)
-label:SetJustifyH("LEFT")
-label:SetFont("Fonts\\FRIZQT__.TTF", 16, "OUTLINE")
+local SEP_TEXT = C_DIM .. "||" .. C_END
 
--- Clock digit box, positioned RELATIVE to the label's right edge (so the gap after CS
--- is constant at any resolution) with a FIXED, measured width, right-justified. The
--- box never moves, so ticking only shuffles digits inside it.
+local function MakeText(justify)
+    local fs = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    fs:SetFont("Fonts\\FRIZQT__.TTF", 16, "OUTLINE")
+    fs:SetJustifyH(justify)
+    return fs
+end
+
+-- Three fixed-width columns chained left to right, each sized once for its own worst
+-- case. Column boundaries, separators and both bar ends therefore never move, whatever
+-- the score does -- the old single-FontString label re-widthed the whole frame, and
+-- because the frame is centre-anchored that shuffled both ends on every digit gained.
+--
+-- Every column centres its number inside its box, so numbers DO nudge half a digit
+-- when the digit count changes -- twice a match per field, at 10 and at 100. Each
+-- icon is a separate fixed element rather than part of the centred string, so icons
+-- never drift with them.
+local scoreCol = MakeText("CENTER")
+scoreCol:SetPoint("LEFT", frame, "LEFT", BAR_PAD, 0)
+
+local sep1 = MakeText("LEFT")
+sep1:SetText(SEP_TEXT)
+sep1:SetPoint("LEFT", scoreCol, "RIGHT", SEP_PAD, 0)
+
+local kdaIcon = MakeText("LEFT")
+kdaIcon:SetText(ICON_KDA)
+kdaIcon:SetPoint("LEFT", sep1, "RIGHT", SEP_PAD, 0)
+
+local kdaNum = MakeText("CENTER")
+kdaNum:SetPoint("LEFT", kdaIcon, "RIGHT", ICON_GAP, 0)
+
+local sep2 = MakeText("LEFT")
+sep2:SetText(SEP_TEXT)
+sep2:SetPoint("LEFT", kdaNum, "RIGHT", SEP_PAD, 0)
+
+local csIcon = MakeText("LEFT")
+csIcon:SetText(ICON_CS)
+csIcon:SetPoint("LEFT", sep2, "RIGHT", SEP_PAD, 0)
+
+local csNum = MakeText("CENTER")
+csNum:SetPoint("LEFT", csIcon, "RIGHT", ICON_GAP, 0)
+
+-- Clock digit box, anchored to the FRAME's right edge -- never to a column, whose box
+-- would drag it around. Fixed measured width; LEFT justify parks the spare character
+-- at the border, where it reads as padding rather than as a gap after CS.
 local clockDigits = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-clockDigits:SetJustifyH("RIGHT")
-clockDigits:SetPoint("LEFT", label, "RIGHT", ICON_LEAD + ICON_W + ICON_DIGIT, 0)
-clockDigits:SetFont("Fonts\\FRIZQT__.TTF", 16, "OUTLINE")
-
--- Stopwatch icon anchored to the box's fixed left edge -- stays put, no jiggle.
-local clockIcon = frame:CreateTexture(nil, "OVERLAY")
-clockIcon:SetTexture("Interface\\Icons\\INV_Misc_PocketWatch_01")
-clockIcon:SetWidth(ICON_W)
-clockIcon:SetHeight(ICON_W)
-clockIcon:SetPoint("RIGHT", clockDigits, "LEFT", -ICON_DIGIT, 0)
+clockDigits:SetJustifyH("LEFT")
+clockDigits:SetPoint("RIGHT", frame, "RIGHT", -BAR_PAD, CLOCK_Y)
+clockDigits:SetFont(CLOCK_FONT, CLOCK_SIZE, "OUTLINE")
 
 local running   = false
 local baseTime  = 0
+local frozen    = nil       -- final elapsed seconds, held after the match ends
 local throttle  = 0
 local sb = { ally = 0, enemy = 0, k = 0, d = 0, a = 0, cs = 0 }
 
--- Measured width of DIGIT_SAMPLE at the live resolution; locks the digit box once known.
+-- Widest digit at the LIVE scale in fs's own font. Never assume a font's digits are
+-- tabular, and never hardcode 8: rasterisation rounds each glyph to whole pixels
+-- independently, so which digit is widest changes with the effective scale (windowed
+-- mode made it 5 here). Leaves sample text behind; every caller re-renders after.
+local function WidestDigit(fs)
+    local widest, widestW = "0", 0
+    for i = 0, 9 do
+        fs:SetText(tostring(i))
+        local w = fs:GetStringWidth()
+        if w > widestW then widest, widestW = tostring(i), w end
+    end
+    return widest, widestW
+end
+
+-- Measured width of the worst-case MM:SS; locks the digit box once known. A box sized
+-- under the rendered string does not clip, it WRAPS to a second line and spills out of
+-- the backdrop -- hence measuring the true widest digit, plus slack.
 local digitReserve = 0
 local function EnsureDigitReserve()
     if digitReserve > 0 then return end
-    clockDigits:SetText(DIGIT_SAMPLE)
+    local d, dw = WidestDigit(clockDigits)
+    if dw <= 0 then return end
+    clockDigits:SetText(d .. d .. ":" .. d .. d)
     local w = clockDigits:GetStringWidth()
-    if w > 0 then
-        digitReserve = w
-        clockDigits:SetWidth(digitReserve)
+    if w <= 0 then return end
+    digitReserve = w + COL_SLACK
+    clockDigits:SetWidth(digitReserve)
+end
+
+-- Sizes every column and the frame, once. Reserves are two digits for score and KDA,
+-- three for CS; past that a column wraps rather than overruns, so raise the sample if
+-- a match ever gets there. Leaves sample text in the columns if it succeeds and bails
+-- mid-way if the widgets are not laid out yet, so callers must re-render immediately.
+local reserved = false
+local function EnsureReserves()
+    if reserved then return end
+    EnsureDigitReserve()
+    if digitReserve <= 0 then return end
+
+    local d, dw = WidestDigit(scoreCol)
+    if dw <= 0 then return end
+    local dd = d .. d
+
+    local function Measure(fs, text)
+        fs:SetText(text)
+        return fs:GetStringWidth()
     end
+
+    local scoreW   = Measure(scoreCol, dd .. " vs " .. dd)
+    local kdaNumW  = Measure(kdaNum,   dd .. "/" .. dd .. "/" .. dd)
+    local csNumW   = Measure(csNum,    d .. dd)
+    local sepW     = sep1:GetStringWidth()
+    local kdaIconW = kdaIcon:GetStringWidth()
+    local csIconW  = csIcon:GetStringWidth()
+    if scoreW <= 0 or kdaNumW <= 0 or csNumW <= 0
+       or sepW <= 0 or kdaIconW <= 0 or csIconW <= 0 then return end
+
+    scoreW, kdaNumW, csNumW = scoreW + COL_SLACK, kdaNumW + COL_SLACK, csNumW + COL_SLACK
+    scoreCol:SetWidth(scoreW)
+    kdaNum:SetWidth(kdaNumW)
+    csNum:SetWidth(csNumW)
+
+    frame:SetWidth(BAR_PAD + scoreW
+                   + SEP_PAD + sepW + SEP_PAD + kdaIconW + ICON_GAP + kdaNumW
+                   + SEP_PAD + sepW + SEP_PAD + csIconW  + ICON_GAP + csNumW
+                   + CLOCK_GAP + digitReserve + BAR_PAD)
+    reserved = true
 end
 
 local function FormatTime(sec)
     sec = math.floor(sec + 0.5)
     if sec < 0 then sec = 0 end
-    local h = math.floor(sec / 3600)
-    local m = math.floor((sec % 3600) / 60)
-    local s = sec % 60
-    if h > 0 then return string.format("%d:%02d:%02d", h, m, s) end
-    return string.format("%d:%02d", m, s)
+    -- Minutes are uncapped rather than rolling into H:MM:SS -- MOBA convention (72:35,
+    -- not 1:12:35), and it keeps the string at five characters, which is what the
+    -- measured digit box is sized for. Past 99:59 it grows a sixth and would wrap.
+    return string.format("%d:%02d", math.floor(sec / 60), sec % 60)
 end
 
-local SEP = "  " .. C_DIM .. "||" .. C_END .. "  "
-
--- Bar width = padding + static segments + clock zone + padding. Clock zone uses the
--- measured reserve (fallback until it's known), so it's constant between scoreboard
--- updates -> no jitter, backdrop stays matched, stale GetStringWidth self-heals.
-local function UpdateWidth()
-    local reserve   = digitReserve > 0 and digitReserve or 56
-    local clockZone = ICON_LEAD + ICON_W + ICON_DIGIT + reserve
-    frame:SetWidth(BAR_PAD + label:GetStringWidth() + clockZone + BAR_PAD)
-end
-
--- Static segments; call when score/KDA/CS change.
+-- Static segments; call when score/KDA/CS change. Never touches width.
 local function RenderStatic()
-    local score = C_ALLY .. sb.ally .. C_END .. " " .. C_DIM .. "vs" .. C_END .. " " .. C_ENEMY .. sb.enemy .. C_END
-    local kda   = ICON_KDA .. " " .. sb.k .. "/" .. sb.d .. "/" .. sb.a
-    local cs    = ICON_CS .. " " .. sb.cs
-    label:SetText(score .. SEP .. kda .. SEP .. cs)
-    UpdateWidth()
+    EnsureReserves()
+    scoreCol:SetText(C_ALLY .. sb.ally .. C_END .. " " .. C_DIM .. "vs" .. C_END .. " " .. C_ENEMY .. sb.enemy .. C_END)
+    kdaNum:SetText(sb.k .. "/" .. sb.d .. "/" .. sb.a)
+    csNum:SetText(tostring(sb.cs))
 end
 
--- Clock digits only; called every tick. The icon is set once and never touched.
+-- Clock digits only; called every tick. Never touches width.
 local function RenderClock()
-    EnsureDigitReserve()
-    clockDigits:SetText(running and FormatTime(GetTime() - baseTime) or "0:00")
+    EnsureReserves()
+    local elapsed = running and (GetTime() - baseTime) or frozen or 0
+    clockDigits:SetText(C_DIM .. FormatTime(elapsed) .. C_END)
 end
 
 -- GetStringWidth rasterizes at the CURRENT effective scale, so a resolution or
--- UI-scale change invalidates every measured width. The bar's label re-measures
--- each OnUpdate tick and self-heals; digitReserve is latched on first measure and
--- would stay stale until /reload. Fixed-size widgets (revive, kill feed) never
--- measure and need nothing here.
+-- UI-scale change invalidates every measured width. All of them are latched on first
+-- measure and would stay stale until /reload. Fixed-size widgets (revive, kill feed)
+-- never measure and need nothing here.
 local function RelayoutForScale()
-    digitReserve = 0
-    RenderClock()       -- re-runs EnsureDigitReserve at the new scale
-    RenderStatic()
+    reserved, digitReserve = false, 0
+    RenderStatic()      -- re-measures at the new scale
+    RenderClock()       -- ...and clears the sample text both may have left
 end
 
 frame:SetScript("OnUpdate", function(self, elapsed)
@@ -138,7 +229,6 @@ frame:SetScript("OnUpdate", function(self, elapsed)
     if throttle < 0.2 then return end
     throttle = 0
     RenderClock()
-    UpdateWidth()
 end)
 
 frame:SetScript("OnDragStart", function(self) if self:IsMovable() then self:StartMoving() end end)
@@ -168,13 +258,24 @@ end
 local function StartClock(elapsedSec)
     baseTime = GetTime() - elapsedSec
     running  = true
+    frozen   = nil
     ShowBar()
+end
+
+-- Match over, player still in the battleground: hold the final time and score on
+-- screen. The server's E payload cannot distinguish "match ended" from "you left",
+-- so hiding is driven by leaving the instance (MobaHUD.lua), never by E.
+local function FreezeClock()
+    if running then frozen = GetTime() - baseTime end
+    running = false
+    RenderClock()
 end
 
 -- Bar only. Clearing the revive countdown and kill feed is ns.Feed.Clear's job;
 -- the orchestrator calls both.
 local function StopBar()
     running = false
+    frozen  = nil
     frame:Hide()
 end
 
@@ -190,6 +291,7 @@ end
 
 ns.Bar = {
     StartClock       = StartClock,
+    Freeze           = FreezeClock,
     Stop             = StopBar,
     Scoreboard       = HandleScoreboard,
     FormatTime       = FormatTime,
