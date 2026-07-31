@@ -272,13 +272,14 @@ filters. Generated per map from `store_config.yaml` → `gen_store.py` →
 - **Charged last, all-or-nothing.** Bag space is checked for the whole bundle,
   then every item is pre-validated, and only then does money leave — see the
   gotcha index.
-- **Everything granted is tracked and stripped — by GUID, as a workaround.** Items
-  are soulbound at grant and recorded by GUID in
-  `BattlegroundMOBA::_grantedItems`, so every exit path destroys exactly what the
-  shop handed out and never a world-obtained copy of the same entry. Per-GUID
-  bookkeeping is only necessary because `custom_items` is off and grants use stock
-  entries, which are ambiguous. Once the copies ship, entry alone identifies
-  shop gear and a stateless entry sweep replaces this — see `RemovePlayer`.
+- **Everything granted is tracked and stripped — by GUID *plus* a per-entry count,
+  as a workaround.** Items are soulbound at grant and recorded in
+  `BattlegroundMOBA::_grantedItems` / `_grantedCounts`, so every exit path destroys
+  what the match handed out. The pair is only necessary because `custom_items` is
+  off and grants use stock entries, which are ambiguous — and the claim can outlive
+  the item, so a world-obtained copy of the same entry is not always safe
+  (known-untidy in `CLAUDE.md`). Cloning the catalog *and* drop items retires the
+  bookkeeping; `custom_items` alone does not, because looted drops keep stock entries.
 - **Sell is drag-and-drop, and only for what the match gave you.** A slot beside
   the Purchase button takes a bag item and refunds `sell_ratio` of what it cost;
   looted drops refund the `sell` on their drop config. 3.3.5 gives Lua no item
