@@ -70,12 +70,15 @@ ev:RegisterEvent("PLAYER_ENTERING_WORLD")
 ev:RegisterEvent("DISPLAY_SIZE_CHANGED")
 ev:RegisterEvent("UI_SCALE_CHANGED")
 ev:RegisterEvent("PLAYER_MONEY")
+ev:RegisterEvent("CURSOR_UPDATE")
 ev:SetScript("OnEvent", function(self, event, ...)
     if event == "CHAT_MSG_ADDON" then
         local prefix, message = ...
         OnAddonMessage(prefix, message)
     elseif event == "DISPLAY_SIZE_CHANGED" or event == "UI_SCALE_CHANGED" then
         ns.Bar.RelayoutForScale()
+    elseif event == "CURSOR_UPDATE" then
+        ns.Shop.UpdateSellZone()
     elseif event == "PLAYER_MONEY" then
         if ns.Shop.IsShown() then ns.Shop.Render() end
     elseif event == "PLAYER_ENTERING_WORLD" then

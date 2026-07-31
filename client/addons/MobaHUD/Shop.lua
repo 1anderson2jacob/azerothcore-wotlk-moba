@@ -578,7 +578,7 @@ end
 local buyButton = CreateFrame("Button", nil, shop, "UIPanelButtonTemplate")
 buyButton:SetWidth(DETAIL_W - 48)
 buyButton:SetHeight(24)
-buyButton:SetPoint("BOTTOMLEFT", shop, "BOTTOMLEFT", DETAIL_X, 14)
+buyButton:SetPoint("BOTTOM", shop, "BOTTOMLEFT", DETAIL_X + (DETAIL_W - 8) / 2, 14)
 buyButton:SetText("Purchase")
 buyButton:SetScript("OnClick", function()
     if not selected then return end
@@ -586,7 +586,7 @@ buyButton:SetScript("OnClick", function()
     SendAddonMessage(SHOP_PREFIX, "BUY:" .. shop.tabId .. "," .. selected.node, "BATTLEGROUND")
 end)
 
--- ---- sell slot -----------------------------------------------------------
+-- ---- sell zone -----------------------------------------------------------
 -- GetCursorInfo names the item on the cursor but NOT where it came from, and
 -- 3.3.5 exposes no item GUIDs to Lua -- yet the server needs a specific slot,
 -- because two random-suffix items share one entry and only the slot tells them
@@ -604,36 +604,55 @@ hooksecurefunc("SplitContainerItem",  function(bag, slot) lastBag, lastSlot = ba
 hooksecurefunc("PickupInventoryItem", function() lastBag, lastSlot = nil, nil end)
 hooksecurefunc("ClearCursor",         function() lastBag, lastSlot = nil, nil end)
 
--- Anchored off the Purchase button rather than the panel: the two share a row,
--- and the right edge is the closest point on the panel to where the bags open.
-local sellSlot = CreateFrame("Button", nil, shop)
-sellSlot:SetWidth(28)
-sellSlot:SetHeight(28)
-sellSlot:SetPoint("LEFT", buyButton, "RIGHT", 8, 0)
--- Drawn, not textured: UI-Slot-Background's art does not fill its own box, so
--- sizing the button to it leaves the visible square inset and sitting low.
-sellSlot:SetBackdrop({
+-- The drop target is the whole content region -- sidebar, card grid, detail
+-- pane -- rather than a slot: aiming a 28x28 square with an item already on the
+-- cursor was the worst part of selling. One overlay instead of a drop handler
+-- per widget, so cards/rows/tabs added later need no wiring, and it gives the
+-- affordance a place to draw that a small square could not.
+--
+-- It stops short of the tab strip above and the footer below on purpose. While
+-- it is up every click it covers becomes a sell, and WoW's click-pickup gesture
+-- parks an item on the cursor indefinitely with no button held -- so the tabs,
+-- close button and Purchase have to stay reachable for that whole time.
+-- (Right-click over the world clears the cursor; Esc only closes the panel.)
+local sellZone = CreateFrame("Button", nil, shop)
+sellZone:SetPoint("TOPLEFT",     shop, "TOPLEFT",      11, TAB_SEP_Y)
+sellZone:SetPoint("BOTTOMRIGHT", shop, "BOTTOMRIGHT", -12, BOTTOM_PAD)
+sellZone:EnableMouse(true)
+sellZone:SetBackdrop({
     bgFile   = "Interface\\Tooltips\\UI-Tooltip-Background",
     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-    tile = true, tileSize = 16, edgeSize = 12,
-    insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    tile = true, tileSize = 16, edgeSize = 16,
+    insets = { left = 4, right = 4, top = 4, bottom = 4 },
 })
-sellSlot:SetBackdropColor(0, 0, 0, 0.6)
-sellSlot:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
-sellSlot:SetHighlightTexture("Interface\\Buttons\\CheckButtonHilight", "ADD")
-local sellHi = sellSlot:GetHighlightTexture()
-sellHi:ClearAllPoints()
-sellHi:SetAllPoints(sellSlot)
+sellZone:SetBackdropColor(0, 0, 0, 0.55)
+sellZone:SetBackdropBorderColor(1, 0.82, 0, 1)
+sellZone:Hide()
 
--- A hint, not an item: alpha'd back so the slot still reads as empty and a
--- dropped item is what draws the eye. TexCoord trims the icon art's own baked-in
--- border, which would otherwise double up with the backdrop's edge.
-local sellIcon = sellSlot:CreateTexture(nil, "ARTWORK")
-sellIcon:SetTexture("Interface\\Icons\\INV_Misc_Coin_01")
-sellIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-sellIcon:SetPoint("TOPLEFT", sellSlot, "TOPLEFT", 5, -5)
-sellIcon:SetPoint("BOTTOMRIGHT", sellSlot, "BOTTOMRIGHT", -5, 5)
-sellIcon:SetAlpha(0.75)
+local sellText = sellZone:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+sellText:SetPoint("CENTER", sellZone, "CENTER", 0, 8)
+sellText:SetText("Drop to sell")
+
+local sellHint = sellZone:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+sellHint:SetPoint("TOP", sellText, "BOTTOM", 0, -6)
+sellHint:SetText("Only items this match gave you.")
+sellHint:SetTextColor(0.6, 0.6, 0.6)
+
+-- Levelled on every show, not once at load: shop:SetToplevel(true) rewrites the
+-- panel's level when it is clicked, and a level fixed at load would sink under
+-- the cards. +3 is the smallest bump clearing the panel's own children (cards and
+-- template buttons at +1, faux scroll bars at +2), kept small so the bag frame the
+-- player last clicked -- toplevel raises that one and no other -- draws over the
+-- tint instead of under it. The level cannot settle the drop itself: every other
+-- open bag stays below the overlay whatever it is set to. OnUpdate does that.
+local function UpdateSellZone()
+    if shop:IsShown() and GetCursorInfo() == "item" then
+        sellZone:SetFrameLevel(shop:GetFrameLevel() + 3)
+        sellZone:Show()
+    else
+        sellZone:Hide()
+    end
+end
 
 local function TrySell()
     local kind, itemId = GetCursorInfo()
@@ -641,6 +660,7 @@ local function TrySell()
 
     if not lastBag then
         ClearCursor()
+        UpdateSellZone()
         shopStatus:SetText("|cffff3333Pick the item up from a bag first.|r")
         return
     end
@@ -649,6 +669,7 @@ local function TrySell()
     -- message still needs it.
     local bag, slot = lastBag, lastSlot
     ClearCursor()
+    UpdateSellZone()
     shopStatus:SetText("...")
     SendAddonMessage(SHOP_PREFIX,
         string.format("SELL:%d,%d,%d", bag, slot, itemId), "BATTLEGROUND")
@@ -656,16 +677,26 @@ end
 
 -- Both drop gestures land here: press-drag-release fires OnReceiveDrag, while
 -- click-to-pick-up then click fires OnClick.
-sellSlot:SetScript("OnReceiveDrag", TrySell)
-sellSlot:SetScript("OnClick", TrySell)
-sellSlot:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:SetText("Sell")
-    GameTooltip:AddLine("Drag an item here to sell it back.", 1, 1, 1)
-    GameTooltip:AddLine("Only items this match gave you.", 0.6, 0.6, 0.6)
-    GameTooltip:Show()
+sellZone:SetScript("OnReceiveDrag", TrySell)
+sellZone:SetScript("OnClick", TrySell)
+-- Bag frames share this strata and toplevel raises only the one last clicked, so
+-- a drop aimed at any other open bag lands on the overlay and sells the item.
+-- Standing the mouse input down while the pointer is over a visible bag hands
+-- that click back to the slot. Unthrottled on purpose: a poll interval is a
+-- window in which a fast move-and-click still sells, and this runs only during
+-- the seconds an item is actually on the cursor.
+sellZone:SetScript("OnUpdate", function(self)
+    local overBag = false
+    for i = 1, (NUM_CONTAINER_FRAMES or 13) do
+        local f = _G["ContainerFrame" .. i]
+        if f and f:IsShown() and MouseIsOver(f) then overBag = true; break end
+    end
+    if overBag ~= self.overBag then
+        self.overBag = overBag
+        self:EnableMouse(not overBag)
+        self:SetAlpha(overBag and 0.35 or 1)
+    end
 end)
-sellSlot:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 -- ---- tabs ----------------------------------------------------------------
 for i = 1, 6 do
@@ -931,6 +962,7 @@ local function HandleShopPayload(payload)
         shopStatus:SetText("")
         RenderShop()
         shop:Show()
+        UpdateSellZone()
         return
     end
     -- CLOSE may carry a reason. It goes to the chat frame, not shopStatus: that
@@ -976,10 +1008,11 @@ end
 -- Published last: RenderShop is forward-declared above and only assigned
 -- partway down, so this block must sit below every definition it names.
 ns.Shop = {
-    Handle  = HandleShopPayload,
-    Render  = RenderShop,
-    Hide    = function() shop:Hide() end,
-    IsShown = function() return shop:IsShown() end,
+    Handle         = HandleShopPayload,
+    Render         = RenderShop,
+    UpdateSellZone = UpdateSellZone,
+    Hide           = function() shop:Hide(); UpdateSellZone() end,
+    IsShown        = function() return shop:IsShown() end,
 
     -- ns.InitDB has already created MobaHUDDB.shop.
     InitSavedVars = function()

@@ -37,7 +37,7 @@ Shipped:
 - [x] YAML content configs — per-map generator configs migrated from JSON to commented YAML (inline field docs); generators read via PyYAML, generated SQL byte-identical
 - [x] Inhibitors + super minions — a passive inhibitor gates each base behind the tower; taking it fields stronger "super minion" waves for the attacker until it respawns, then the base re-locks. The base (core) is now the win condition — destroy the enemy base to win.
 - [x] Gear and items infrastructure — one shopkeeper NPC per base opening a League-style shop panel drawn by the MobaHUD addon: four tabs (starting gear free with random-suffix bundles, consumables, rare, epic), icon grid with real item tooltips and suffix stats, sidebar filters with counts, and server-pushed usability greying. Per-map `store_config.yaml` generates both the SQL and the addon's `Catalog.lua`; suffix availability is derived from `item_template`, purchases are team-gated and all-or-nothing, and everything the match hands out — purchases and looted drops alike — is tracked and stripped on exit
-- [x] Sell items back — drag a bag item onto the shop's sell slot to refund it; price is `sell_ratio` of what it cost (per unit, so partial stacks work), or a `sell:` value on a creep/neutral item drop. Only what the match gave you can be sold, and only in range of your shopkeeper
+- [x] Sell items back — drop a bag item anywhere on the shop's catalog area to refund it; the drop zone appears only while an item is on the cursor. Price is `sell_ratio` of what it cost (per unit, so partial stacks work), or a `sell:` value on a creep/neutral item drop. Only what the match gave you can be sold, and only in range of your shopkeeper
 
 Next, in order:
 

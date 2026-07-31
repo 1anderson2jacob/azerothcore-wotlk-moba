@@ -280,10 +280,12 @@ filters. Generated per map from `store_config.yaml` → `gen_store.py` →
   the item, so a world-obtained copy of the same entry is not always safe
   (known-untidy in `CLAUDE.md`). Cloning the catalog *and* drop items retires the
   bookkeeping; `custom_items` alone does not, because looted drops keep stock entries.
-- **Sell is drag-and-drop, and only for what the match gave you.** A slot beside
-  the Purchase button takes a bag item and refunds `sell_ratio` of what it cost;
-  looted drops refund the `sell` on their drop config. 3.3.5 gives Lua no item
-  GUIDs and `GetCursorInfo` no source slot, so the addon hooks
+- **Sell is drag-and-drop, and only for what the match gave you.** Dropping a bag
+  item anywhere on the shop's content region refunds `sell_ratio` of what it cost;
+  looted drops refund the `sell` on their drop config. The drop zone is an overlay
+  that exists only while an item rides the cursor, and deliberately spares the tab
+  strip and footer — while it is up, every click it covers sells. 3.3.5 gives Lua no
+  item GUIDs and `GetCursorInfo` no source slot, so the addon hooks
   `PickupContainerItem` to remember where the cursor item came from and sends
   `SELL:<bag>,<slot>,<entry>`; the entry is a checksum the server refuses on
   mismatch rather than resolving, so a stale pickup can only earn a refusal. The
@@ -674,6 +676,11 @@ touching that area:
   to show or size, and candidates have to be tried in the running client one at a
   time. Only verified paths belong in committed code.
   → `headerBand` in `Shop.lua`.
+- **`toplevel="true"` raises only the frame that was clicked** — the bag a player
+  picked an item from ends up above a shop overlay while every other open bag stays
+  below it, so no frame level both clears the panel's own children and loses to all
+  the bags at once. A full-panel drop target has to stand its mouse input down over
+  bags rather than try to out-level them. → `sellZone`'s `OnUpdate` in `Shop.lua`.
 - **Lane waypoints are emitted `move_type = RUN`**, so `speed_run` governs lane
   pacing and `speed_walk` is inert — source creatures whose `speed_run` differs
   drift out of formation. → `creep_config.yaml`, `speed_run` legend.
