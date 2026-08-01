@@ -32,7 +32,8 @@ local Print       = ns.Print
 local function HideAll()
     ns.Bar.Stop()
     ns.Feed.Clear()
-    ns.Shop.Hide()
+    ns.Shop.Stop()
+    ns.Minimap.Hide()
 end
 
 -- The server sends E for both "match ended" and "you left", so it cannot mean hide --
@@ -42,6 +43,7 @@ local function EndMatch()
     ns.Bar.Freeze()
     ns.Feed.Clear()
     ns.Shop.Hide()
+    ns.Minimap.Hide()
 end
 
 local function HandlePayload(payload)
@@ -106,9 +108,10 @@ ev:SetScript("OnEvent", function(self, event, ...)
     elseif event == "ADDON_LOADED" then
         local name = ...
         if name == ADDON_NAME then
-            ns.InitDB()               -- must precede both: it owns the sub-tables
+            ns.InitDB()               -- must precede all three: it owns the sub-tables
             ns.Bar.InitSavedVars()
             ns.Shop.InitSavedVars()
+            ns.Minimap.InitSavedVars()
         end
     end
 end)
@@ -165,8 +168,11 @@ SlashCmdList["MOBAHUD"] = function(msg)
     elseif msg == "reset" then
         ns.Bar.ResetPosition()
         ns.Shop.ResetPosition()
-        Print("bar and shop positions reset.")
+        ns.Minimap.ResetPosition()
+        Print("bar, shop and minimap button positions reset.")
+    elseif msg == "shop" then
+        ns.Shop.Toggle()
     else
-        Print("commands: test | time <m:ss> | sb <a,e,k,d,a,cs> | kill | death | stop | lock | unlock | reset")
+        Print("commands: test | time <m:ss> | sb <a,e,k,d,a,cs> | kill | death | shop | stop | lock | unlock | reset")
     end
 end

@@ -52,6 +52,7 @@ namespace
 {
     constexpr uint32 MOBA_HUD_RESYNC_MS    = 10000; // re-broadcast cadence for /reload + late joiners
     constexpr uint32 MOBA_NEUTRAL_CORPSE_DESPAWN_MS = 15000; // camp-member corpse cleanup (see SpawnCamp)
+    constexpr uint32 MOBA_SHOP_RANGE_POLL_MS = 1000; // shop buy/sell affordance refresh
 }
 
 void BattlegroundMOBAScore::BuildObjectivesBlock(WorldPacket& data)
@@ -72,6 +73,11 @@ BattlegroundMOBA::~BattlegroundMOBA()
 
 void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
 {
+    // Ahead of the status guard on purpose: buying starting gear during the prep
+    // phase is intended, so the panel's buy/sell affordance has to be live before
+    // the doors open. Everything below here is match-time only.
+    UpdateShopRange(diff);
+
     if (GetStatus() != STATUS_IN_PROGRESS)
         return;
 
@@ -210,19 +216,52 @@ bool BattlegroundMOBA::HasShopAddon(Player* player) const
     return player && _shopAddonPlayers.count(player->GetGUID()) != 0;
 }
 
-void BattlegroundMOBA::SetOpenShopkeeper(Player* player, ObjectGuid creatureGuid)
-{
-    if (player)
-        _openShopkeeper[player->GetGUID()] = creatureGuid;
-}
-
-ObjectGuid BattlegroundMOBA::GetOpenShopkeeper(Player* player) const
+// Arithmetic against a cached Position, not a creature lookup: the shopkeeper is
+// decoration and a convenience click, and the base circle is what actually gates
+// trading. Deliberately NOT merged into UpdateFountainHealing despite the
+// identical test -- that one is paced by a config tunable, and the shop
+// affordance must not become a hostage of a healing knob.
+bool BattlegroundMOBA::IsInShopRange(Player* player) const
 {
     if (!player)
-        return ObjectGuid::Empty;
+        return false;
 
-    auto itr = _openShopkeeper.find(player->GetGUID());
-    return itr != _openShopkeeper.end() ? itr->second : ObjectGuid::Empty;
+    MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId());
+    if (!cfg || cfg->fountainRadius <= 0.0f)
+        return false;
+
+    Position const* startPos = GetTeamStartPosition(player->GetBgTeamId());
+    if (!startPos)
+        return false;
+
+    return player->GetExactDist2dSq(startPos) <= cfg->fountainRadius * cfg->fountainRadius;
+}
+
+void BattlegroundMOBA::SendShopRange(Player* player, bool force)
+{
+    if (!player || !HasShopAddon(player))
+        return;
+
+    bool inRange = IsInShopRange(player);
+
+    auto known = _shopInRange.find(player->GetGUID());
+    if (!force && known != _shopInRange.end() && known->second == inRange)
+        return;
+
+    _shopInRange[player->GetGUID()] = inRange;
+    SendShopMessage(player, inRange ? "RANGE:1" : "RANGE:0");
+}
+
+void BattlegroundMOBA::UpdateShopRange(uint32 diff)
+{
+    _shopRangeMs += diff;
+    if (_shopRangeMs < MOBA_SHOP_RANGE_POLL_MS)
+        return;
+
+    _shopRangeMs = 0;
+
+    for (auto const& itr : GetPlayers())
+        SendShopRange(itr.second);
 }
 
 void BattlegroundMOBA::RemovePlayer(Player* player)
@@ -236,7 +275,7 @@ void BattlegroundMOBA::RemovePlayer(Player* player)
         _recentAttackers.erase(player->GetGUID());
         _allySupport.erase(player->GetGUID());
         _shopAddonPlayers.erase(player->GetGUID());
-        _openShopkeeper.erase(player->GetGUID());
+        _shopInRange.erase(player->GetGUID());
 
         // Match-granted items are match-only, and this hook covers every exit
         // path. Two passes, because the ledger alone would let DestroyItemCount

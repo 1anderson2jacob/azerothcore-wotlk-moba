@@ -37,6 +37,7 @@ function ns.InitDB()
         MobaHUDDB.x, MobaHUDDB.y, MobaHUDDB.locked = nil, nil, nil
     end
 
-    MobaHUDDB.bar  = MobaHUDDB.bar  or {}
-    MobaHUDDB.shop = MobaHUDDB.shop or {}
+    MobaHUDDB.bar     = MobaHUDDB.bar     or {}
+    MobaHUDDB.shop    = MobaHUDDB.shop    or {}
+    MobaHUDDB.minimap = MobaHUDDB.minimap or {}
 end

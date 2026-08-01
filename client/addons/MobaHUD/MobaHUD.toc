@@ -6,6 +6,7 @@
 ## SavedVariables: MobaHUDDB
 
 Core.lua
+Minimap.lua
 Catalog.lua
 Shop.lua
 Bar.lua

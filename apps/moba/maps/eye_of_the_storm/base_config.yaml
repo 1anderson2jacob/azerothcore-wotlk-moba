@@ -25,7 +25,8 @@ fountain:
   mana_pct: 10
 
 spawn:
-  # The spawn dome's radius, and the fountain heal zone -- ONE value driving both.
+  # The spawn dome's radius, the fountain heal zone, and the shop's buy/sell range
+  # -- ONE value driving all three.
   # The generator sizes the dome GOs from it (gameobject_template.size =
   # radius / 172.4, the GeoBox half-extent of displayId 7203) and writes the same
   # number to mod_moba_base.FountainRadius, so the two cannot drift.

@@ -216,7 +216,7 @@ namespace
         return { true, "" };
     }
 
-    // Batched so a panel open costs a handful of messages rather than one per item.
+    // Batched so the handshake costs a handful of messages rather than one per item.
     void SendSuffixFactors(Player* player, BattlegroundMOBA* moba, uint32 map)
     {
         std::set<uint32> entries;
@@ -314,9 +314,9 @@ public:
             return true;
         }
 
-        moba->SetOpenShopkeeper(player, creature->GetGUID());
-        moba->SendShopMessage(player, Acore::StringFormat("OPEN:{}", npc->map));
-        SendSuffixFactors(player, moba, npc->map);
+        // Everything the panel needs to DRAW arrived at HELLO. Walking up to the
+        // shopkeeper only raises it; the minimap button sends nothing at all.
+        moba->SendShopMessage(player, "OPEN");
         return true;
     }
 };
@@ -350,9 +350,15 @@ public:
                 moba->SetShopAddonReady(player);
 
                 // Every shop row is keyed on the battleground's map id, which is
-                // the map the player is standing on -- there is no NPC to ask yet.
+                // the map the player is standing on -- there is no NPC to ask, and
+                // with the minimap button there may never be one.
                 sMobaStoreDataStore->LoadIfNeeded();
-                SendUnusableEntries(player, moba, player->GetMapId());
+
+                uint32 map = player->GetMapId();
+                moba->SendShopMessage(player, Acore::StringFormat("INIT:{}", map));
+                SendSuffixFactors(player, moba, map);
+                SendUnusableEntries(player, moba, map);
+                moba->SendShopRange(player, true);
             }
             else if (payload.compare(0, 4, "BUY:") == 0)
                 HandleBuy(player, moba, payload.substr(4));
@@ -365,8 +371,8 @@ public:
 
 private:
     // "BUY:<tabId>,<nodeId>". Nothing here trusts the client beyond those two
-    // numbers -- the shopkeeper is whichever one the server remembers the player
-    // opened, so a node can never be bought from across the map.
+    // numbers -- the shopkeeper is resolved from where the player is standing, so
+    // a node can never be bought from across the map.
     static void HandleBuy(Player* player, BattlegroundMOBA* moba, std::string const& args)
     {
         std::string::size_type comma = args.find(',');
@@ -380,35 +386,30 @@ private:
         if (!tabId || !nodeId)
             return;
 
-        Creature* creature = player->GetNPCIfCanInteractWith(moba->GetOpenShopkeeper(player), UNIT_NPC_FLAG_GOSSIP);
-        if (!creature)
+        if (!moba->IsInShopRange(player))
         {
-            // The status line lives inside the panel we are about to hide, so the
-            // reason has to ride along with CLOSE and land in the chat frame.
-            moba->SendShopMessage(player, "CLOSE:You are too far from the shopkeeper.");
+            // Not CLOSE: the panel is the player's now, opened from their minimap.
+            // Shutting it under them for standing in the wrong place is hostile --
+            // the status line says why and the panel stays up.
+            moba->SendShopMessage(player, "ERR:Return to your base to buy.");
             return;
         }
 
         sMobaStoreDataStore->LoadIfNeeded();
 
-        MobaStoreNpc const* npc = sMobaStoreDataStore->GetNpc(creature->GetEntry());
-        if (!npc || player->GetBgTeamId() != npc->team)
-        {
-            moba->SendShopMessage(player, "ERR:That shopkeeper cannot sell you this.");
-            return;
-        }
+        uint32 map = player->GetMapId();
 
         // One shopkeeper sells every tab, so the tab is client-chosen and cannot be
-        // inferred from the NPC. Range and team still gate it, and the node must
-        // exist for the requested tab.
-        MobaStoreNode const* node = sMobaStoreDataStore->GetNode(npc->map, *tabId, *nodeId);
+        // inferred from the NPC. Range gates it, and the node must exist for the
+        // requested tab.
+        MobaStoreNode const* node = sMobaStoreDataStore->GetNode(map, *tabId, *nodeId);
         if (!node || !node->isPurchase)
         {
             moba->SendShopMessage(player, "ERR:That is unavailable.");
             return;
         }
 
-        PurchaseResult result = TryPurchase(player, npc->map, *tabId, *node);
+        PurchaseResult result = TryPurchase(player, map, *tabId, *node);
         moba->SendShopMessage(player, result.ok
             ? Acore::StringFormat("OK:{},{}", *tabId, *nodeId)
             : "ERR:" + result.message);
@@ -435,23 +436,17 @@ private:
         if (!luaBag || !luaSlot || !entry)
             return;
 
-        // Same gate as buying: the shopkeeper the SERVER remembers, still in range.
-        Creature* creature = player->GetNPCIfCanInteractWith(moba->GetOpenShopkeeper(player), UNIT_NPC_FLAG_GOSSIP);
-        if (!creature)
+        // Same gate as buying: only where the player is standing can gate a trade.
+        if (!moba->IsInShopRange(player))
         {
-            moba->SendShopMessage(player, "CLOSE:You are too far from the shopkeeper.");
+            moba->SendShopMessage(player, "ERR:Return to your base to sell.");
             return;
         }
 
         sMobaStoreDataStore->LoadIfNeeded();
         sMobaDropDataStore->LoadIfNeeded();
 
-        MobaStoreNpc const* npc = sMobaStoreDataStore->GetNpc(creature->GetEntry());
-        if (!npc || player->GetBgTeamId() != npc->team)
-        {
-            moba->SendShopMessage(player, "ERR:That shopkeeper cannot trade with you.");
-            return;
-        }
+        uint32 map = player->GetMapId();
 
         uint8 bag = 0, slot = 0;
         if (!ResolveBagSlot(*luaBag, *luaSlot, bag, slot))
@@ -481,7 +476,7 @@ private:
         }
 
         uint32 unitPrice = 0;
-        if (!ResolveSellValue(npc->map, item->GetEntry(), unitPrice))
+        if (!ResolveSellValue(map, item->GetEntry(), unitPrice))
         {
             moba->SendShopMessage(player, "ERR:That cannot be sold.");
             return;

@@ -229,16 +229,22 @@ public:
     void SendHudStateTo(Player* player);
 
     // MobaShop handshake and panel handoff. The panel is addon-only: a player who
-    // never sent HELLO has no UI to open, so npc_moba_store falls back to gossip.
+    // never sent HELLO has no shop at all -- there is deliberately no gossip
+    // fallback to keep in sync.
     void SetShopAddonReady(Player* player);
     bool HasShopAddon(Player* player) const;
     void SendShopMessage(Player* player, std::string const& body);
 
-    // The shopkeeper a player currently has open; ObjectGuid::Empty if none.
-    // Remembered server-side so a BUY: never names a vendor -- the client cannot
-    // reach one it isn't standing at.
-    void SetOpenShopkeeper(Player* player, ObjectGuid creatureGuid);
-    ObjectGuid GetOpenShopkeeper(Player* player) const;
+    // Whether the player stands inside their own base circle, the only place
+    // trading is allowed. Shares the fountain's radius and test: being able to
+    // shop and being able to regen are deliberately one place, not two.
+    bool IsInShopRange(Player* player) const;
+
+    // Pushes RANGE:0/1 to one player. Silent unless the answer CHANGED, so a
+    // player standing still generates no traffic. `force` is for the HELLO
+    // handshake: a /reload leaves the cached value matching a client that has
+    // just forgotten it, and without it the panel would never be told.
+    void SendShopRange(Player* player, bool force = false);
 
     // Per-map recall cast time (ms) for a player currently in a MOBA BG; 0 = no
     // override (use the spell's default). Read by Spell::prepare to retime Hearthstone.
@@ -255,6 +261,7 @@ private:
     void UpdateRespawnTimers(uint32 diff);
     void RespawnAtBase(Player* player);
     void UpdateFountainHealing(uint32 diff);
+    void UpdateShopRange(uint32 diff);
     Player* ResolveKillCredit(Player* victim, Unit* killer);
     uint32 GetKillCreditWindowMs() const;
     uint32 GetAssistWindowMs() const;
@@ -313,8 +320,10 @@ private:
     // the gossip fallback, which goes away once the panel ships.
     std::unordered_set<ObjectGuid> _shopAddonPlayers;
 
-    // player GUID -> the shopkeeper creature they currently have open.
-    std::unordered_map<ObjectGuid, ObjectGuid> _openShopkeeper;
+    // player GUID -> whether they were last known to be inside their own base
+    // circle. Only transitions reach the client; this is what makes that test.
+    std::unordered_map<ObjectGuid, bool> _shopInRange;
+    uint32 _shopRangeMs = 0;      // accumulates toward the next shop range poll
 
 };
 #endif

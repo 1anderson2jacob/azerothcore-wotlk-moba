@@ -139,6 +139,14 @@ shopStatus:SetPoint("BOTTOMLEFT", shop, "BOTTOMLEFT", SIDE_W + 4, 16)
 -- ---- state ---------------------------------------------------------------
 local fCategory, fSub, fSearch = nil, nil, ""
 local selected, scrollOffset = nil, 0
+-- The server's verdict on "can this player trade right now", pushed as RANGE: on
+-- every transition. nil means NEVER TOLD, and is deliberately not false: SetInRange
+-- ignores a value it already holds, so starting at false silently swallows the
+-- forced RANGE:0 sent at the handshake and leaves the hint hidden until the player
+-- happens to walk into range and back out. nil equals neither value, so whichever
+-- verdict lands first always applies. It is falsy, so every read below still treats
+-- "not yet told" as "cannot trade".
+local inRange = nil
 local filtered = {}
 local tabButtons, catButtons, subButtons, cards, pieceRows = {}, {}, {}, {}, {}
 local suffixFactor = {}   -- entry -> RandPropPoints factor, pushed by the server
@@ -586,6 +594,21 @@ buyButton:SetScript("OnClick", function()
     SendAddonMessage(SHOP_PREFIX, "BUY:" .. shop.tabId .. "," .. selected.node, "BATTLEGROUND")
 end)
 
+-- Why Purchase is greyed. It gets its own font string rather than borrowing
+-- shopStatus because it is a STANDING condition: shopStatus carries transient
+-- replies ("Purchased.", "Sold for 4s"), and RenderShop runs right after those are
+-- set, so anything written there would be clobbered a frame later.
+local rangeHint = shop:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+rangeHint:SetWidth(DETAIL_W - 8)
+rangeHint:SetJustifyH("CENTER")
+rangeHint:SetPoint("BOTTOM", buyButton, "TOP", 0, 4)
+rangeHint:SetText("|cffff8000Return to your base|r")
+-- Starts SHOWN. If a RANGE: push never arrives at all -- old server, dropped
+-- packet -- the failure this way round is a hint that is wrongly visible next to a
+-- correctly greyed Purchase button, rather than a greyed button with nothing on
+-- screen explaining why. It is parented to the panel, so it costs nothing until
+-- the panel is opened.
+
 -- ---- sell zone -----------------------------------------------------------
 -- GetCursorInfo names the item on the cursor but NOT where it came from, and
 -- 3.3.5 exposes no item GUIDs to Lua -- yet the server needs a specific slot,
@@ -646,7 +669,7 @@ sellHint:SetTextColor(0.6, 0.6, 0.6)
 -- tint instead of under it. The level cannot settle the drop itself: every other
 -- open bag stays below the overlay whatever it is set to. OnUpdate does that.
 local function UpdateSellZone()
-    if shop:IsShown() and GetCursorInfo() == "item" then
+    if shop:IsShown() and inRange and GetCursorInfo() == "item" then
         sellZone:SetFrameLevel(shop:GetFrameLevel() + 3)
         sellZone:Show()
     else
@@ -931,7 +954,7 @@ local function RenderDetail()
         RenderInfo(PieceLink(selected.pieces[1]))
     end
 
-    if canUse and afford then buyButton:Enable() else buyButton:Disable() end
+    if canUse and afford and inRange then buyButton:Enable() else buyButton:Disable() end
 end
 
 RenderShop = function()
@@ -947,10 +970,47 @@ RenderShop = function()
     RenderDetail()
 end
 
+local function SetInRange(v)
+    v = (v == true)
+    if inRange == v then return end
+    inRange = v
+
+    if inRange then rangeHint:Hide() else rangeHint:Show() end
+    UpdateSellZone()
+    if shop:IsShown() then RenderShop() end
+end
+
+-- Filters, tab and selection deliberately SURVIVE a close: with the panel bound to
+-- a button the player toggles it constantly while walking back to base, and losing
+-- a half-built search every time would be miserable. INIT: is what resets them,
+-- once per match.
+local function ShowShop()
+    if not shop.mapId then
+        Print("the shop is only available inside a MOBA battleground.")
+        return
+    end
+    RenderShop()
+    shop:Show()
+    UpdateSellZone()
+end
+
+local function HideShop()
+    shop:Hide()
+    UpdateSellZone()
+end
+
+local function ToggleShop()
+    if shop:IsShown() then HideShop() else ShowShop() end
+end
+
 local function HandleShopPayload(payload)
-    local mapId = string.match(payload, "^OPEN:(%d+)$")
-    if mapId then
-        shop.mapId = tonumber(mapId)
+    -- INIT arrives at the handshake, long before any shopkeeper is clicked: with a
+    -- minimap button the panel must be able to draw itself with no NPC involved,
+    -- and Cat() keys the entire catalog off mapId. It is also the once-per-match
+    -- state reset, which is why ShowShop does not repeat it.
+    local initMap = string.match(payload, "^INIT:(%d+)$")
+    if initMap then
+        shop.mapId = tonumber(initMap)
         -- One shopkeeper sells every tab, so the server names no tab; open on the
         -- first one the catalog defines. Cat() reads shop.mapId, so order matters.
         local c = Cat()
@@ -960,19 +1020,15 @@ local function HandleShopPayload(payload)
         ResetScroll(catScroll)
         ResetScroll(subScroll)
         shopStatus:SetText("")
-        RenderShop()
-        shop:Show()
-        UpdateSellZone()
+        ns.Minimap.Show()
         return
     end
-    -- CLOSE may carry a reason. It goes to the chat frame, not shopStatus: that
-    -- font string is parented to the panel this is about to hide.
-    local reason = string.match(payload, "^CLOSE:?(.*)$")
-    if reason then
-        shop:Hide()
-        if reason ~= "" then Print(reason) end
-        return
-    end
+    -- The gossip click, reduced to "raise the panel" -- it carries no map any more
+    -- and does no reset, so clicking the shopkeeper and clicking the button are the
+    -- same gesture.
+    if payload == "OPEN" then ShowShop(); return end
+    local range = string.match(payload, "^RANGE:([01])$")
+    if range then SetInRange(range == "1"); return end
     local sf = string.match(payload, "^SF:(.+)$")
     if sf then
         for entry, factor in string.gmatch(sf, "(%d+):(%d+)") do
@@ -1011,8 +1067,18 @@ ns.Shop = {
     Handle         = HandleShopPayload,
     Render         = RenderShop,
     UpdateSellZone = UpdateSellZone,
-    Hide           = function() shop:Hide(); UpdateSellZone() end,
+    Toggle         = ToggleShop,
+    Hide           = HideShop,
     IsShown        = function() return shop:IsShown() end,
+
+    -- Leaving the instance, as opposed to the match merely ending. Dropping mapId
+    -- is what makes the panel unopenable until the next INIT: -- /mhud could
+    -- otherwise raise a panel whose catalog no longer describes where you are.
+    Stop = function()
+        HideShop()
+        shop.mapId = nil
+        SetInRange(false)
+    end,
 
     -- ns.InitDB has already created MobaHUDDB.shop.
     InitSavedVars = function()
