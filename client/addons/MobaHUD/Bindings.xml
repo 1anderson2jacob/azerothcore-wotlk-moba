@@ -1,0 +1,5 @@
+<Bindings>
+    <Binding name="MOBAHUD_TOGGLESHOP" header="MOBAHUD">
+        MobaHUD_ToggleShop()
+    </Binding>
+</Bindings>

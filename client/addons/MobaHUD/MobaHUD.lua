@@ -176,3 +176,17 @@ SlashCmdList["MOBAHUD"] = function(msg)
         Print("commands: test | time <m:ss> | sb <a,e,k,d,a,cs> | kill | death | shop | stop | lock | unlock | reset")
     end
 end
+
+-- ---- keybinding ----------------------------------------------------------
+-- Bindings.xml is auto-loaded from the addon folder and is deliberately NOT in the
+-- .toc. Its body runs in the GLOBAL environment, where `ns` does not exist, so this
+-- function is the door it knocks on -- the same role the slash command plays above.
+-- The Key Bindings UI finds the two labels by concatenating the XML's `header` and
+-- `name` attributes onto these prefixes; all four strings have to agree or the panel
+-- lists the raw binding name instead.
+BINDING_HEADER_MOBAHUD          = "MOBA HUD"
+BINDING_NAME_MOBAHUD_TOGGLESHOP = "Toggle shop panel"
+
+function MobaHUD_ToggleShop()
+    ns.Shop.Toggle()
+end
