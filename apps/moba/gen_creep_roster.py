@@ -87,6 +87,20 @@ CREEP_UNIT_FORBIDDEN_FIELDS = ["key", "lane", "slot"]
 # creature's own unit_flags.
 CREEP_UNIT_FLAG_PLAYER_CONTROLLED = 0x8
 
+# Optional per-creature "drops" list, shared by the creep and neutral
+# generators. "buff"/"gold"/"team_gold" are rolled and delivered in C++ at the
+# killing blow (mod_moba_*_drops -> GrantDeathDrops); "item" rides the native loot
+# system (creature_loot_template, whose Chance column the engine rolls) and
+# additionally emits a type-2 drops row IF it carries a `sell` price, which
+# is the only way a looted item can be sold back at the shop.
+#
+# "gold" goes into the CORPSE, so the last hitter walks up and collects it.
+# "team_gold" is paid straight to the killer's whole team with no corpse -- the
+# objective payout a boss camp wants. A boss carrying both rows pays its team a
+# flat share AND leaves corpse gold for whoever landed the blow.
+DROP_REQUIRED = {"buff": "spell", "gold": "copper", "item": "item", "team_gold": "copper"}
+DROP_TYPE_IDS = {"buff": 0, "gold": 1, "item": 2, "team_gold": 3}
+
 
 # Columns the generator overrides or reads -- must exist in every source dump.
 OVERRIDDEN_COLUMNS = ["entry", "name", "subname", "minlevel", "maxlevel", "faction",
@@ -273,15 +287,6 @@ def get_entry(lock, key, used, id_range, assigned_log):
     return candidate, True
 
 # ------------------------------------------------------- on-death drops (shared)
-
-# Optional per-creature "drops" list, shared by the creep and neutral
-# generators. "buff"/"gold" are rolled and delivered in C++ at the killing
-# blow (mod_moba_*_drops -> GrantDeathDrops); "item" rides the native loot
-# system (creature_loot_template, whose Chance column the engine rolls) and
-# additionally emits a type-2 drops row IF it carries a `sell` price, which
-# is the only way a looted item can be sold back at the shop.
-DROP_REQUIRED = {"buff": "spell", "gold": "copper", "item": "item"}
-DROP_TYPE_IDS = {"buff": 0, "gold": 1, "item": 2}
 
 # CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ: without it, loot/rewards require
 # players to have dealt half the mob's health (Creature::

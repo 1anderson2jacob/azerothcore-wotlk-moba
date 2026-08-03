@@ -121,7 +121,10 @@ namespace
     // The front-end-agnostic purchase core: validates, charges, and grants.
     // Takes map/tab explicitly rather than the npc: one shopkeeper serves every
     // tab, so the tab bought from is picked in the panel, not by where you stand.
-    PurchaseResult TryPurchase(Player* player, uint32 map, uint32 tabId, MobaStoreNode const& node)
+    // The battleground comes in rather than being resolved here because it is the
+    // wallet -- purchases are paid out of the match, never out of real money.
+    PurchaseResult TryPurchase(Player* player, BattlegroundMOBA* moba, uint32 map,
+                               uint32 tabId, MobaStoreNode const& node)
     {
         std::vector<MobaStoreGrant> const* grants =
             sMobaStoreDataStore->GetGrants(map, tabId, node.nodeId);
@@ -133,7 +136,7 @@ namespace
             return { false, "That is unavailable." };
         }
 
-        if (node.costCopper && !player->HasEnoughMoney(node.costCopper))
+        if (node.costCopper && moba->GetMatchGold(player) < node.costCopper)
             return { false, Acore::StringFormat("You cannot afford that ({} needed).",
                                                 FormatMoney(node.costCopper)) };
 
@@ -170,8 +173,11 @@ namespace
             }
         }
 
-        if (node.costCopper)
-            player->ModifyMoney(-static_cast<int32>(node.costCopper));
+        // Belt and braces: the check above already cleared the price, and the world
+        // is single-threaded between the two. It is the atomic form regardless, so
+        // the money can never leave without the caller learning it did.
+        if (node.costCopper && !moba->SpendMatchGold(player, node.costCopper))
+            return { false, "You cannot afford that." };
 
         for (MobaStoreGrant const& grant : *grants)
         {
@@ -206,8 +212,7 @@ namespace
 
                 // Nothing else tracks these -- the battleground destroys exactly
                 // these item GUIDs when the player leaves.
-                if (BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground()))
-                    moba->RecordGrantedItem(player, item, grant.count);
+                moba->RecordGrantedItem(player, item, grant.count);
 
                 player->SendNewItem(item, grant.count, true, false);
             }
@@ -409,7 +414,7 @@ private:
             return;
         }
 
-        PurchaseResult result = TryPurchase(player, map, *tabId, *node);
+        PurchaseResult result = TryPurchase(player, moba, map, *tabId, *node);
         moba->SendShopMessage(player, result.ok
             ? Acore::StringFormat("OK:{},{}", *tabId, *nodeId)
             : "ERR:" + result.message);
@@ -492,7 +497,7 @@ private:
         player->DestroyItemCount(item, sellCount, true);
 
         if (payout)
-            player->ModifyMoney(int32(payout));
+            moba->AddMatchGold(player, payout);
 
         moba->SendShopMessage(player, Acore::StringFormat("SOLD:{}", payout));
     }

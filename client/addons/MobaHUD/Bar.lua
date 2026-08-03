@@ -1,6 +1,6 @@
--- Bar: the scoreboard bar -- team score, KDA, creep score, match clock. Also owns
--- its saved position and lock, which live under MobaHUDDB.bar (ns.InitDB owns the
--- table and migrated the flat layout this file used to assume).
+-- Bar: the scoreboard bar -- team score, KDA, creep score, match gold, match clock.
+-- Also owns its saved position and lock, which live under MobaHUDDB.bar (ns.InitDB
+-- owns the table and migrated the flat layout this file used to assume).
 
 local ADDON_NAME, ns = ...
 
@@ -21,6 +21,13 @@ local function Icon(path, size)
 end
 local ICON_KDA = Icon("Interface\\Icons\\INV_Sword_04")
 local ICON_CS  = Icon("Interface\\Icons\\INV_Misc_Bone_01")
+
+-- Coin metrics for this bar's 16pt font; see ns.MoneyFormatter for why the stock
+-- helper is not used. COIN_Y is the same idea as ICON_Y, kept separate because coin
+-- art is not icon art and the two do not want the same nudge.
+local COIN_SIZE = 12
+local COIN_Y    = -1
+local FormatMoney = ns.MoneyFormatter(COIN_SIZE, COIN_Y)
 
 local BAR_PAD   = 10        -- inner horizontal padding (inside the border)
 local SEP_PAD   = 6         -- breathing room either side of a || separator
@@ -106,6 +113,15 @@ csIcon:SetPoint("LEFT", sep2, "RIGHT", SEP_PAD, 0)
 local csNum = MakeText("CENTER")
 csNum:SetPoint("LEFT", csIcon, "RIGHT", ICON_GAP, 0)
 
+-- Gold gets no icon of its own: FormatMoney already carries the coin artwork
+-- inline, so a leading icon would just say "money" twice.
+local sep3 = MakeText("LEFT")
+sep3:SetText(SEP_TEXT)
+sep3:SetPoint("LEFT", csNum, "RIGHT", SEP_PAD, 0)
+
+local goldNum = MakeText("CENTER")
+goldNum:SetPoint("LEFT", sep3, "RIGHT", SEP_PAD, 0)
+
 -- Clock digit box, anchored to the FRAME's right edge -- never to a column, whose box
 -- would drag it around. Fixed measured width; LEFT justify parks the spare character
 -- at the border, where it reads as padding rather than as a gap after CS.
@@ -118,7 +134,7 @@ local running   = false
 local baseTime  = 0
 local frozen    = nil       -- final elapsed seconds, held after the match ends
 local throttle  = 0
-local sb = { ally = 0, enemy = 0, k = 0, d = 0, a = 0, cs = 0 }
+local sb = { ally = 0, enemy = 0, k = 0, d = 0, a = 0, cs = 0, gold = 0 }
 
 -- Widest digit at the LIVE scale in fs's own font. Never assume a font's digits are
 -- tabular, and never hardcode 8: rasterisation rounds each glyph to whole pixels
@@ -150,9 +166,10 @@ local function EnsureDigitReserve()
 end
 
 -- Sizes every column and the frame, once. Reserves are two digits for score and KDA,
--- three for CS; past that a column wraps rather than overruns, so raise the sample if
--- a match ever gets there. Leaves sample text in the columns if it succeeds and bails
--- mid-way if the widgets are not laid out yet, so callers must re-render immediately.
+-- three for CS, and two gold / two silver / two copper for the wallet; past that a
+-- column wraps rather than overruns, so raise the sample if a match ever gets there.
+-- Leaves sample text in the columns if it succeeds and bails mid-way if the widgets
+-- are not laid out yet, so callers must re-render immediately.
 local reserved = false
 local function EnsureReserves()
     if reserved then return end
@@ -168,23 +185,34 @@ local function EnsureReserves()
         return fs:GetStringWidth()
     end
 
+    -- Gold is measured as a real coin string, not from digits: at worst case it
+    -- carries three inline icons whose width no digit sample would account for.
+    -- Composed from the widest digit for the same reason every other column is,
+    -- with a fallback because a sample of all zeroes would collapse to "0c".
+    local gd = (d ~= "0") and d or "9"
+    local goldSample = FormatMoney(tonumber(gd .. gd .. gd .. gd .. gd .. gd))
+
     local scoreW   = Measure(scoreCol, dd .. " vs " .. dd)
     local kdaNumW  = Measure(kdaNum,   dd .. "/" .. dd .. "/" .. dd)
     local csNumW   = Measure(csNum,    d .. dd)
+    local goldW    = Measure(goldNum,  goldSample)
     local sepW     = sep1:GetStringWidth()
     local kdaIconW = kdaIcon:GetStringWidth()
     local csIconW  = csIcon:GetStringWidth()
-    if scoreW <= 0 or kdaNumW <= 0 or csNumW <= 0
+    if scoreW <= 0 or kdaNumW <= 0 or csNumW <= 0 or goldW <= 0
        or sepW <= 0 or kdaIconW <= 0 or csIconW <= 0 then return end
 
-    scoreW, kdaNumW, csNumW = scoreW + COL_SLACK, kdaNumW + COL_SLACK, csNumW + COL_SLACK
+    scoreW, kdaNumW = scoreW + COL_SLACK, kdaNumW + COL_SLACK
+    csNumW, goldW   = csNumW + COL_SLACK, goldW + COL_SLACK
     scoreCol:SetWidth(scoreW)
     kdaNum:SetWidth(kdaNumW)
     csNum:SetWidth(csNumW)
+    goldNum:SetWidth(goldW)
 
     frame:SetWidth(BAR_PAD + scoreW
                    + SEP_PAD + sepW + SEP_PAD + kdaIconW + ICON_GAP + kdaNumW
                    + SEP_PAD + sepW + SEP_PAD + csIconW  + ICON_GAP + csNumW
+                   + SEP_PAD + sepW + SEP_PAD + goldW
                    + CLOCK_GAP + digitReserve + BAR_PAD)
     reserved = true
 end
@@ -198,12 +226,13 @@ local function FormatTime(sec)
     return string.format("%d:%02d", math.floor(sec / 60), sec % 60)
 end
 
--- Static segments; call when score/KDA/CS change. Never touches width.
+-- Static segments; call when score/KDA/CS/gold change. Never touches width.
 local function RenderStatic()
     EnsureReserves()
     scoreCol:SetText(C_ALLY .. sb.ally .. C_END .. " " .. C_DIM .. "vs" .. C_END .. " " .. C_ENEMY .. sb.enemy .. C_END)
     kdaNum:SetText(sb.k .. "/" .. sb.d .. "/" .. sb.a)
     csNum:SetText(tostring(sb.cs))
+    goldNum:SetText(FormatMoney(sb.gold))
 end
 
 -- Clock digits only; called every tick. Never touches width.
@@ -279,14 +308,20 @@ local function StopBar()
     frame:Hide()
 end
 
+-- The wallet is mirrored into ns.gold rather than kept private to `sb`, because the
+-- shop reads it too. The return value says whether it moved, so the orchestrator
+-- can skip a shop redraw on the 10s resync.
 local function HandleScoreboard(payload)
-    local ally, enemy, k, d, a, cs =
-        string.match(payload, "^(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)$")
-    if not ally then return end
+    local ally, enemy, k, d, a, cs, gold =
+        string.match(payload, "^(%d+),(%d+),(%d+),(%d+),(%d+),(%d+),(%d+)$")
+    if not ally then return false end
     sb.ally = tonumber(ally); sb.enemy = tonumber(enemy)
     sb.k    = tonumber(k);    sb.d     = tonumber(d)
     sb.a    = tonumber(a);    sb.cs    = tonumber(cs)
+    sb.gold = tonumber(gold)
+    local moved = ns.SetGold(sb.gold)
     ShowBar()
+    return moved
 end
 
 ns.Bar = {

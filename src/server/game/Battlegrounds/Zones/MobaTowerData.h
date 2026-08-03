@@ -52,6 +52,8 @@ struct MobaTowerConfig
     float range = 40.0f;
     uint32 intervalMs = 1500;
     uint32 spellId = 0;
+    uint32 teamGoldCopper = 0;      // paid to EVERY player on the destroying team
+    uint32 lastHitGoldCopper = 0;   // paid to the killing-blow player only; 0 = none
 };
 
 // Loads data/sql/custom/mod_moba_towers.sql's `mod_moba_tower_data` table once,

@@ -179,9 +179,11 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 
 - **Enums that size `BgObjects` must stay contiguous** — `SetupBattleground()`'s validation loops walk 0..MAX and fail the whole BG on any empty slot. When deleting entries, renumber and update `*_MAX`. This has caused two boot-on-entry bugs. Keep the slot index in those `LOG_ERROR` messages; it saves real debugging time.
 - **Data stores cache once per worldserver process**, not per battleground — a SQL
-  change needs a full restart, not `.debug bg` + requeue. They load lazily from
-  `SetupBattleground()`, so their `Loaded N …` lines appear when the first BG
-  instance is created, not during boot.
+  change needs a full restart, not `.debug bg` + requeue. They load lazily from `SetupBattleground()`, which the core calls from
+  `Battleground::_ProcessJoin` — on the first BG *tick*, after players have already
+  ported in. So `AddPlayer` and anything else running before that first tick must
+  call `LoadIfNeeded()` themselves or they read an empty store on the first match of a process, and only that one. Cost a real bug in the gold stipend.
+
 - **The compiler is the refactoring checklist**: edit headers first, then let build errors enumerate every `.cpp` to clean up. 2–3 iterations on a big cut is the workflow, not a failure.
 - **When behavior contradicts the code, `grep` what's actually on disk** before
   deeper theories — an unsaved editor buffer caused one bug, and a skipped

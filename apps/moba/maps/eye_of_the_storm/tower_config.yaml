@@ -10,6 +10,11 @@
 #                         inhibitor -- passive; on death gives the enemy super
 #                                      minions and respawns after respawn_ms
 #                         core      -- the base; destroying it wins the match
+#   gold                copper to EVERY player on the destroying team (flat per
+#                       player, not a split pot); 0 = none
+#   gold_last_hit       copper to the killing-blow player only, on top of the
+#                       above. A structure finished by a creep pays its team but
+#                       no bonus, so this is silently skipped there. 0 = none
 #   guarded_by_entry    0 = always vulnerable; else the entry that must die first
 #   respawn_ms          inhibitor respawn delay (ms); omit / 0 = never respawns
 #   name                creature name (subname defaults to "MOBA Objective")
@@ -42,6 +47,8 @@ towers:
     attack_range: 40
     attack_interval_ms: 1500
     attack_spell_id: 9053
+    gold: 3000
+    gold_last_hit: 1500
 
   - entry: 900002
     team: 0
@@ -60,6 +67,8 @@ towers:
     attack_range: 0
     attack_interval_ms: 1500
     attack_spell_id: 0
+    gold: 0
+    gold_last_hit: 1500
 
   - entry: 900004
     team: 0
@@ -77,6 +86,8 @@ towers:
     attack_range: 0
     attack_interval_ms: 1500
     attack_spell_id: 0
+    gold: 0
+    gold_last_hit: 0
 
   # --- Horde side (low X; spawn door ~1942) ---
   - entry: 900001
@@ -95,6 +106,8 @@ towers:
     attack_range: 40
     attack_interval_ms: 1500
     attack_spell_id: 9053
+    gold: 3000
+    gold_last_hit: 1500
 
   - entry: 900003
     team: 1
@@ -113,6 +126,8 @@ towers:
     attack_range: 0
     attack_interval_ms: 1500
     attack_spell_id: 0
+    gold: 0
+    gold_last_hit: 1500
 
   - entry: 900005
     team: 1
@@ -130,3 +145,5 @@ towers:
     attack_range: 0
     attack_interval_ms: 1500
     attack_spell_id: 0
+    gold: 0
+    gold_last_hit: 0

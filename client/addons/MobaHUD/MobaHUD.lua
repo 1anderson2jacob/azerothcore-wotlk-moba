@@ -7,7 +7,9 @@
 --
 -- Payloads (server -> client):
 --   T:<seconds>                        clock start/sync (bar counts up locally), show bar
---   S:<ally>,<enemy>,<k>,<d>,<a>,<cs>  scoreboard update (team-relative: ally = you)
+--   S:<ally>,<enemy>,<k>,<d>,<a>,<cs>,<gold>  scoreboard update (team-relative:
+--                                      ally = you). <gold> is the MATCH wallet in
+--                                      copper -- never the character's real money.
 --   R:<seconds>                        revive countdown start (client ticks down); 0 = hide
 --   K:<pov>,<killer>,<kClass>,<kSide>,<victim>,<vClass>,<vSide>
 --                                      transient kill-feed line, built per recipient:
@@ -29,7 +31,51 @@ local SHOP_PREFIX = ns.SHOP_PREFIX
 local END_MSG     = "E"
 local Print       = ns.Print
 
+-- ---- handshake -----------------------------------------------------------
+-- The server's reply to REQ is the ONLY thing that raises the bar during the prep
+-- phase: until the doors open it pushes nothing on its own. So a REQ that lands
+-- before the server has run Battleground::AddPlayer for us is not merely late, it
+-- is invisible -- the hook finds no battleground, answers nothing, and the bar
+-- stays hidden until T:0 at match start. PLAYER_ENTERING_WORLD can win that race
+-- on a fast load.
+--
+-- Ping until an answer arrives rather than once. Any MobaHUD or MobaShop payload
+-- counts as the answer; the try cap keeps a NON-MOBA battleground, where nothing
+-- will ever reply, from pinging for the whole match.
+local HANDSHAKE_INTERVAL = 1.0
+local HANDSHAKE_TRIES    = 10
+
+local handshake = CreateFrame("Frame")
+local hsElapsed = 0
+local hsTries   = 0
+handshake:Hide()
+
+local function Ping()
+    SendAddonMessage(PREFIX, "REQ", "BATTLEGROUND")
+    SendAddonMessage(SHOP_PREFIX, "HELLO", "BATTLEGROUND")
+end
+
+handshake:SetScript("OnUpdate", function(self, elapsed)
+    hsElapsed = hsElapsed + elapsed
+    if hsElapsed < HANDSHAKE_INTERVAL then return end
+    hsElapsed = 0
+    hsTries = hsTries + 1
+    if hsTries > HANDSHAKE_TRIES then self:Hide(); return end
+    Ping()
+end)
+
+local function StartHandshake()
+    hsElapsed, hsTries = 0, 0
+    Ping()
+    handshake:Show()
+end
+
+local function StopHandshake()
+    handshake:Hide()
+end
+
 local function HideAll()
+    StopHandshake()
     ns.Bar.Stop()
     ns.Feed.Clear()
     ns.Shop.Stop()
@@ -53,7 +99,10 @@ local function HandlePayload(payload)
     local rsec = tonumber(string.match(payload, "^R:(%d+)$"))
     if rsec ~= nil then ns.Feed.Respawn(rsec); return end
     local scores = string.match(payload, "^S:(.+)$")
-    if scores then ns.Bar.Scoreboard(scores); return end
+    if scores then
+        if ns.Bar.Scoreboard(scores) and ns.Shop.IsShown() then ns.Shop.Render() end
+        return
+    end
     local kill = string.match(payload, "^K:(.+)$")
     if kill then ns.Feed.Kill(kill); return end
     local death = string.match(payload, "^D:(.+)$")
@@ -61,6 +110,7 @@ local function HandlePayload(payload)
 end
 
 local function Dispatch(prefix, payload)
+    StopHandshake()
     if prefix == PREFIX then HandlePayload(payload)
     elseif prefix == SHOP_PREFIX then ns.Shop.Handle(payload) end
 end
@@ -81,7 +131,6 @@ ev:RegisterEvent("CHAT_MSG_ADDON")
 ev:RegisterEvent("PLAYER_ENTERING_WORLD")
 ev:RegisterEvent("DISPLAY_SIZE_CHANGED")
 ev:RegisterEvent("UI_SCALE_CHANGED")
-ev:RegisterEvent("PLAYER_MONEY")
 ev:RegisterEvent("CURSOR_UPDATE")
 ev:SetScript("OnEvent", function(self, event, ...)
     if event == "CHAT_MSG_ADDON" then
@@ -91,17 +140,14 @@ ev:SetScript("OnEvent", function(self, event, ...)
         ns.Bar.RelayoutForScale()
     elseif event == "CURSOR_UPDATE" then
         ns.Shop.UpdateSellZone()
-    elseif event == "PLAYER_MONEY" then
-        if ns.Shop.IsShown() then ns.Shop.Render() end
     elseif event == "PLAYER_ENTERING_WORLD" then
-        -- One-shot "ready" ping; the server answers with current state. Only in a
-        -- battleground (covers entering the BG, joining mid-match, and /reload).
-        -- Anywhere else means we just left one, which is what hides the HUD -- the
-        -- E payload only freezes it.
+        -- Ready ping; the server answers with current state. Only in a battleground
+        -- (covers entering the BG, joining mid-match, and /reload). Anywhere else
+        -- means we just left one, which is what hides the HUD -- the E payload only
+        -- freezes it.
         local _, instanceType = IsInInstance()
         if instanceType == "pvp" then
-            SendAddonMessage(PREFIX, "REQ", "BATTLEGROUND")
-            SendAddonMessage(SHOP_PREFIX, "HELLO", "BATTLEGROUND")
+            StartHandshake()
         else
             HideAll()
         end
@@ -123,7 +169,7 @@ SlashCmdList["MOBAHUD"] = function(msg)
     msg = string.lower(msg or "")
     if msg == "test" then
         ns.Bar.SetLocked(false)
-        ns.Bar.Scoreboard("12,5,8,2,1,85")
+        ns.Bar.Scoreboard("12,5,8,2,1,85,143500")
         ns.Bar.StartClock(0)
         Print("test bar shown (drag to position). '/mobahud lock' when done, '/mobahud stop' to hide.")
     elseif msg == "time" or msg:match("^time%s") then
@@ -144,11 +190,11 @@ SlashCmdList["MOBAHUD"] = function(msg)
         -- Feeds the payload to the same handler the server's S: packet lands on, so
         -- this tests the real parse-and-render path, not a shortcut around it.
         local payload = msg:match("^sb%s+(.+)$")
-        if payload and payload:match("^%d+,%d+,%d+,%d+,%d+,%d+$") then
+        if payload and payload:match("^%d+,%d+,%d+,%d+,%d+,%d+,%d+$") then
             ns.Bar.Scoreboard(payload)
             Print("scoreboard set to " .. payload .. ".")
         else
-            Print("usage: /mhud sb <ally,enemy,k,d,a,cs>  e.g. /mhud sb 9,9,9,9,9,99")
+            Print("usage: /mhud sb <ally,enemy,k,d,a,cs,gold>  e.g. /mhud sb 9,9,9,9,9,99,143500")
         end
     elseif msg == "death" then
         ns.Feed.Respawn(10); Print("revive countdown test (10s).")
@@ -173,7 +219,7 @@ SlashCmdList["MOBAHUD"] = function(msg)
     elseif msg == "shop" then
         ns.Shop.Toggle()
     else
-        Print("commands: test | time <m:ss> | sb <a,e,k,d,a,cs> | kill | death | shop | stop | lock | unlock | reset")
+        Print("commands: test | time <m:ss> | sb <a,e,k,d,a,cs,gold> | kill | death | shop | stop | lock | unlock | reset")
     end
 end
 

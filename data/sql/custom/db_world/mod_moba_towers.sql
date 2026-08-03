@@ -52,15 +52,17 @@ CREATE TABLE `mod_moba_tower_data` (
     `Orientation`      FLOAT NOT NULL,
     `AttackRange`      FLOAT NOT NULL DEFAULT 40,
     `AttackIntervalMs` INT UNSIGNED NOT NULL DEFAULT 1500,
-    `AttackSpellId`    INT UNSIGNED NOT NULL DEFAULT 9053
+    `AttackSpellId`    INT UNSIGNED NOT NULL DEFAULT 9053,
+    `TeamGold`         INT UNSIGNED NOT NULL DEFAULT 0,      -- copper to EVERY player on the destroying team
+    `LastHitGold`      INT UNSIGNED NOT NULL DEFAULT 0       -- copper to the killing-blow player only
 );
 
 INSERT INTO `mod_moba_tower_data`
-(`CreatureEntry`, `Map`, `Team`, `Tier`, `GuardedByEntry`, `Kind`, `RespawnMs`, `PosX`, `PosY`, `PosZ`, `Orientation`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`)
+(`CreatureEntry`, `Map`, `Team`, `Tier`, `GuardedByEntry`, `Kind`, `RespawnMs`, `PosX`, `PosY`, `PosZ`, `Orientation`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `TeamGold`, `LastHitGold`)
 VALUES
-(900000, 566, 0, 0, 0, 0, 0, 2285.5596, 1587.9965, 1165.4397, 3.2774656, 40, 1500, 9053),
-(900002, 566, 0, 1, 900000, 1, 120000, 2320.745, 1584.3153, 1169.2806, 4.106839, 0, 1500, 0),
-(900004, 566, 0, 2, 900002, 2, 0, 2354.7302, 1587.6167, 1171.2659, 0.89613223, 0, 1500, 0),
-(900001, 566, 1, 0, 0, 0, 0, 2056.0195, 1547.1702, 1162.6882, 0.21284086, 40, 1500, 9053),
-(900003, 566, 1, 1, 900001, 1, 120000, 2018.5479, 1549.687, 1168.0171, 0.04476848, 0, 1500, 0),
-(900005, 566, 1, 2, 900003, 2, 0, 1983.9092, 1547.2158, 1170.3706, 5.8048787, 0, 1500, 0);
+(900000, 566, 0, 0, 0, 0, 0, 2285.5596, 1587.9965, 1165.4397, 3.2774656, 40, 1500, 9053, 3000, 1500),
+(900002, 566, 0, 1, 900000, 1, 120000, 2320.745, 1584.3153, 1169.2806, 4.106839, 0, 1500, 0, 0, 1500),
+(900004, 566, 0, 2, 900002, 2, 0, 2354.7302, 1587.6167, 1171.2659, 0.89613223, 0, 1500, 0, 0, 0),
+(900001, 566, 1, 0, 0, 0, 0, 2056.0195, 1547.1702, 1162.6882, 0.21284086, 40, 1500, 9053, 3000, 1500),
+(900003, 566, 1, 1, 900001, 1, 120000, 2018.5479, 1549.687, 1168.0171, 0.04476848, 0, 1500, 0, 0, 1500),
+(900005, 566, 1, 2, 900003, 2, 0, 1983.9092, 1547.2158, 1170.3706, 5.8048787, 0, 1500, 0, 0, 0);

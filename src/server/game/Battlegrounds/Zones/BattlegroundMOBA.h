@@ -94,6 +94,8 @@ struct MobaTowerState
     uint32 guardedByEntry = 0;
     uint8 kind = MOBA_STRUCTURE_TOWER;
     uint32 respawnMs = 0;
+    uint32 teamGoldCopper = 0;
+    uint32 lastHitGoldCopper = 0;
     bool destroyed = false;
 };
 
@@ -167,10 +169,11 @@ public:
 
     std::vector<MobaTowerState>& GetTowers() { return _towers; }
 
-    // Shared by HandleKillUnit (player-attributed tower kills) and
-    // npc_moba_tower::JustDied (creature/creep-attributed tower kills) --
-    // see npc_moba_tower::JustDied for why both paths exist.
-    void OnTowerDestroyed(Creature* tower, TeamId winnerTeamId);
+    // Called only from npc_moba_tower::JustDied, which is the one place that sees a
+    // structure's true killing blow -- Unit::Kill overwrites the killer with the
+    // loot recipient before HandleKillUnit runs. `lastHitter` is nullptr when a
+    // creep finished it: the team payout still lands, the last-hit bonus does not.
+    void OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Player* lastHitter);
 
     // Credit a lane-creep last-hit (CS) to the killing-blow player. Called from
     // npc_moba_creep::JustDied -- unlike HandleKillUnit, whose killer is the loot
@@ -213,6 +216,16 @@ public:
 
     // Give up the claim on `count` of an item after selling it.
     void ForgetGrantedItem(Player* player, Item* item, uint32 count);
+
+    // The match wallet, in copper. Deliberately NOT Player money: real character
+    // wealth is never touched, so no path that skips a cleanup -- crash, hard
+    // disconnect, worldserver restart -- can delete or duplicate it. It mirrors
+    // copper rather than being a new named resource, so store prices, sell ratios
+    // and the client's GetCoinTextureString all keep meaning what they meant.
+    // Both mutators push the wallet to the owner; nothing else has to remember to.
+    uint32 GetMatchGold(Player* player) const;
+    void AddMatchGold(Player* player, uint32 copper);
+    bool SpendMatchGold(Player* player, uint32 copper);   // false = short, nothing spent
 
     // League camp-link: called from npc_moba_neutral::JustEngagedWith so
     // hitting one camp member pulls the rest onto the attacker.
@@ -261,6 +274,13 @@ private:
     void UpdateRespawnTimers(uint32 diff);
     void RespawnAtBase(Player* player);
     void UpdateFountainHealing(uint32 diff);
+    void UpdatePassiveGold(uint32 diff);
+    // Pay every player on `team` who is in the battleground. The delivery mode for
+    // OBJECTIVES -- towers, and boss neutrals via MOBA_DROP_TEAM_GOLD -- which have
+    // no corpse to walk up to: killing one is a team event, so the payout is one.
+    // Flat per player, NOT a split pot: the config number reads as what the
+    // objective is worth to you, and team size never dilutes it.
+    void AwardTeamGold(TeamId team, uint32 copper);
     void UpdateShopRange(uint32 diff);
     Player* ResolveKillCredit(Player* victim, Unit* killer);
     uint32 GetKillCreditWindowMs() const;
@@ -269,7 +289,7 @@ private:
 
     // MobaHUD addon feed (client/addons/MobaHUD). `body` is the payload after the
     // "MobaHUD\t" prefix: "T:<sec>" clock start/sync, "E" hide the bar,
-    // "S:<ally>,<enemy>,<k>,<d>,<a>,<cs>" scoreboard, "R:<sec>" revive-countdown
+    // "S:<ally>,<enemy>,<k>,<d>,<a>,<cs>,<gold>" scoreboard, "R:<sec>" revive-countdown
     // start (0 = hide), "K:<pov>,<killer>,<kClass>,<kSide>,<victim>,<vClass>,<vSide>"
     // a player kill line, "D:<pov>,<vSide>,<vClass>,<victim>,<cat>" a non-player death
     // line (cat 0=env 1=tower 2=creep 3=neutral). K:/D: are built per recipient.
@@ -293,6 +313,7 @@ private:
     uint32 _matchElapsedMs = 0;   // time since doors opened (excludes prep phase)
     uint32 _hudResyncMs = 0;      // accumulates toward the next periodic HUD re-broadcast
     uint32 _fountainTickMs = 0;   // accumulates toward the next fountain heal tick
+    uint32 _passiveGoldMs = 0;    // accumulates toward the next passive income tick
     uint32 _teamPlayerKills[2] = {0, 0}; // enemy-player kills per team (the "X vs Y" score)
     // victim GUID -> (enemy-attacker GUID -> last damage/debuff time, ms). Per life:
     // cleared on the victim's death and when they leave. Keeps every recent attacker
@@ -313,6 +334,11 @@ private:
     // assist chain: healing or a short combat buff on a kill participant links the
     // supporter to the kill. Same per-life lifetime as _recentAttackers.
     std::unordered_map<ObjectGuid, std::unordered_map<ObjectGuid, uint32>> _allySupport;
+
+    // player GUID -> match wallet (copper). No exit hook and no cleanup sweep by
+    // design: nothing outside this map ever held the number, so there is nothing
+    // to reconcile when it dies with the battleground.
+    std::unordered_map<ObjectGuid, uint32> _wallets;
 
     std::unordered_map<ObjectGuid, MobaRespawnState> _respawnTimers;
 

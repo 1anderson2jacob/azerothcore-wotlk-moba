@@ -6,6 +6,12 @@ local ADDON_NAME, ns = ...
 local Print       = ns.Print
 local SHOP_PREFIX = ns.SHOP_PREFIX
 
+-- The wallet total is drawn with every denomination present (see ns.MoneyFormatter)
+-- so the one number a player watches never changes shape. PRICES deliberately keep
+-- the stock compact form: a grid of "0g 25s 0c" tags is noise, and a price is read
+-- once rather than tracked.
+local FormatMoneyHeader = ns.MoneyFormatter(11, -1)   -- sized for shopGold's GameFontNormal
+
 -- ---- shop panel ----------------------------------------------------------
 -- Sidebar filters | icon grid | detail pane. All geometry is fixed UI units and
 -- nothing measures text, so a mid-session resolution change needs no relayout
@@ -863,7 +869,7 @@ local function RenderGrid(tab)
     FauxScrollFrame_Update(scroll, rows, GRID_ROWS, PITCH_Y)
     scrollOffset = FauxScrollFrame_GetOffset(scroll)
 
-    local money = GetMoney()
+    local money = ns.gold
     for i, b in ipairs(cards) do
         local leaf = filtered[scrollOffset * GRID_COLS + i]
         if leaf then
@@ -913,7 +919,7 @@ local function RenderDetail()
     local color  = QUALITY_COLOR[meta and meta.quality or 1]
     local cost   = selected.cost == 0 and "|cff33ff99Free|r" or GetCoinTextureString(selected.cost)
     local canUse = LeafUsable(selected)
-    local afford = (selected.cost == 0) or (GetMoney() >= selected.cost)
+    local afford = (selected.cost == 0) or (ns.gold >= selected.cost)
 
     -- Usability first: an item you can never wear is not worth telling someone
     -- they also cannot afford.
@@ -960,7 +966,7 @@ end
 RenderShop = function()
     local tab = ShopTab()
     RenderTabs()
-    shopGold:SetText(GetCoinTextureString(GetMoney()))
+    shopGold:SetText(FormatMoneyHeader(ns.gold))
     if not tab then
         shopStatus:SetText("|cffff3333no catalog for this map|r")
         return
@@ -1050,7 +1056,7 @@ local function HandleShopPayload(payload)
         shopStatus:SetText(copper > 0
             and ("|cff33ff99Sold for " .. GetCoinTextureString(copper) .. "|r")
             or "|cff33ff99Sold.|r")
-        return   -- PLAYER_MONEY re-renders affordability on its own
+        return   -- the server's S: push re-renders affordability on its own
     end
     local err = string.match(payload, "^ERR:(.+)$")
     if err then shopStatus:SetText("|cffff3333" .. err .. "|r"); return end

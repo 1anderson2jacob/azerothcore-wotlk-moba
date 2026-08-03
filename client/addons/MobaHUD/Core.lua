@@ -15,6 +15,52 @@ ns.C_KILL  = "|cff33ff99"  -- "you slew" flavour (green)
 ns.C_DEATH = "|cffff3333"  -- "you died" flavour (red)
 ns.C_END   = "|r"
 
+-- The match wallet in copper, as last pushed by the server's S: payload. It lives
+-- here rather than in Bar.lua because the shop header and its affordability
+-- greying read the same number, and locals do not cross file boundaries.
+--
+-- SetGold returns true only when the value actually MOVED: the scoreboard also
+-- arrives on a 10s resync that changes nothing, and the shop must not redraw
+-- under the player's cursor for that.
+ns.gold = 0
+
+function ns.SetGold(copper)
+    copper = tonumber(copper) or 0
+    if ns.gold == copper then return false end
+    ns.gold = copper
+    return true
+end
+
+-- Renderer for wallet TOTALS. Prices keep Blizzard's GetCoinTextureString, which is
+-- fine for a number read once; it is wrong for a number watched, twice over:
+--
+--   * it DROPS empty denominations ("25s", not "0g 25s 0c"), so a wallet changes
+--     shape as it crosses 1g and the reader has to re-parse which coin is which;
+--   * it hardcodes yOffset 0 and, given no height, draws coins at their NATIVE
+--     size -- taller than most fonts' cap height, which stretches the FontString's
+--     bounding box and drags the digits up with it.
+--
+-- Callers pass the metrics that suit their own font and get a closure back, so the
+-- three icon escapes are built once rather than on every render. Keep `size` at or
+-- below the font's point size or the box grows again.
+local COIN_GOLD   = "Interface\\MoneyFrame\\UI-GoldIcon"
+local COIN_SILVER = "Interface\\MoneyFrame\\UI-SilverIcon"
+local COIN_COPPER = "Interface\\MoneyFrame\\UI-CopperIcon"
+
+function ns.MoneyFormatter(size, yOffset)
+    local function coin(path)
+        return string.format("|T%s:%d:%d:0:%d|t", path, size, size, yOffset)
+    end
+    local g, s, c = coin(COIN_GOLD), coin(COIN_SILVER), coin(COIN_COPPER)
+
+    return function(copper)
+        copper = tonumber(copper) or 0
+        return math.floor(copper / 10000) .. g .. " "
+            .. math.floor((copper % 10000) / 100) .. s .. " "
+            .. (copper % 100) .. c
+    end
+end
+
 function ns.Print(msg)
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99MobaHUD|r: " .. tostring(msg))
 end

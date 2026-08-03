@@ -49,6 +49,9 @@ struct MobaBaseConfig
     // so the barrier and the heal zone are one number. 0 = battleground not created.
     uint32 domeEntryAlliance = 0;
     uint32 domeEntryHorde = 0;
+    uint32 startingGold = 0;    // copper granted once on entry; 0 = none
+    uint32 passiveTickMs = 0;   // passive income cadence (ms); 0 = passive income off
+    uint32 passiveCopper = 0;   // copper per tick, per player
 };
 
 // Loads data/sql/custom/mod_moba_base.sql's `mod_moba_base` table once, keyed

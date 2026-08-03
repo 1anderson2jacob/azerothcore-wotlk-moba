@@ -38,7 +38,8 @@ void MobaBaseDataStore::LoadIfNeeded()
         "SELECT Map, RespawnBaseMs, RespawnPerMinMs, RespawnCapMs, RecallCastMs, RecallEmpoweredCastMs, "
         "FountainTickMs, FountainHpPct, FountainManaPct, FountainRadius, "
         "KillCreditWindowMs, AssistWindowMs, AssistBuffMaxDurationMs, "
-        "DomeEntryAlliance, DomeEntryHorde FROM mod_moba_base");
+        "DomeEntryAlliance, DomeEntryHorde, "
+        "StartingGold, PassiveTickMs, PassiveCopper FROM mod_moba_base");
 
     if (!result)
     {
@@ -66,6 +67,9 @@ void MobaBaseDataStore::LoadIfNeeded()
         cfg.assistBuffMaxDurationMs = fields[12].Get<uint32>();
         cfg.domeEntryAlliance       = fields[13].Get<uint32>();
         cfg.domeEntryHorde          = fields[14].Get<uint32>();
+        cfg.startingGold            = fields[15].Get<uint32>();
+        cfg.passiveTickMs           = fields[16].Get<uint32>();
+        cfg.passiveCopper           = fields[17].Get<uint32>();
 
         _byMap[cfg.map] = cfg;
     } while (result->NextRow());

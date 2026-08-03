@@ -102,6 +102,7 @@ void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
 
     UpdateRespawnTimers(diff);
     UpdateFountainHealing(diff);
+    UpdatePassiveGold(diff);
 
     _hudResyncMs += diff;
     if (_hudResyncMs >= MOBA_HUD_RESYNC_MS)
@@ -157,6 +158,21 @@ void BattlegroundMOBA::AddPlayer(Player* player)
         player->AddItem(BG_MOBA_RECALL_ITEM, 1);
 
     player->RemoveSpellCooldown(BG_MOBA_RECALL_SPELL, true);
+
+    // The store is NOT loaded yet on the first match of a worldserver process.
+    // SetupBattleground -- which is what normally loads it -- runs from
+    // Battleground::_ProcessJoin, i.e. on the first BG tick AFTER a player has
+    // already ported in, so this hook beats it. Cheap to repeat: LoadIfNeeded is a
+    // bool check once loaded.
+    sMobaBaseDataStore->LoadIfNeeded();
+
+    // Opening buy, so the prep phase is a decision rather than a wait. AddPlayer
+    // runs again on a reconnect and the wallet deliberately outlives RemovePlayer,
+    // so paying unconditionally would pay twice; an absent wallet entry is the
+    // "never been paid" test, because AddMatchGold is the only thing that creates one.
+    if (MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId()))
+        if (cfg->startingGold && _wallets.find(player->GetGUID()) == _wallets.end())
+            AddMatchGold(player, cfg->startingGold);
 }
 
 void BattlegroundMOBA::RecordGrantedItem(Player* player, Item* item, uint32 count)
@@ -203,6 +219,52 @@ void BattlegroundMOBA::ForgetGrantedItem(Player* player, Item* item, uint32 coun
             guids->second.erase(std::remove(guids->second.begin(), guids->second.end(), item->GetGUID()),
                                 guids->second.end());
     }
+}
+
+uint32 BattlegroundMOBA::GetMatchGold(Player* player) const
+{
+    if (!player)
+        return 0;
+
+    auto itr = _wallets.find(player->GetGUID());
+    return itr != _wallets.end() ? itr->second : 0;
+}
+
+void BattlegroundMOBA::AddMatchGold(Player* player, uint32 copper)
+{
+    if (!player || !copper)
+        return;
+
+    _wallets[player->GetGUID()] += copper;
+    SendScoreboard(player);   // the bar column and the shop header read the same payload
+}
+
+bool BattlegroundMOBA::SpendMatchGold(Player* player, uint32 copper)
+{
+    if (!player)
+        return false;
+
+    if (!copper)
+        return true;   // free is always affordable, and must not open a wallet entry
+
+    auto itr = _wallets.find(player->GetGUID());
+    if (itr == _wallets.end() || itr->second < copper)
+        return false;
+
+    itr->second -= copper;
+    SendScoreboard(player);
+    return true;
+}
+
+void BattlegroundMOBA::AwardTeamGold(TeamId team, uint32 copper)
+{
+    if (!copper)
+        return;
+
+    for (auto const& itr : GetPlayers())
+        if (Player* player = itr.second)
+            if (player->GetBgTeamId() == team)
+                AddMatchGold(player, copper);
 }
 
 void BattlegroundMOBA::SetShopAddonReady(Player* player)
@@ -409,6 +471,8 @@ bool BattlegroundMOBA::SetupBattleground()
         state.guardedByEntry = cfg.guardedByEntry;
         state.kind = cfg.kind;
         state.respawnMs = cfg.respawnMs;
+        state.teamGoldCopper    = cfg.teamGoldCopper;
+        state.lastHitGoldCopper = cfg.lastHitGoldCopper;
 
         if (Creature* creature = GetBGCreature(slot))
         {
@@ -504,17 +568,13 @@ void BattlegroundMOBA::HandleKillPlayer(Player* /*player*/, Player* /*killer*/)
     // double-count the player-blow case.
 }
 
-void BattlegroundMOBA::HandleKillUnit(Creature* creature, Player* killer)
+void BattlegroundMOBA::HandleKillUnit(Creature* /*creature*/, Player* /*killer*/)
 {
-    if (GetStatus() != STATUS_IN_PROGRESS)
-        return;
-
-    // killer here is the loot recipient (first player to tap), not the killing
-    // blow -- Unit::Kill overwrites it before calling us. Fine for towers, whose
-    // credit is team-level (OnTowerDestroyed no-ops on non-tower creatures, so
-    // lane creeps pass through harmlessly). Lane-creep CS needs the actual last
-    // hit and is credited in npc_moba_creep::JustDied instead.
-    OnTowerDestroyed(creature, killer->GetBgTeamId());
+    // Intentionally empty, for the same shape of reason as HandleKillPlayer. The
+    // engine hands this hook the LOOT RECIPIENT rather than the killing blow --
+    // Unit::Kill reassigns player = creature->GetLootRecipient() before calling us
+    // -- which is wrong for a tower's last-hit bonus and wrong for creep CS. Both
+    // are credited from the creature AI's JustDied, which receives the real killer.
 }
 
 void BattlegroundMOBA::CreditCreepKill(Player* killer)
@@ -543,13 +603,31 @@ void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer)
         return;
     }
 
-    // Native loot rights follow the tapper's group; ours follow the killing
-    // blow. Re-point rights at the killer + their BG raid (= the whole team)
-    // and clear the round-robin looter: BG raids default to GROUP_LOOT, whose
-    // pre-picked round-robin looter may not even be on the killer's team
-    // after the re-point, which would lock the corpse for everyone.
+    // Native loot rights follow the tapper's group; ours follow the killing blow,
+    // and only the killing blow. Three lines, each covering a different half:
+    //
+    //   SetLootRecipient(killer) is group-wide ON PURPOSE. Narrowing it with
+    //   withGroup=false zeroes the recipient GROUP, and Player::isAllowedToLoot
+    //   rejects any looter who HAS a group against a corpse that has none -- which
+    //   is every player in a battleground, the killer included. They would never be
+    //   sent UNIT_DYNFLAG_LOOTABLE and so could not click their own kill.
+    //
+    //   roundRobinPlayer must be ASSIGNED, never cleared: BG raids are GROUP_LOOT,
+    //   whose isAllowedToLoot branch admits anyone when no round-robin looter is
+    //   set. Setting it to the killer is what hides the corpse from teammates -- and
+    //   what shows the killer every item, over-threshold ones included. It is
+    //   cosmetic only; LootHandler clears it again if the killer closes a corpse
+    //   they did not empty, which is why moba_loot_rights_globalscript is what
+    //   actually enforces this.
+    //
+    //   loot_type suppresses the group roll. Player::SendLoot broadcasts a GroupLoot
+    //   window for every over-threshold item to the whole nearby raid, guarded only
+    //   by loot_type == LOOT_NONE -- and it fires on the KILLER's own first open,
+    //   before any permission check gets a say. Stamping the value SendLoot would
+    //   assign at its tail anyway skips that branch entirely.
     victim->SetLootRecipient(killer);
-    victim->loot.roundRobinPlayer.Clear();
+    victim->loot.roundRobinPlayer = killer->GetGUID();
+    victim->loot.loot_type        = LOOT_CORPSE;
 
     if (std::vector<MobaDropInfo> const* drops = sMobaDropDataStore->GetDrops(victim->GetEntry()))
         for (MobaDropInfo const& drop : *drops)
@@ -568,6 +646,8 @@ void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer)
             }
             else if (drop.type == MOBA_DROP_GOLD)
                 victim->loot.gold += drop.copper;
+            else if (drop.type == MOBA_DROP_TEAM_GOLD)
+                AwardTeamGold(killer->GetBgTeamId(), drop.copper);
         }
 
     // Gold-only minions have lootid 0, so Unit::Kill saw empty loot and never
@@ -600,7 +680,7 @@ void BattlegroundMOBA::GrantPlayerKillDrops(Player* killer)
                     }
                 break;
             case MOBA_PLAYER_DROP_GOLD:
-                killer->ModifyMoney(int32(drop.copper));
+                AddMatchGold(killer, drop.copper);
                 break;
             case MOBA_PLAYER_DROP_ITEM:
                 killer->AddItem(drop.item, drop.count);
@@ -798,7 +878,7 @@ void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
     BroadcastScoreboard();
 }
 
-void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId)
+void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Player* lastHitter)
 {
     if (GetStatus() != STATUS_IN_PROGRESS)
         return;
@@ -812,6 +892,14 @@ void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId)
         return;
 
     itr->destroyed = true;
+
+    // Objective gold, paid behind the `destroyed` guard so nothing can double-pay,
+    // and unconditionally on team so a creep-finished structure still rewards the
+    // push. A re-killed inhibitor pays AGAIN on purpose -- RespawnInhibitor clears
+    // the flag, and taking the same objective twice is worth the same twice.
+    AwardTeamGold(winnerTeamId, itr->teamGoldCopper);
+    if (lastHitter)
+        AddMatchGold(lastHitter, itr->lastHitGoldCopper);
 
     // Unlock any structures this one was guarding (the next tier becomes attackable).
     for (MobaTowerState& other : _towers)
@@ -1173,6 +1261,33 @@ void BattlegroundMOBA::UpdateFountainHealing(uint32 diff)
     }
 }
 
+// The trickle that funds a build even for a player farming badly, and the reason a
+// losing lane is not a dead one. Paid to EVERYONE including the dead: respawning
+// already costs time on the map, and taxing it twice is what stops a team that is
+// behind from ever coming back.
+void BattlegroundMOBA::UpdatePassiveGold(uint32 diff)
+{
+    MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId());
+    if (!cfg || !cfg->passiveTickMs || !cfg->passiveCopper)
+        return;
+
+    _passiveGoldMs += diff;
+    if (_passiveGoldMs < cfg->passiveTickMs)
+        return;
+
+    // Catch up rather than drop ticks. A world update longer than the cadence would
+    // otherwise silently pay less, making income depend on server load -- the kind
+    // of thing nobody notices until the economy has been tuned around it.
+    uint32 ticks = _passiveGoldMs / cfg->passiveTickMs;
+    _passiveGoldMs %= cfg->passiveTickMs;
+
+    // Not AwardTeamGold: passive income has no team concept, and going through it
+    // twice would walk the player list twice to say the same thing.
+    for (auto const& itr : GetPlayers())
+        if (Player* player = itr.second)
+            AddMatchGold(player, cfg->passiveCopper * ticks);
+}
+
 // One addon packet. LANG_ADDON marks this as addon traffic client-side; the
 // chat-type byte is irrelevant to delivery.
 void BattlegroundMOBA::SendAddonPacket(Player* player, char const* prefix, std::string const& body)
@@ -1234,8 +1349,8 @@ std::string BattlegroundMOBA::BuildScoreboardBody(Player* player) const
         cs = score->CreepKills;
     }
 
-    return Acore::StringFormat("S:{},{},{},{},{},{}",
-        _teamPlayerKills[team], _teamPlayerKills[other], k, d, a, cs);
+    return Acore::StringFormat("S:{},{},{},{},{},{},{}",
+        _teamPlayerKills[team], _teamPlayerKills[other], k, d, a, cs, GetMatchGold(player));
 }
 
 void BattlegroundMOBA::SendScoreboard(Player* player)

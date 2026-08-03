@@ -13,6 +13,11 @@ enum MobaDropType : uint8
     // type-2 row exists ONLY to price the drop for the shop's sell panel, and
     // is filtered out before _byEntry.
     MOBA_DROP_ITEM = 2,
+    // Paid to the killer's whole TEAM, flat per player, with no corpse -- the
+    // objective payout a boss camp wants. Deliberately a drop TYPE rather than a
+    // per-creature "boss" flag, so one creature can carry both this and a plain
+    // gold row: a team share for everyone, corpse gold for the last hitter.
+    MOBA_DROP_TEAM_GOLD = 3,
 };
 
 struct MobaDropInfo

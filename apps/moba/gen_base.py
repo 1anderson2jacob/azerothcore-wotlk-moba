@@ -108,6 +108,14 @@ def validate(cfg, path):
         for k in ("tick_ms", "hp_pct", "mana_pct"):
             if fountain.get(k) is not None and not isinstance(fountain[k], int):
                 fail(f'{path}: "fountain.{k}" must be an integer')
+    gold = cfg.get("gold")
+    if gold is not None:
+        if not isinstance(gold, dict):
+            fail(f'{path}: "gold" must be an object')
+        for k in ("starting_stipend", "passive_tick_ms", "passive_per_tick"):
+            v = gold.get(k, 0)
+            if not isinstance(v, int) or v < 0:
+                fail(f'{path}: "gold.{k}" must be a non-negative integer')
 
 
 def load_configs():
@@ -155,10 +163,13 @@ def emit(configs):
         "    `AssistWindowMs` INT UNSIGNED NOT NULL DEFAULT 10000,      -- window before a death in which damage/debuff/support earns an assist (0 = off)",
         "    `AssistBuffMaxDurationMs` INT UNSIGNED NOT NULL DEFAULT 60000, -- max buff/shield duration (ms) counting as a fight buff for assists; longer = maintenance buff, ignored",
         "    `DomeEntryAlliance` INT UNSIGNED NOT NULL DEFAULT 0,  -- gameobject_template entry of the Alliance spawn dome",
-        "    `DomeEntryHorde`    INT UNSIGNED NOT NULL DEFAULT 0   -- gameobject_template entry of the Horde spawn dome",
+        "    `DomeEntryHorde`    INT UNSIGNED NOT NULL DEFAULT 0,  -- gameobject_template entry of the Horde spawn dome",
+        "    `StartingGold`  INT UNSIGNED NOT NULL DEFAULT 0,      -- copper in the match wallet on entry (0 = none)",
+        "    `PassiveTickMs` INT UNSIGNED NOT NULL DEFAULT 0,      -- passive income cadence (ms); 0 = passive income off",
+        "    `PassiveCopper` INT UNSIGNED NOT NULL DEFAULT 0       -- copper per tick, per player",
         ");",
         "",
-        "INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`)",
+        "INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`, `StartingGold`, `PassiveTickMs`, `PassiveCopper`)",
         "VALUES",
     ]
     rows = []
@@ -168,6 +179,7 @@ def emit(configs):
         recall_ms = recall.get("cast_time_ms", 0)
         recall_emp_ms = recall.get("empowered_cast_time_ms", 0)
         f = cfg.get("fountain") or {}
+        gold = cfg.get("gold") or {}
         rows.append(
             f"({cfg['map']}, {t['base_ms']}, {t['per_min_ms']}, {t['cap_ms']}, {recall_ms}, {recall_emp_ms}, "
             f"{f.get('tick_ms', 0)}, {f.get('hp_pct', 0)}, {f.get('mana_pct', 0)}, "
@@ -176,7 +188,10 @@ def emit(configs):
             f"{cfg.get('assist_window_ms', 10000)}, "
             f"{cfg.get('assist_buff_max_duration_ms', 60000)}, "
             f"{cfg['spawn']['dome']['alliance_entry']}, "
-            f"{cfg['spawn']['dome']['horde_entry']})")
+            f"{cfg['spawn']['dome']['horde_entry']}, "
+            f"{gold.get('starting_stipend', 0)}, "
+            f"{gold.get('passive_tick_ms', 0)}, "
+            f"{gold.get('passive_per_tick', 0)})")        
     lines.append(",\n".join(rows) + ";")
 
     # One dome pair per map, sized from that map's spawn.radius. Copies of

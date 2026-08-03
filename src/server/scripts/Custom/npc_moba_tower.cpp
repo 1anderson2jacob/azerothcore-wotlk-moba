@@ -63,25 +63,32 @@ struct npc_moba_tower : public ScriptedAI
         _isAggroLocked = true;
     }
 
-    // Handles the case HandleKillUnit can't: a lane creep (not a player or
-    // their pet) landing the killing blow. Player-attributed kills are
-    // already handled by BattlegroundMOBA::HandleKillUnit -- this only
-    // fires for the remaining case, never both.
+    // The ONE place that sees a structure's true killing blow, which is why all
+    // tower credit resolves here rather than in BattlegroundMOBA::HandleKillUnit --
+    // Unit::Kill overwrites that hook's killer with the loot recipient (first
+    // tapper) before calling it. A creep-finished structure still pays its team;
+    // only the last-hit bonus needs a player, and passing nullptr is what skips it.
     void JustDied(Unit* killer) override
     {
-        if (!killer || killer->GetCharmerOrOwnerPlayerOrPlayerItself())
-            return;
-
-        MobaCreepConfig const* creepCfg = sMobaCreepDataStore->GetConfig(killer->GetEntry());
-        if (!creepCfg)
-            return;
-
         BattlegroundMap* bgMap = me->GetMap()->ToBattlegroundMap();
         if (!bgMap)
             return;
 
-        if (auto* moba = dynamic_cast<BattlegroundMOBA*>(bgMap->GetBG()))
-            moba->OnTowerDestroyed(me, creepCfg->team);
+        auto* moba = dynamic_cast<BattlegroundMOBA*>(bgMap->GetBG());
+        if (!moba)
+            return;
+
+        // Pets and charmed units resolve to their owner, so a warlock's felguard
+        // landing the blow still pays the warlock.
+        if (Player* player = killer ? killer->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr)
+        {
+            moba->OnTowerDestroyed(me, player->GetBgTeamId(), player);
+            return;
+        }
+
+        // A lane creep finished it: its config names the team that benefits.
+        if (MobaCreepConfig const* creepCfg = killer ? sMobaCreepDataStore->GetConfig(killer->GetEntry()) : nullptr)
+            moba->OnTowerDestroyed(me, creepCfg->team, nullptr);
     }
 
 private:

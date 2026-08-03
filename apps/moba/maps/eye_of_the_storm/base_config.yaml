@@ -35,3 +35,14 @@ spawn:
   dome: {alliance_entry: 900400, horde_entry: 900401}
   alliance: {graveyard_id: 1103, x: 2387.529,  y: 1587.426,  z: 1174.763, o: 3.0222116}
   horde:    {graveyard_id: 1104, x: 1942.9327, y: 1547.6229, z: 1176.458, o: 0.32122585}
+
+# Match economy. All copper -- the match wallet mirrors the coin denomination
+# rather than being a separate resource, so these read against store_config
+# prices directly (cheapest item today: 5000).
+gold:
+  starting_stipend: 15000      # in the wallet on entry; 0 = start broke
+  # Cadence is a traffic knob as much as a pacing one: every accrual pushes an
+  # S: payload per player, which also repaints an open shop panel. 5s at 100c is
+  # the same 20 copper/sec as 1s at 20c, for a fifth of the messages.
+  passive_tick_ms: 5000
+  passive_per_tick: 100

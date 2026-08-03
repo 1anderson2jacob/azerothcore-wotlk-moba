@@ -62,6 +62,10 @@ def validate(cfg, path):
             fail(f'{path}: structure {t["entry"]} "team" must be 0 or 1')
         if t.get("kind", "tower") not in KIND_IDS:
             fail(f'{path}: structure {t["entry"]} "kind" must be one of {sorted(KIND_IDS)}')
+        for k in ("gold", "gold_last_hit"):
+            v = t.get(k, 0)
+            if not isinstance(v, int) or v < 0:
+                fail(f'{path}: structure {t["entry"]} "{k}" must be a non-negative integer (copper)')
 
 
 def load_configs():
@@ -148,11 +152,13 @@ def emit(configs):
         "    `Orientation`      FLOAT NOT NULL,",
         "    `AttackRange`      FLOAT NOT NULL DEFAULT 40,",
         "    `AttackIntervalMs` INT UNSIGNED NOT NULL DEFAULT 1500,",
-        "    `AttackSpellId`    INT UNSIGNED NOT NULL DEFAULT 9053",
+        "    `AttackSpellId`    INT UNSIGNED NOT NULL DEFAULT 9053,",
+        "    `TeamGold`         INT UNSIGNED NOT NULL DEFAULT 0,      -- copper to EVERY player on the destroying team",
+        "    `LastHitGold`      INT UNSIGNED NOT NULL DEFAULT 0       -- copper to the killing-blow player only",
         ");",
         "",
         "INSERT INTO `mod_moba_tower_data`",
-        "(`CreatureEntry`, `Map`, `Team`, `Tier`, `GuardedByEntry`, `Kind`, `RespawnMs`, `PosX`, `PosY`, `PosZ`, `Orientation`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`)",
+        "(`CreatureEntry`, `Map`, `Team`, `Tier`, `GuardedByEntry`, `Kind`, `RespawnMs`, `PosX`, `PosY`, `PosZ`, `Orientation`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `TeamGold`, `LastHitGold`)",
         "VALUES",
     ]
     data_rows = []
@@ -162,7 +168,8 @@ def emit(configs):
                 f"({t['entry']}, {cfg['map']}, {t['team']}, {t['tier']}, {t['guarded_by_entry']}, "
                 f"{KIND_IDS[t.get('kind', 'tower')]}, {t.get('respawn_ms', 0)}, "
                 f"{t['x']}, {t['y']}, {t['z']}, {t['o']}, "
-                f"{t['attack_range']}, {t['attack_interval_ms']}, {t['attack_spell_id']})")
+                f"{t['attack_range']}, {t['attack_interval_ms']}, {t['attack_spell_id']}, "
+                f"{t.get('gold', 0)}, {t.get('gold_last_hit', 0)})")
     lines.append(",\n".join(data_rows) + ";")
     return "\n".join(lines) + "\n"
 
