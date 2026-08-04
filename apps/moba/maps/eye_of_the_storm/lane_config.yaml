@@ -3,7 +3,6 @@
 # `forward` = the order the points are walked (team 0 uses it); `reverse` is
 # auto-generated for team 1. Walk each lane exactly once.
 
-id_range: [900100, 900499]   # pool for auto-assigned waypoint_data IDs [low, high]
 max_spacing: 5.0             # max yards between generated nodes; KEEP ~5 --
                             # sparser nodes break creep re-aggro (see README)
 

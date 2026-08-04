@@ -13,7 +13,7 @@
 
 USE acore_world;
 
-DELETE FROM `creature_template` WHERE `entry` IN (900000, 900002, 900004, 900001, 900003, 900005);
+DELETE FROM `creature_template` WHERE `entry` BETWEEN 900000 AND 900009;
 INSERT INTO `creature_template`
 (`entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`,
  `speed_walk`, `speed_run`, `rank`, `unit_class`, `unit_flags`, `unit_flags2`,
@@ -27,7 +27,12 @@ VALUES
 (900003, 'Horde Inhibitor', 'MOBA Objective', 80, 80, 83, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 10, 5, 0, 0, 0, 'npc_moba_tower', 0),
 (900005, 'Horde Base', 'MOBA Objective', 80, 80, 83, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 15, 5, 0, 0, 0, 'npc_moba_tower', 0);
 
-DELETE FROM `creature_template_model` WHERE `CreatureID` IN (900000, 900002, 900004, 900001, 900003, 900005);
+-- Structures spawn from C++, never from `creature` rows, so this normally
+-- deletes nothing. It sweeps GM `.npc add` test spawns. The spawn table's
+-- entry column is `id`, not `id1`: upstream 2026_06_16_00.sql renamed it.
+DELETE FROM `creature` WHERE `id` BETWEEN 900000 AND 900009;
+
+DELETE FROM `creature_template_model` WHERE `CreatureID` BETWEEN 900000 AND 900009;
 INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)
 VALUES
 (900000, 0, 27101, 3.0, 1, 0),

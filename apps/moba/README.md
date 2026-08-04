@@ -24,19 +24,20 @@ what each config key means, and the lockfile rules.
 | `gen_creep_roster.py` | `maps/<mode>/creep_config.yaml` + source dumps in `sources/` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data`, `mod_moba_creep_drops`, native `creature_loot_template` rows |
 | `gen_neutral_camps.py` | `maps/<mode>/neutral_config.yaml` + source dumps in `sources/` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior/drops tables, native `creature_loot_template` rows |
 | `gen_creep_paths.py` | `maps/<mode>/lane_config.yaml` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data` |
-| `gen_tower_data.py` | `maps/<mode>/tower_config.yaml` | `mod_moba_towers.sql` — `mod_moba_tower_data` |
-| `gen_base.py` | `maps/<mode>/base_config.yaml` | `mod_moba_base.sql` — `mod_moba_base`, plus the `game_graveyard` / `battleground_template` spawn wiring |
+| `gen_tower_data.py` | `maps/<mode>/tower_config.yaml` | `mod_moba_towers.sql` — `creature_template`, models, `mod_moba_tower_data` |
+| `gen_base.py` | `maps/<mode>/base_config.yaml` | `mod_moba_base.sql` — `mod_moba_base`, the spawn-dome `gameobject_template` (+ `_addon`), plus the `game_graveyard` / `battleground_template` spawn wiring |
+| `gen_store.py` | `maps/<mode>/store_config.yaml` + `data/sql/base/db_world/item_template.sql` | `mod_moba_store.sql` — shopkeeper `creature_template`, models and `creature` spawn rows, plus `mod_moba_store_npc`/`_menu`/`_grant`/`_sell` (and `_itemstage` when `custom_items` is on). **Also writes `client/addons/MobaHUD/Catalog.lua`** — the only generator emitting outside `data/sql/` |
 | `gen_player_drops.py` | `maps/<mode>/player_config.yaml` | `mod_moba_player_drops.sql` — the `Map`-keyed `mod_moba_player_drops` table, granted directly to the killer (no native loot) |
+| `id_alloc.py` | `id_blocks.json` + every `*.lock.json` and hand-assigned config field | nothing — it is the ID registry the others allocate through; `--audit` prints and checks the whole picture |
 
-Pipeline constants (output paths, id ranges, scanned SQL dirs) live in the
-generators, not the configs — each generator globs `maps/*/<name>_config.yaml`, so
-the per-map YAML holds only that map's content. Tower *creatures* are the exception
-to the generated rule: shared and hand-written in
-`data/sql/custom/db_world/mod_moba_tower_defs.sql`.
+Pipeline constants (output paths) live in the generators, not the configs — each
+generator globs `maps/*/<name>_config.yaml`, so the per-map YAML holds only that
+map's content. ID blocks are the one genuinely shared thing, and they live in
+`id_blocks.json` (see below). `gen_tower_data.py` owns the tower creatures
+outright: there is no hand-written defs file.
 
 ## `lane_config.yaml` — human-owned, edit freely
 
-- `id_range` — pool for auto-assigned `waypoint_data` IDs (`[low, high]`).
 - `max_spacing` — max yards between generated nodes. **Keep at ~5.** Sparser
   nodes break creep re-aggro: the engine's leash checks anchor to
   waypoint-generator positions, and sparse nodes leave those anchors far from the
@@ -141,15 +142,53 @@ loot entirely — `item` is a rolled `AddItem` grant too, landing in
 `mod_moba_player_drops` alongside buff/gold instead of `creature_loot_template`.
 Delivered by `GrantPlayerKillDrops` at the resolved kill.
 
+## ID allocation — `id_blocks.json`
+
+Every custom ID this fork assigns is owned by exactly one generator, and every
+owner's claim is a **block** declared in `apps/moba/id_blocks.json`. Blocks and
+lockfiles answer different questions:
+
+| | Lives in | Answers |
+|---|---|---|
+| **Block** | `id_blocks.json` — one file, global | which IDs may this generator use? |
+| **Assignment** | `<config>.lock.json` — one per map bundle | which ID did this key get? |
+
+Blocks are global because every bundle's creeps draw from one range; assignments
+are per-bundle because two maps may both have an `alliance_tower`.
+
+`gen_all.sh` ends with `python3 apps/moba/id_alloc.py --audit`, which prints
+every allocation and fails on a collision, a block trespass, an ID outside every
+block, or two owners' blocks overlapping. Run it any time to see the live picture.
+
+Namespaces are independent: `waypoint_data` 900206 and `creature_template` 900206
+are unrelated IDs and both legal. The waypoint block 900100-900499 numerically
+overlaps the neutral, store and dome blocks for exactly that reason.
+
+**A full block grows itself.** When an owner's blocks fill, the allocator carves
+another — 100 wide, aligned to a 100 boundary, above every block already declared
+in that namespace — records it in `id_blocks.json`, and says so in the generator's
+output. No two owners may share a block: each clears its own range on every
+regen, so an overlap would let one generator wipe the other's rows. The allocator
+re-runs the overlap check before saving and refuses to write a ledger that breaks
+it.
+
+**Generated SQL clears by block, not by roster.** A `DELETE ... WHERE entry IN
+(<current roster>)` can never name an entry the config no longer has, so a mob
+dropped from config used to leave its `creature_template` row live in
+`acore_world` forever. Clearing the whole block needs no memory of what was
+stranded.
+
 ## Lockfiles — machine-owned, committed, never hand-edited
 
 `lane_config.lock.json` maps each lane/slot to its permanently assigned
-forward/reverse `waypoint_data` IDs. `creep_config.lock.json` does the same for
+forward/reverse `waypoint_data` IDs. `creep_config.lock.json`,
+`neutral_config.lock.json` and `tower_config.lock.json` do the same for
 auto-assigned `creature_template` entries.
 
-This is what makes re-runs safe: geometry changes — re-walks, offset tuning,
-spacing changes — regenerate the same IDs, so `mod_moba_creep_data.WaypointPathId`
-references never silently break.
+This is what makes re-runs safe: a locked ID is returned *before* any block check
+runs, so re-walks, offset tuning, spacing changes — and even moving an owner's
+block — all regenerate the same IDs, and
+`mod_moba_creep_data.WaypointPathId` references never silently break.
 
 **Deleting a lockfile makes the next run assign fresh IDs to everything**, which
 orphans every reference already in the DB. Don't.
@@ -157,7 +196,7 @@ orphans every reference already in the DB. Don't.
 ## Reusing `gen_creep_paths.py` elsewhere
 
 Copy an existing `lane_config.yaml` into a new map bundle as
-`maps/<mode>/lane_config.yaml`, adjust `id_range` / `max_spacing` / `slots`, and
+`maps/<mode>/lane_config.yaml`
 replace the lanes with real ones. Output path and scanned-SQL dirs are generator
 constants now, not config fields. The lockfile is created next to the config on
 first run.

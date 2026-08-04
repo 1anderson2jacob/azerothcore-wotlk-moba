@@ -3,11 +3,14 @@
 -- Produced by apps/moba/gen_neutral_camps.py from apps/moba/maps/*/neutral_config.yaml.
 -- Stats are full copies of real source creatures with a fixed override
 -- list enforced in code -- see the generator's docstring.
+-- Every DELETE clears this generator's whole ID block, not just the rows
+-- about to be inserted, so a mob removed from config loses its DB rows too.
+-- Blocks are declared in apps/moba/id_blocks.json.
 -- ============================================================
 
 USE acore_world;
 
-DELETE FROM `creature_template` WHERE `entry` IN (900200, 900201, 900202, 900203, 900204, 900205, 900206, 900207);
+DELETE FROM `creature_template` WHERE `entry` BETWEEN 900200 AND 900249;
 INSERT INTO `creature_template`
 (`entry`, `difficulty_entry_1`, `difficulty_entry_2`, `difficulty_entry_3`, `KillCredit1`, `KillCredit2`, `name`, `subname`, `IconName`, `gossip_menu_id`, `minlevel`, `maxlevel`, `exp`, `faction`, `npcflag`, `speed_walk`, `speed_run`, `speed_swim`, `speed_flight`, `detection_range`, `rank`, `dmgschool`, `DamageModifier`, `BaseAttackTime`, `RangeAttackTime`, `BaseVariance`, `RangeVariance`, `unit_class`, `unit_flags`, `unit_flags2`, `dynamicflags`, `family`, `type`, `type_flags`, `lootid`, `pickpocketloot`, `skinloot`, `PetSpellDataId`, `VehicleId`, `mingold`, `maxgold`, `AIName`, `MovementType`, `HoverHeight`, `HealthModifier`, `ManaModifier`, `ArmorModifier`, `ExperienceModifier`, `RacialLeader`, `movementId`, `RegenHealth`, `CreatureImmunitiesId`, `flags_extra`, `ScriptName`, `VerifiedBuild`)
 VALUES
@@ -28,7 +31,12 @@ VALUES
 -- boar_small (from creature_template_2279.txt)
 (900207,0,0,0,0,0,'Young Boar','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0);
 
-DELETE FROM `creature_template_model` WHERE `CreatureID` IN (900200, 900201, 900202, 900203, 900204, 900205, 900206, 900207);
+-- Neutrals spawn from C++, never from `creature` rows, so this normally deletes
+-- nothing. It sweeps GM `.npc add` test spawns. The spawn table's entry column
+-- is `id`, not `id1`: upstream 2026_06_16_00.sql renamed it.
+DELETE FROM `creature` WHERE `id` BETWEEN 900200 AND 900249;
+
+DELETE FROM `creature_template_model` WHERE `CreatureID` BETWEEN 900200 AND 900249;
 INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)
 VALUES
 (900200, 0, 9563, 1.8, 1, 0),
@@ -40,7 +48,7 @@ VALUES
 (900206, 0, 193, 1.5, 1, 0),
 (900207, 0, 193, 1.0, 1, 0);
 
-DELETE FROM `creature_equip_template` WHERE `CreatureID` IN (900200, 900201, 900202, 900203, 900204, 900205, 900206, 900207);
+DELETE FROM `creature_equip_template` WHERE `CreatureID` BETWEEN 900200 AND 900249;
 
 -- CampId is positional (config order) and scoped to Map; nothing
 -- outside this file references it.
@@ -138,7 +146,7 @@ VALUES
 -- boar_small
 (900207, 566, 8, 20);
 
-DELETE FROM `creature_loot_template` WHERE `Entry` IN (900200, 900201, 900202, 900203, 900204, 900205, 900206, 900207);
+DELETE FROM `creature_loot_template` WHERE `Entry` BETWEEN 900200 AND 900249;
 
 -- Drops, rolled and delivered by BattlegroundMOBA::GrantDeathDrops at
 -- the killing blow. Type 0 = buff (aura on the killer), 1 = gold

@@ -15,7 +15,9 @@
 #   gold_last_hit       copper to the killing-blow player only, on top of the
 #                       above. A structure finished by a creep pays its team but
 #                       no bonus, so this is silently skipped there. 0 = none
-#   guarded_by_entry    0 = always vulnerable; else the entry that must die first
+#   key                 stable name for this structure; entries are assigned by
+#                       the generator into tower_config.lock.json, never here
+#   guarded_by          omit = always vulnerable; else the KEY that must die first
 #   respawn_ms          inhibitor respawn delay (ms); omit / 0 = never respawns
 #   name                creature name (subname defaults to "MOBA Objective")
 #   display_id          creature model; display_scale multiplies its size
@@ -31,11 +33,10 @@ map: 566
 
 towers:
   # --- Alliance side (high X; spawn door ~2387) ---
-  - entry: 900000
+  - key: alliance_tower
     team: 0
     kind: tower
     tier: 0
-    guarded_by_entry: 0
     name: Alliance Tower
     display_id: 27101
     display_scale: 3.0
@@ -50,11 +51,11 @@ towers:
     gold: 3000
     gold_last_hit: 1500
 
-  - entry: 900002
+  - key: alliance_inhibitor
     team: 0
     kind: inhibitor
     tier: 1
-    guarded_by_entry: 900000
+    guarded_by: alliance_tower
     respawn_ms: 120000
     name: Alliance Inhibitor
     display_id: 1460
@@ -70,11 +71,11 @@ towers:
     gold: 0
     gold_last_hit: 1500
 
-  - entry: 900004
+  - key: alliance_core
     team: 0
     kind: core
     tier: 2
-    guarded_by_entry: 900002
+    guarded_by: alliance_inhibitor
     name: Alliance Base
     display_id: 11659
     display_scale: 2.0
@@ -90,11 +91,10 @@ towers:
     gold_last_hit: 0
 
   # --- Horde side (low X; spawn door ~1942) ---
-  - entry: 900001
+  - key: horde_tower
     team: 1
     kind: tower
     tier: 0
-    guarded_by_entry: 0
     name: Horde Tower
     display_id: 18505
     display_scale: 2.0
@@ -109,11 +109,11 @@ towers:
     gold: 3000
     gold_last_hit: 1500
 
-  - entry: 900003
+  - key: horde_inhibitor
     team: 1
     kind: inhibitor
     tier: 1
-    guarded_by_entry: 900001
+    guarded_by: horde_tower
     respawn_ms: 120000
     name: Horde Inhibitor
     display_id: 1461
@@ -129,11 +129,11 @@ towers:
     gold: 0
     gold_last_hit: 1500
 
-  - entry: 900005
+  - key: horde_core
     team: 1
     kind: core
     tier: 2
-    guarded_by_entry: 900003
+    guarded_by: horde_inhibitor
     name: Horde Base
     display_id: 11659
     display_scale: 2.0

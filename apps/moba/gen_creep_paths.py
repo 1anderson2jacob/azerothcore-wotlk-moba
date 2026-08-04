@@ -8,8 +8,8 @@ node spacing, generates one offset path per formation slot per direction, and
 emits one combined idempotent DELETE+INSERT SQL file for `waypoint_data`
 (data/sql/custom/db_world/mod_moba_creep_paths.sql) across all maps.
 
-Path IDs are auto-assigned from each config's id_range on first use and
-persisted to a machine-owned lockfile in the same bundle
+Path IDs are auto-assigned from the generator's block in apps/moba/id_blocks.json
+on first use and persisted to a machine-owned lockfile in the same bundle
 (lane_config.lock.json). Later runs reuse the locked IDs, so re-walking or
 re-tuning a lane never changes which waypoint_data id a creature's
 mod_moba_creep_data.WaypointPathId points at. Do not hand-edit the lockfile.
@@ -31,9 +31,10 @@ import re
 import sys
 from pathlib import Path
 
+import id_alloc
+
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_creep_paths.sql")
-SCAN_SQL_DIRS = ["data/sql/custom/db_world"]
 COORD_FMT = "{:.4f}"
 DEDUP_EPSILON = 0.5  # yards; consecutive walked points closer than this are merged
 
@@ -59,11 +60,6 @@ def extract_points(text):
 # ---------------------------------------------------------------- validation
 
 def validate_config(cfg, path):
-    id_range = cfg.get("id_range")
-    if (not isinstance(id_range, list) or len(id_range) != 2
-            or not all(isinstance(v, int) for v in id_range) or id_range[0] > id_range[1]):
-        fail(f'{path}: "id_range" must be [low, high] with low <= high')
-
     spacing = cfg.get("max_spacing")
     if not isinstance(spacing, (int, float)) or spacing <= 0:
         fail(f'{path}: "max_spacing" must be a positive number')
@@ -125,46 +121,22 @@ def dedup_points(lane_name, points):
 
 # ---------------------------------------------------------------- id locking
 
-def collect_used_ids(scan_dirs):
-    """Every waypoint_data id referenced anywhere in the scanned SQL files."""
-    used = set()
-    delete_re = re.compile(
-        r"DELETE\s+FROM\s+`?waypoint_data`?\s+WHERE\s+`?id`?\s+IN\s*\(([^)]*)\)", re.I)
-    insert_re = re.compile(r"INSERT\s+INTO\s+`?waypoint_data`?.*?;", re.I | re.S)
-    row_re = re.compile(r"\(\s*(\d+)\s*,")
-    for d in scan_dirs:
-        path = Path(d)
-        if not path.is_dir():
-            note(f'scan dir "{d}" not found — skipping')
-            continue
-        for sql_file in sorted(path.glob("*.sql")):
-            text = sql_file.read_text()
-            for m in delete_re.finditer(text):
-                used.update(int(t) for t in re.findall(r"\d+", m.group(1)))
-            for block in insert_re.finditer(text):
-                used.update(int(t) for t in row_re.findall(block.group(0)))
-    return used
+def get_path_ids(lock, lane_name, slot_name, alloc, assigned_log):
+    """Reuse locked IDs for lane/slot, or allocate a fresh pair and lock them.
 
-
-def get_path_ids(lock, lane_name, slot_name, used, id_range, assigned_log):
-    """Reuse locked IDs for lane/slot, or allocate fresh ones and lock them."""
+    Same short-circuit as gen_creep_roster.get_entry: a locked pair is returned
+    with no block check. Today's pairs are not adjacent (melee_right is
+    900110/900120), and nothing requires them to be.
+    """
     lane_lock = lock.setdefault("path_ids", {}).setdefault(lane_name, {})
     slot_lock = lane_lock.get(slot_name)
     if slot_lock is not None:
         return slot_lock["forward"], slot_lock["reverse"], False
 
-    ids = []
-    candidate = id_range[0]
-    while len(ids) < 2:
-        if candidate > id_range[1]:
-            fail(f"id_range {id_range} exhausted — no free waypoint IDs left")
-        if candidate not in used:
-            ids.append(candidate)
-            used.add(candidate)
-        candidate += 1
-    lane_lock[slot_name] = {"forward": ids[0], "reverse": ids[1]}
-    assigned_log.append((lane_name, slot_name, ids[0], ids[1]))
-    return ids[0], ids[1], True
+    fwd, rev = alloc.take(2)
+    lane_lock[slot_name] = {"forward": fwd, "reverse": rev}
+    assigned_log.append((lane_name, slot_name, fwd, rev))
+    return fwd, rev, True
 
 
 # ------------------------------------------------------------------ geometry
@@ -219,7 +191,7 @@ def sql_rows(path_id, points):
     return rows
 
 
-def emit_sql(generated):
+def emit_sql(generated, blocks):
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE — do not hand-edit.",
@@ -228,8 +200,10 @@ def emit_sql(generated):
         "-- each map bundle's lane_config.lock.json).",
         "-- ============================================================",
         "",
-        "DELETE FROM `waypoint_data` WHERE `id` IN ("
-        + ", ".join(str(pid) for pid, _, _ in generated) + ");",
+        "-- The DELETE clears this generator's whole ID block, not just the paths",
+        "-- about to be inserted, so a lane or slot removed from config loses its",
+        "-- waypoint rows too. Blocks are declared in apps/moba/id_blocks.json.",
+        f"DELETE FROM `waypoint_data` WHERE {id_alloc.sql_window(blocks, '`id`')};",
         "",
         "INSERT INTO `waypoint_data`",
         "(`id`, `point`, `position_x`, `position_y`, `position_z`, `orientation`,"
@@ -262,16 +236,11 @@ def main():
     if not configs:
         fail(f"no lane configs found under {MAPS_DIR}/*/lane_config.yaml")
 
-    # Pre-load every lockfile and gather all used IDs (existing SQL + all
-    # per-map lockfiles) so freshly allocated IDs never collide across maps.
-    used = collect_used_ids(SCAN_SQL_DIRS)
+    alloc = id_alloc.Allocator(id_alloc.Registry(), id_alloc.WAYPOINT_DATA, "creep_paths")
     locks = {}
     for cp in configs:
         lp = cp.with_suffix(".lock.json")
         locks[cp] = json.loads(lp.read_text()) if lp.is_file() else {}
-        for lane_lock in locks[cp].get("path_ids", {}).values():
-            for slot_lock in lane_lock.values():
-                used.update(slot_lock.values())
 
     assigned_log = []
     generated = []  # (path_id, label, points)
@@ -293,7 +262,7 @@ def main():
             reversed_centerline = list(reversed(centerline))
             for slot in slots:
                 fwd_id, rev_id, fresh = get_path_ids(
-                    lock, name, slot["name"], used, cfg["id_range"], assigned_log)
+                    lock, name, slot["name"], alloc, assigned_log)
                 lat, lon = slot["lateral_offset"], slot["longitudinal_offset"]
                 generated.append(
                     (fwd_id, f"{name} / {slot['name']} / forward",
@@ -308,7 +277,7 @@ def main():
         cp.with_suffix(".lock.json").write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(emit_sql(generated))
+    OUTPUT.write_text(emit_sql(generated, alloc.blocks))
 
     print(f"\nWrote {OUTPUT} ({len(generated)} paths across {len(configs)} map(s), "
           f"{sum(len(p) for _, _, p in generated)} waypoint rows).")

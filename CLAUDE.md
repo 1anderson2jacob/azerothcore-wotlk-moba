@@ -138,7 +138,7 @@ Neither is duplicated here. Read them when the task needs them.
 | Item shop (server) | `Zones/MobaStoreData.{h,cpp}`, `scripts/Custom/npc_moba_store.cpp`, `RecordGrantedItem` + `RemovePlayer` in `BattlegroundMOBA.cpp` | `store_config.yaml` → `gen_store.py` → `mod_moba_store.sql` (shopkeeper NPCs + spawns + catalog tables) **and** `client/addons/MobaHUD/Catalog.lua` |
 | Client addon (HUD bar, feeds, shop panel) | `client/addons/MobaHUD/` — `Core.lua` (shared `ns`), `Bar.lua`, `Feed.lua`, `Shop.lua`, `Minimap.lua` (shop button), `MobaHUD.lua` (orchestrator); server side in `scripts/Custom/moba_hud.cpp` | — (copy the whole folder into `Interface/AddOns/`; `Catalog.lua` is generated into it) |
 
-Per-map config bundles live in `apps/moba/maps/<mode>/`; generators in `apps/moba/` (see `apps/moba/README.md`). Adding a map/mode = dropping in a new `maps/<mode>/` bundle — every content table carries a `Map` column. Custom DB entries live at **900000+**. Custom SQL in data/sql/custom/db_world/ (+db_auth/db_characters) and vendored-module SQL auto-apply on worldserver boot (Updates.AutoSetup).
+Per-map config bundles live in `apps/moba/maps/<mode>/`; generators in `apps/moba/` (see `apps/moba/README.md`). Adding a map/mode = dropping in a new `maps/<mode>/` bundle — every content table carries a `Map` column. Custom DB IDs are allocated by `apps/moba/id_alloc.py` from blocks declared in `apps/moba/id_blocks.json` (`--audit` to inspect). Custom SQL in data/sql/custom/db_world/ (+db_auth/db_characters) and vendored-module SQL auto-apply on worldserver boot (Updates.AutoSetup).
 
 ## Gitignore overrides (fork)
 

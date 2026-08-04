@@ -5,11 +5,14 @@
 -- "source" fields) with a fixed override list enforced in code --
 -- see the generator's docstring for the list and rationale.
 -- Waypoint paths live in mod_moba_creep_paths.sql (gen_creep_paths.py).
+-- Every DELETE clears this generator's whole ID block, not just the rows
+-- about to be inserted, so a creep removed from config loses its DB rows
+-- too. Blocks are declared in apps/moba/id_blocks.json.
 -- ============================================================
 
 USE acore_world;
 
-DELETE FROM `creature_template` WHERE `entry` IN (900010, 900016, 900011, 900017, 900012, 900013, 900014, 900015, 900018, 900019);
+DELETE FROM `creature_template` WHERE `entry` BETWEEN 900010 AND 900099;
 INSERT INTO `creature_template`
 (`entry`, `difficulty_entry_1`, `difficulty_entry_2`, `difficulty_entry_3`, `KillCredit1`, `KillCredit2`, `name`, `subname`, `IconName`, `gossip_menu_id`, `minlevel`, `maxlevel`, `exp`, `faction`, `npcflag`, `speed_walk`, `speed_run`, `speed_swim`, `speed_flight`, `detection_range`, `rank`, `dmgschool`, `DamageModifier`, `BaseAttackTime`, `RangeAttackTime`, `BaseVariance`, `RangeVariance`, `unit_class`, `unit_flags`, `unit_flags2`, `dynamicflags`, `family`, `type`, `type_flags`, `lootid`, `pickpocketloot`, `skinloot`, `PetSpellDataId`, `VehicleId`, `mingold`, `maxgold`, `AIName`, `MovementType`, `HoverHeight`, `HealthModifier`, `ManaModifier`, `ArmorModifier`, `ExperienceModifier`, `RacialLeader`, `movementId`, `RegenHealth`, `CreatureImmunitiesId`, `flags_extra`, `ScriptName`, `VerifiedBuild`)
 VALUES
@@ -34,7 +37,13 @@ VALUES
 -- horde_super (from creature_template_34775.txt)
 (900019,0,0,0,0,0,'Horde Super Minion','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.6,1,0.5,1,0,0,0,0,2097152,'npc_moba_creep',0);
 
-DELETE FROM `creature_template_model` WHERE `CreatureID` IN (900010, 900016, 900011, 900017, 900012, 900013, 900014, 900015, 900018, 900019);
+-- Creeps spawn from C++, never from `creature` rows, so this normally deletes
+-- nothing. It sweeps GM `.npc add` test spawns, which would otherwise sit in
+-- the world forever. The spawn table's entry column is `id`, not `id1`:
+-- upstream 2026_06_16_00.sql renamed it and moved id2/id3 to creature_multispawn.
+DELETE FROM `creature` WHERE `id` BETWEEN 900010 AND 900099;
+
+DELETE FROM `creature_template_model` WHERE `CreatureID` BETWEEN 900010 AND 900099;
 INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)
 VALUES
 (900010, 0, 164, 1.0, 1, 0),
@@ -48,7 +57,7 @@ VALUES
 (900018, 0, 8395, 1.5, 1, 0),
 (900019, 0, 12818, 1.5, 1, 0);
 
-DELETE FROM `creature_equip_template` WHERE `CreatureID` IN (900010, 900016, 900011, 900017, 900012, 900013, 900014, 900015, 900018, 900019);
+DELETE FROM `creature_equip_template` WHERE `CreatureID` BETWEEN 900010 AND 900099;
 INSERT INTO `creature_equip_template` (`CreatureID`, `ID`, `ItemID1`, `ItemID2`, `ItemID3`, `VerifiedBuild`)
 VALUES
 (900010, 1, 1899, 143, 0, 0),
@@ -98,7 +107,7 @@ VALUES
 -- horde_super (mid/super)
 (900019, 566, 1, 3, 20, 2000, 0, 900103, 60000);
 
-DELETE FROM `creature_loot_template` WHERE `Entry` IN (900010, 900016, 900011, 900017, 900012, 900013, 900014, 900015, 900018, 900019);
+DELETE FROM `creature_loot_template` WHERE `Entry` BETWEEN 900010 AND 900099;
 INSERT INTO `creature_loot_template`
 (`Entry`, `Item`, `Reference`, `Chance`, `QuestRequired`, `LootMode`, `GroupId`, `MinCount`, `MaxCount`, `Comment`)
 VALUES

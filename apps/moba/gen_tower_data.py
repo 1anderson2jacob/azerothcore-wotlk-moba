@@ -11,22 +11,31 @@ generates data/sql/custom/db_world/mod_moba_towers.sql in full:
 
 Fixed creature invariants (level 80, unit flags, npc_moba_tower script, etc.)
 are enforced in code below; everything a designer tunes -- name, display,
-scale, health -- is a config field, mirroring gen_creep_roster.py. Structure
-entries are assigned by hand in the config (900000+) and must be globally
-unique across maps (mod_moba_tower_data keys on CreatureEntry).
+scale, health -- is a config field, mirroring gen_creep_roster.py.
+
+Structures are named by `key`, never by entry. creature_template entries are
+auto-assigned from this generator's block in apps/moba/id_blocks.json on first
+use and persisted to tower_config.lock.json, so `guarded_by` names a sibling's
+key and the numbers never leave the generator. Keys are per-bundle, like creep
+and neutral keys, so two maps may both have an "alliance_tower". Do not
+hand-edit the lockfile.
 
 Usage (from the repo root):
     python3 apps/moba/gen_tower_data.py
 """
 
+import json
 import yaml
 import sys
 from pathlib import Path
 
+import id_alloc
+from gen_creep_roster import get_entry
+
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_towers.sql")
 
-REQUIRED_TOWER = ["entry", "team", "tier", "guarded_by_entry",
+REQUIRED_TOWER = ["key", "team", "tier",
                   "name", "display_id", "display_scale", "health_modifier",
                   "x", "y", "z", "o",
                   "attack_range", "attack_interval_ms", "attack_spell_id"]
@@ -54,40 +63,83 @@ def validate(cfg, path):
     towers = cfg.get("towers")
     if not isinstance(towers, list) or not towers:
         fail(f'{path}: "towers" must be a non-empty list')
+    keys = set()
     for t in towers:
         for k in REQUIRED_TOWER:
             if k not in t:
-                fail(f'{path}: structure {t.get("entry", "?")} missing "{k}"')
+                fail(f'{path}: structure {t.get("key", "?")} missing "{k}"')
+        if t["key"] in keys:
+            fail(f'{path}: duplicate structure key "{t["key"]}"')
+        keys.add(t["key"])
         if t["team"] not in (0, 1):
-            fail(f'{path}: structure {t["entry"]} "team" must be 0 or 1')
+            fail(f'{path}: structure {t["key"]} "team" must be 0 or 1')
         if t.get("kind", "tower") not in KIND_IDS:
-            fail(f'{path}: structure {t["entry"]} "kind" must be one of {sorted(KIND_IDS)}')
+            fail(f'{path}: structure {t["key"]} "kind" must be one of {sorted(KIND_IDS)}')
         for k in ("gold", "gold_last_hit"):
             v = t.get(k, 0)
             if not isinstance(v, int) or v < 0:
-                fail(f'{path}: structure {t["entry"]} "{k}" must be a non-negative integer (copper)')
+                fail(f'{path}: structure {t["key"]} "{k}" must be a non-negative integer (copper)')
+    for t in towers:
+        guard = t.get("guarded_by")
+        if guard is None:
+            continue
+        if guard == t["key"]:
+            fail(f'{path}: structure {t["key"]} "guarded_by" points at itself')
+        if guard not in keys:
+            fail(f'{path}: structure {t["key"]} "guarded_by" names "{guard}", which is '
+                 f"not a structure key in this config")
 
 
 def load_configs():
     configs = []
-    seen_entries = {}
     for path in sorted(MAPS_DIR.glob("*/tower_config.yaml")):
         cfg = yaml.safe_load(path.read_text())
         validate(cfg, path)
-        for t in cfg["towers"]:
-            if t["entry"] in seen_entries:
-                fail(f'{path}: structure entry {t["entry"]} already defined in '
-                     f'{seen_entries[t["entry"]]} -- entries must be globally unique')
-            seen_entries[t["entry"]] = path
         configs.append((path, cfg))
     if not configs:
         fail(f"no structure configs found under {MAPS_DIR}/*/tower_config.yaml")
     return configs
 
 
-def emit(configs):
+def assign_entries(configs):
+    """Stash each structure's entry and guard entry on its dict as _entry /
+    _guarded_by_entry -- the gen_creep_roster pattern.
+
+    Two passes per config, because `guarded_by` may name a structure declared
+    later in the file.
+    """
+    registry = id_alloc.Registry()
+    # Validate what the lockfiles ALREADY hold before adding to them. The
+    # allocator only ever issues inside the block, so an out-of-block id here
+    # can only come from a hand-edit or a block that moved under a live lockfile.
+    id_alloc.validate_owner(id_alloc.CREATURE_TEMPLATE, "towers", registry)
+    alloc = id_alloc.Allocator(registry, id_alloc.CREATURE_TEMPLATE, "towers")
+
+    assigned_log = []
+    for path, cfg in configs:
+        lock_path = path.with_suffix(".lock.json")
+        lock = json.loads(lock_path.read_text()) if lock_path.is_file() else {}
+
+        entries_by_key = {}
+        for t in cfg["towers"]:
+            t["_entry"], _ = get_entry(lock, t["key"], alloc, assigned_log)
+            entries_by_key[t["key"]] = t["_entry"]
+        for t in cfg["towers"]:
+            guard = t.get("guarded_by")
+            t["_guarded_by_entry"] = entries_by_key[guard] if guard else 0
+
+        lock["_comment"] = ("Machine-generated by gen_tower_data.py -- do not edit. "
+                            "Maps structure keys to their permanently assigned "
+                            "creature_template entries.")
+        lock_path.write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
+    return assigned_log, alloc.blocks
+
+
+def emit(configs, blocks):
+    ct_window = id_alloc.sql_window(blocks, "`entry`")
+    ctm_window = id_alloc.sql_window(blocks, "`CreatureID`")
+    spawn_window = id_alloc.sql_window(blocks, "`id`")
     structures = [t for _, cfg in configs for t in cfg["towers"]]
-    entries_csv = ", ".join(str(t["entry"]) for t in structures)
 
     lines = [
         "-- ============================================================",
@@ -105,7 +157,7 @@ def emit(configs):
         "",
         "USE acore_world;",
         "",
-        f"DELETE FROM `creature_template` WHERE `entry` IN ({entries_csv});",
+        f"DELETE FROM `creature_template` WHERE {ct_window};",
         "INSERT INTO `creature_template`",
         "(`entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`,",
         " `speed_walk`, `speed_run`, `rank`, `unit_class`, `unit_flags`, `unit_flags2`,",
@@ -119,7 +171,7 @@ def emit(configs):
         subname = t.get("subname", DEFAULT_SUBNAME)
         armor = t.get("armor_modifier", DEFAULT_ARMOR_MODIFIER)
         ct_rows.append(
-            f"({t['entry']}, {sql_str(t['name'])}, {sql_str(subname)}, 80, 80, {faction}, 0, "
+            f"({t['_entry']}, {sql_str(t['name'])}, {sql_str(subname)}, 80, 80, {faction}, 0, "
             f"1.0, 1.14286, 1, 1, 32768, 2048, "
             f"9, 0, 0, {t['health_modifier']}, {armor}, "
             f"0, 0, 0, 'npc_moba_tower', 0)")
@@ -127,11 +179,16 @@ def emit(configs):
 
     lines += [
         "",
-        f"DELETE FROM `creature_template_model` WHERE `CreatureID` IN ({entries_csv});",
+        "-- Structures spawn from C++, never from `creature` rows, so this normally",
+        "-- deletes nothing. It sweeps GM `.npc add` test spawns. The spawn table's",
+        "-- entry column is `id`, not `id1`: upstream 2026_06_16_00.sql renamed it.",
+        f"DELETE FROM `creature` WHERE {spawn_window};",
+        "",
+        f"DELETE FROM `creature_template_model` WHERE {ctm_window};",
         "INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)",
         "VALUES",
     ]
-    ctm_rows = [f"({t['entry']}, 0, {t['display_id']}, {t['display_scale']}, 1, 0)"
+    ctm_rows = [f"({t['_entry']}, 0, {t['display_id']}, {t['display_scale']}, 1, 0)"
                 for t in structures]
     lines.append(",\n".join(ctm_rows) + ";")
 
@@ -165,7 +222,7 @@ def emit(configs):
     for _, cfg in configs:
         for t in cfg["towers"]:
             data_rows.append(
-                f"({t['entry']}, {cfg['map']}, {t['team']}, {t['tier']}, {t['guarded_by_entry']}, "
+                f"({t['_entry']}, {cfg['map']}, {t['team']}, {t['tier']}, {t['_guarded_by_entry']}, "
                 f"{KIND_IDS[t.get('kind', 'tower')]}, {t.get('respawn_ms', 0)}, "
                 f"{t['x']}, {t['y']}, {t['z']}, {t['o']}, "
                 f"{t['attack_range']}, {t['attack_interval_ms']}, {t['attack_spell_id']}, "
@@ -176,11 +233,17 @@ def emit(configs):
 
 def main():
     configs = load_configs()
+    assigned_log, blocks = assign_entries(configs)
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(emit(configs))
+    OUTPUT.write_text(emit(configs, blocks))
     total = sum(len(c["towers"]) for _, c in configs)
     print(f"Wrote {OUTPUT} ({total} structures across {len(configs)} map(s)).")
-    print("If mod_moba_tower_defs.sql still exists, delete it -- this file now owns those rows.")
+    if assigned_log:
+        print("Newly assigned creature entries (now locked):")
+        for key, entry in assigned_log:
+            print(f"  {key}: {entry}")
+    else:
+        print("All creature entries reused from lockfiles.")
     print("Restart worldserver — mod_moba_towers.sql auto-applies on boot.")
 
 

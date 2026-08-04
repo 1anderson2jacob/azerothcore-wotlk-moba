@@ -5,7 +5,10 @@
 -- each map bundle's lane_config.lock.json).
 -- ============================================================
 
-DELETE FROM `waypoint_data` WHERE `id` IN (900111, 900121, 900110, 900120, 900100, 900101, 900112, 900122, 900102, 900103);
+-- The DELETE clears this generator's whole ID block, not just the paths
+-- about to be inserted, so a lane or slot removed from config loses its
+-- waypoint rows too. Blocks are declared in apps/moba/id_blocks.json.
+DELETE FROM `waypoint_data` WHERE `id` BETWEEN 900100 AND 900499;
 
 INSERT INTO `waypoint_data`
 (`id`, `point`, `position_x`, `position_y`, `position_z`, `orientation`, `velocity`, `delay`, `smoothTransition`, `move_type`, `action`, `action_chance`, `wpguid`)

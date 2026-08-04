@@ -19,9 +19,11 @@ WaypointPathId is resolved from each map bundle's lane generator lockfile
 team 0 (Alliance) and "reverse" for team 1 (Horde) -- matching how
 BattlegroundMOBA wires teams. Nothing is typed twice.
 
-creature_template entries are auto-assigned from the config's id_range on
-first use and persisted to <config-stem>.lock.json. Later runs reuse them,
-so re-tuning a creep never changes its entry. Do not hand-edit the lockfile.
+creature_template entries are auto-assigned from the generator's block in
+apps/moba/id_blocks.json on first use and persisted to <config-stem>.lock.json.
+Later runs reuse them, so re-tuning a creep never changes its entry, and
+re-blocking the owner never disturbs one already assigned. Do not hand-edit
+the lockfile.
 
 Source dumps: verbatim output of
     mysql -E -u acore -pacore acore_world -e \
@@ -59,10 +61,10 @@ import re
 import sys
 from pathlib import Path
 
+import id_alloc
+
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_creeps.sql")
-ID_RANGE = [900010, 900099]
-SCAN_SQL_DIRS = ["data/sql/custom/db_world"]
 
 ROLE_IDS = {"melee": 0, "caster": 1, "siege": 2, "super": 3}
 STRING_COLUMNS = {"name", "subname", "IconName", "AIName", "ScriptName"}
@@ -259,34 +261,20 @@ def parse_vertical_dump(path):
 
 # ---------------------------------------------------------------- id locking
 
-def collect_used_entries(scan_dirs):
-    used = set()
-    delete_re = re.compile(
-        r"DELETE\s+FROM\s+`?creature_template`?\s+WHERE\s+`?entry`?\s+IN\s*\(([^)]*)\)", re.I)
-    for d in scan_dirs:
-        path = Path(d)
-        if not path.is_dir():
-            note(f'scan dir "{d}" not found -- skipping')
-            continue
-        for sql_file in sorted(path.glob("*.sql")):
-            for m in delete_re.finditer(sql_file.read_text()):
-                used.update(int(t) for t in re.findall(r"\d+", m.group(1)))
-    return used
+def get_entry(lock, key, alloc, assigned_log):
+    """Reuse the locked entry for `key`, or take a fresh one and lock it.
 
-
-def get_entry(lock, key, used, id_range, assigned_log):
+    The short-circuit is load-bearing: a locked entry is returned with NO block
+    check, ever. Only new keys see the ledger, which is why re-blocking an owner
+    cannot disturb anything already assigned.
+    """
     entries = lock.setdefault("entries", {})
     if key in entries:
         return entries[key], False
-    candidate = id_range[0]
-    while candidate in used:
-        candidate += 1
-        if candidate > id_range[1]:
-            fail(f"id_range {id_range} exhausted -- no free creature entries left")
-    entries[key] = candidate
-    used.add(candidate)
-    assigned_log.append((key, candidate))
-    return candidate, True
+    entry = alloc.take()[0]
+    entries[key] = entry
+    assigned_log.append((key, entry))
+    return entry, True
 
 # ------------------------------------------------------- on-death drops (shared)
 
@@ -365,14 +353,14 @@ def build_drop_rows(key, entry, drops):
     return grant, loot
 
 
-def emit_loot_template_sql(entries_csv, loot_rows):
+def emit_loot_template_sql(window, loot_rows):
     # creature_loot_template is a NATIVE shared table, unlike every mod_moba_*
-    # table: delete only our own entries, never DROP/CREATE. The DELETE covers
-    # every generated creature (not just item-droppers) so removing a drop
-    # from config removes its rows on the next apply.
+    # table: clear only our own block, never DROP/CREATE. Clearing the BLOCK
+    # rather than the roster is what removes a mob dropped from config -- a
+    # roster-built DELETE can never name an entry the config no longer has.
     lines = [
         "",
-        f"DELETE FROM `creature_loot_template` WHERE `Entry` IN ({entries_csv});",
+        f"DELETE FROM `creature_loot_template` WHERE {window};",
     ]
     if loot_rows:
         lines += [
@@ -475,8 +463,11 @@ def build_template_row(creep, entry, source_cols):
     return row
 
 
-def emit_sql(roster, column_order):
-    entries = ", ".join(str(entry) for _, entry, _ in roster)
+def emit_sql(roster, column_order, blocks):
+    ct_window = id_alloc.sql_window(blocks, "`entry`")
+    ctm_window = id_alloc.sql_window(blocks, "`CreatureID`")
+    loot_window = id_alloc.sql_window(blocks, "`Entry`")
+    spawn_window = id_alloc.sql_window(blocks, "`id`")
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE -- do not hand-edit.",
@@ -485,11 +476,14 @@ def emit_sql(roster, column_order):
         "-- \"source\" fields) with a fixed override list enforced in code --",
         "-- see the generator's docstring for the list and rationale.",
         "-- Waypoint paths live in mod_moba_creep_paths.sql (gen_creep_paths.py).",
+        "-- Every DELETE clears this generator's whole ID block, not just the rows",
+        "-- about to be inserted, so a creep removed from config loses its DB rows",
+        "-- too. Blocks are declared in apps/moba/id_blocks.json.",
         "-- ============================================================",
         "",
         "USE acore_world;",
         "",
-        f"DELETE FROM `creature_template` WHERE `entry` IN ({entries});",
+        f"DELETE FROM `creature_template` WHERE {ct_window};",
         "INSERT INTO `creature_template`",
         "(" + ", ".join(f"`{c}`" for c in column_order) + ")",
         "VALUES",
@@ -502,13 +496,19 @@ def emit_sql(roster, column_order):
 
     lines += [
         "",
-        f"DELETE FROM `creature_template_model` WHERE `CreatureID` IN ({entries});",
+        "-- Creeps spawn from C++, never from `creature` rows, so this normally deletes",
+        "-- nothing. It sweeps GM `.npc add` test spawns, which would otherwise sit in",
+        "-- the world forever. The spawn table's entry column is `id`, not `id1`:",
+        "-- upstream 2026_06_16_00.sql renamed it and moved id2/id3 to creature_multispawn.",
+        f"DELETE FROM `creature` WHERE {spawn_window};",
+        "",
+        f"DELETE FROM `creature_template_model` WHERE {ctm_window};",
         "INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)",
         "VALUES",
         ",\n".join(f"({entry}, 0, {creep['display_id']}, {creep['display_scale']}, 1, 0)"
                    for creep, entry, _ in roster) + ";",
         "",
-        f"DELETE FROM `creature_equip_template` WHERE `CreatureID` IN ({entries});",
+        f"DELETE FROM `creature_equip_template` WHERE {ctm_window};",
     ]
     equip_rows = [f"({entry}, 1, {c['equip'][0]}, {c['equip'][1]}, {c['equip'][2]}, 0)"
                   for c, entry, _ in roster if any(c["equip"])]
@@ -555,7 +555,7 @@ def emit_sql(roster, column_order):
         grant, loot = build_drop_rows(creep["key"], entry, creep.get("drops", []))
         grant_rows += grant
         loot_rows += loot
-    lines += emit_loot_template_sql(entries, loot_rows)
+    lines += emit_loot_template_sql(loot_window, loot_rows)
     lines += emit_drops_table_sql("mod_moba_creep_drops", grant_rows)
     return "\n".join(lines) + "\n"
 
@@ -567,14 +567,11 @@ def main():
     if not configs:
         fail(f"no creep configs found under {MAPS_DIR}/*/creep_config.yaml")
 
-    # Gather every already-used entry (existing SQL + all per-map lockfiles) so
-    # entries never collide across maps.
-    used = collect_used_entries(SCAN_SQL_DIRS)
+    alloc = id_alloc.Allocator(id_alloc.Registry(), id_alloc.CREATURE_TEMPLATE, "creeps")
     locks = {}
     for cp in configs:
         lp = cp.with_suffix(".lock.json")
         locks[cp] = json.loads(lp.read_text()) if lp.is_file() else {}
-        used.update(locks[cp].get("entries", {}).values())
 
     assigned_log = []
     roster = []  # (creep, entry, template_row); creep carries _map / _path_id
@@ -606,7 +603,7 @@ def main():
                 fail(f'source dumps disagree on column order ("{creep["source"]}" vs earlier) '
                      "-- were they taken from the same schema?")
 
-            entry, _ = get_entry(lock, creep["key"], used, ID_RANGE, assigned_log)
+            entry, _ = get_entry(lock, creep["key"], alloc, assigned_log)
             roster.append((creep, entry, build_template_row(creep, entry, source_cols)))
 
         lock["_comment"] = ("Machine-generated by gen_creep_roster.py -- do not edit. "
@@ -615,7 +612,7 @@ def main():
         cp.with_suffix(".lock.json").write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(emit_sql(roster, column_order))
+    OUTPUT.write_text(emit_sql(roster, column_order, alloc.blocks))
 
     print(f"\nWrote {OUTPUT} ({len(roster)} creeps across {len(configs)} map(s)).")
     if assigned_log:
@@ -624,7 +621,7 @@ def main():
             print(f"  {key}: {entry}")
     else:
         print("All creature entries reused from lockfiles.")
-    print("ARestart worldserver — the SQL auto-applies from data/sql/custom/db_world on boot.")
+    print("Restart worldserver — the SQL auto-applies from data/sql/custom/db_world on boot.")
 
 
 if __name__ == "__main__":

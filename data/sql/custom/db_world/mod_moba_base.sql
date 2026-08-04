@@ -34,8 +34,8 @@ INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `Respawn
 VALUES
 (566, 10000, 1500, 60000, 9000, 4500, 1000, 10, 10, 20, 15000, 10000, 60000, 900400, 900401, 15000, 5000, 100);
 
--- Spawn dome gameobjects. The whole 900400-900409 window is cleared,
--- so a dome dropped from a config is dropped from the DB too.
+-- Spawn dome gameobjects. The whole block is cleared, not just the entries
+-- being inserted, so a dome dropped from a config is dropped from the DB too.
 DELETE FROM `gameobject_template` WHERE `entry` BETWEEN 900400 AND 900409;
 INSERT INTO `gameobject_template`
 (`entry`, `type`, `displayId`, `name`, `IconName`, `castBarCaption`, `unk1`, `size`,

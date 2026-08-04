@@ -354,8 +354,9 @@ Anything shared between modules must be published on the `ns` table in
 **Add a structure (tower, inhibitor, or base)** — add a block to the map's
 `tower_config.yaml` `towers` list; `gen_tower_data.py` generates the creature
 (`creature_template` + `creature_template_model`) and the placement row together,
-so there's no separate SQL to touch. Fields: `entry` (900000+, globally unique),
-`team`, `kind` (`tower`/`inhibitor`/`core`), `tier`, `guarded_by_entry`, `name`,
+so there's no separate SQL to touch. Fields: `key` (a stable name — the entry is
+assigned for you into `tower_config.lock.json`), `team`, `kind`
+(`tower`/`inhibitor`/`core`), `tier`, `guarded_by`, `name`,
 `display_id`, `display_scale`, `health_modifier`, `.gps` coords, and the
 `attack_*` fields (inert for passive kinds). For an inhibitor also set
 `respawn_ms` and make sure the map has a `role: super` creep in
@@ -363,7 +364,8 @@ so there's no separate SQL to touch. Fields: `entry` (900000+, globally unique),
 BG warns at boot). Run `gen_tower_data.py`; deploy. No C++ changes — the registry
 and slot count are data-driven.
 
-**Add a tier/guard dependency** — set `guarded_by_entry` to the entry that must
+**Add a tier/guard dependency** — set `guarded_by` to the KEY of the structure
+that must die first; omit it entirely for "always vulnerable". The guarded tower
 die first. The guarded tower spawns inert and `OnTowerDestroyed` unlocks it
 automatically. Verify it can't be targeted initially, then becomes attackable and
 fires once its guard dies.
@@ -758,14 +760,12 @@ C++ or are allocation policy:
 | What | Value |
 |---|---|
 | BG map id (all content rows are tagged with it) | 566 (hijacked EotS) |
-| Custom DB entry range | 900000+ — towers 900000–900001, creeps 900010–900017, neutrals 900200–900207, shop vendors 900300–900307 |
-| Custom waypoint path ID range | 900100–900122 (base lanes + per-formation-slot paths) |
 | Graveyard DB IDs | 1103 (Alliance), 1104 (Horde) — reused vanilla EotS rows |
 | Wave cadence | every 30s; every 3rd wave adds siege (`BattlegroundMOBA.cpp`) |
 | Creep lane corridor | 40 yd, players only; +15 yd self-evade headroom (`npc_moba_creep.cpp`) |
 | HUD resync cadence | 10s (`MOBA_HUD_RESYNC_MS`) |
 | Recall trigger / empower placeholder | Hearthstone item 6948 / spell 8690; aura 1243 |
-| Custom DB entry range | 900000+ — towers 900000–900001, creeps 900010–900017, neutrals 900200–900207, shop 900300–900399 (whole window cleared on every regen; 900300–900301 in use) |
+| Custom DB ID blocks | `apps/moba/id_blocks.json` — one owner per block, per namespace. `python3 apps/moba/id_alloc.py --audit` prints the live picture |
 
 
 ## Fun ideas: a list of interesting ideas that may or may not be implemented

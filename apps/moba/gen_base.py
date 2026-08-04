@@ -26,13 +26,15 @@ import yaml
 import sys
 from pathlib import Path
 
+import id_alloc
+
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_base.sql")
 
 # The spawn dome is a COPY of the EotS force-field GO (184719/184720), not those
 # entries themselves: `size` is per-entry, so per-map radii need per-map entries,
-# and editing the core rows would resize stock EotS's own barriers too.
-DOME_ID_RANGE = [900400, 900409]   # gameobject_template entries owned by this generator
+# and editing the core rows would resize stock EotS's own barriers too. Those
+# entries are assigned from this generator's block in apps/moba/id_blocks.json.
 DOME_DISPLAY_ID = 7203             # NS_BioDome_BG.mdx
 # GameObjectDisplayInfo GeoBox for 7203 is +-172.4 horizontally, so dome radius in
 # yards == this * gameobject_template.size. Re-derive if the display id changes.
@@ -83,11 +85,8 @@ def validate(cfg, path):
     if not isinstance(dome, dict):
         fail(f'{path}: "spawn.dome" must be a block with "alliance_entry" and "horde_entry"')
     for k in ("alliance_entry", "horde_entry"):
-        entry = dome.get(k)
-        if not isinstance(entry, int) or not DOME_ID_RANGE[0] <= entry <= DOME_ID_RANGE[1]:
-            fail(f'{path}: "spawn.dome.{k}" must be an integer in '
-                 f'{DOME_ID_RANGE[0]}-{DOME_ID_RANGE[1]} -- the generated SQL clears that window, '
-                 f'so an entry outside it would never be cleaned up')
+        if not isinstance(dome.get(k), int):
+            fail(f'{path}: "spawn.dome.{k}" must be an integer gameobject_template entry')
     if dome["alliance_entry"] == dome["horde_entry"]:
         fail(f'{path}: "spawn.dome" entries must differ')
     for team in ("alliance", "horde"):
@@ -132,10 +131,12 @@ def load_configs():
         configs.append((path, cfg))
     if not configs:
         fail(f"no base configs found under {MAPS_DIR}/*/base_config.yaml")
+    id_alloc.validate_owner(id_alloc.GAMEOBJECT_TEMPLATE, "base_dome")
     return configs
 
 
-def emit(configs):
+def emit(configs, blocks):
+    dome_window = id_alloc.sql_window(blocks, "`entry`")
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE -- do not hand-edit.",
@@ -199,9 +200,9 @@ def emit(configs):
     # identical to the barrier the EotS battleground uses.
     lines += [
         "",
-        f"-- Spawn dome gameobjects. The whole {DOME_ID_RANGE[0]}-{DOME_ID_RANGE[1]} window is cleared,",
-        "-- so a dome dropped from a config is dropped from the DB too.",
-        f"DELETE FROM `gameobject_template` WHERE `entry` BETWEEN {DOME_ID_RANGE[0]} AND {DOME_ID_RANGE[1]};",
+        "-- Spawn dome gameobjects. The whole block is cleared, not just the entries",
+        "-- being inserted, so a dome dropped from a config is dropped from the DB too.",
+        f"DELETE FROM `gameobject_template` WHERE {dome_window};",
         "INSERT INTO `gameobject_template`",
         "(`entry`, `type`, `displayId`, `name`, `IconName`, `castBarCaption`, `unk1`, `size`,",
         " `Data0`, `Data1`, `Data2`, `Data3`, `Data4`, `Data5`, `Data6`, `Data7`, `Data8`, `Data9`,",
@@ -227,7 +228,7 @@ def emit(configs):
         "",
         "-- Dome faction/flags. GameObject reads both ONLY from this table, so a template",
         "-- copy with no row here is selectable and clickable -- and clicking a DOOR opens it.",
-        f"DELETE FROM `gameobject_template_addon` WHERE `entry` BETWEEN {DOME_ID_RANGE[0]} AND {DOME_ID_RANGE[1]};",
+        f"DELETE FROM `gameobject_template_addon` WHERE {dome_window};",
         "INSERT INTO `gameobject_template_addon`",
         "(`entry`, `faction`, `flags`, `mingold`, `maxgold`, `artkit0`, `artkit1`, `artkit2`, `artkit3`)",
         "VALUES",
@@ -260,8 +261,9 @@ def emit(configs):
 
 def main():
     configs = load_configs()
+    blocks = id_alloc.Registry().blocks_of(id_alloc.GAMEOBJECT_TEMPLATE, "base_dome")
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(emit(configs))
+    OUTPUT.write_text(emit(configs, blocks))
     maps = ", ".join(str(c["map"]) for _, c in configs)
     print(f"Wrote {OUTPUT} ({len(configs)} map(s): {maps}).")
     print("Restart worldserver — the SQL auto-applies from data/sql/custom/db_world on boot.")

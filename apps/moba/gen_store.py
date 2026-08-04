@@ -56,6 +56,8 @@ from pathlib import Path
 
 import yaml
 
+import id_alloc
+
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_store.sql")
 CATALOG_OUTPUT = Path("client/addons/MobaHUD/Catalog.lua")
@@ -76,15 +78,12 @@ SHOPKEEPER_NPCFLAG = 1               # UNIT_NPC_FLAG_GOSSIP: what makes it right
 SHOPKEEPER_UNIT_FLAGS = 0x2 | 0x100 | 0x200   # NON_ATTACKABLE | IMMUNE_TO_PC | IMMUNE_TO_NPC
 SHOPKEEPER_SCRIPT = "npc_moba_store"
 
-# Reserved creature-entry window for shop NPCs. The generated SQL clears the whole
-# range rather than only the entries it inserts, so an NPC removed from a config is
-# removed from the DB -- otherwise the four-vendors-to-one collapse would leave
-# 900302-900307 spawned forever.
-#
-# The sibling generators deliberately do NOT do this: they own templates only, so
-# an orphaned row is inert (nothing spawns it). This one owns `creature` rows, and
-# an orphaned spawn is a live scripted NPC standing in the base.
-SHOP_ENTRY_MIN, SHOP_ENTRY_MAX = 900300, 900399
+# The shop is the only generator that owns `creature` SPAWN rows rather than
+# templates alone, so an orphan here is a live scripted NPC standing in the base,
+# not an inert row nothing references. That is what the four-vendors-to-one
+# collapse had to sweep. Its blocks are declared in apps/moba/id_blocks.json --
+# in TWO namespaces, since each shopkeeper spawn takes guid == entry. See
+# id_alloc.sql_window for why clearing by block beats clearing by roster.
 
 QUALITY_GREEN = 2
 EXPECTED_REQ_LEVEL = range(77, 81)   # advisory only
@@ -255,9 +254,6 @@ def validate(cfg, path):
                 fail(f'{path}: shopkeeper team block missing "{key}"')
         if t["team"] not in (0, 1):
             fail(f'{path}: shopkeeper "team" must be 0 or 1')
-        if not SHOP_ENTRY_MIN <= t["entry"] <= SHOP_ENTRY_MAX:
-            fail(f'{path}: shopkeeper entry {t["entry"]} is outside the reserved '
-                 f"{SHOP_ENTRY_MIN}-{SHOP_ENTRY_MAX} window the generated SQL clears")
 
     if not isinstance(cfg.get("tabs"), list) or not cfg["tabs"]:
         fail(f'{path}: "tabs" must be a non-empty list')
@@ -302,6 +298,11 @@ def load_configs():
         configs.append((path, cfg))
     if not configs:
         fail(f"no shop configs found under {MAPS_DIR}/*/store_config.yaml")
+    # Two namespaces out of one config field: the creature_template entry, and
+    # the `creature` spawn guid, which this generator sets equal to it. Reuse the
+    # Registry so the second check does not re-read every config.
+    reg = id_alloc.validate_owner(id_alloc.CREATURE_TEMPLATE, "store")
+    id_alloc.validate_owner(id_alloc.CREATURE_SPAWN, "store", reg)
     return configs
 
 
@@ -654,10 +655,13 @@ def emit_catalog(menu_rows, grant_rows, tabs_meta):
     return "\n".join(lines) + "\n"
 
 
-def emit(npc_rows, menu_rows, grant_rows, sell_rows, item_copies):
-    # The reserved window, not entries_csv: deleting only what we insert would
-    # leave a removed shopkeeper spawned in the DB forever.
-    window = f"BETWEEN {SHOP_ENTRY_MIN} AND {SHOP_ENTRY_MAX}"
+def emit(npc_rows, menu_rows, grant_rows, sell_rows, item_copies, tmpl_blocks, spawn_blocks):
+    # Two namespaces, deliberately resolved separately: the entry lives in
+    # creature_template, the spawn guid in `creature`. They hold the same numbers
+    # today only because this generator sets guid == entry.
+    tmpl_window = id_alloc.sql_window(tmpl_blocks, "`entry`")
+    model_window = id_alloc.sql_window(tmpl_blocks, "`CreatureID`")
+    guid_window = id_alloc.sql_window(spawn_blocks, "`guid`")
 
     lines = [
         "-- ============================================================",
@@ -676,7 +680,7 @@ def emit(npc_rows, menu_rows, grant_rows, sell_rows, item_copies):
         "",
         "USE acore_world;",
         "",
-        f"DELETE FROM `creature_template` WHERE `entry` {window};",
+        f"DELETE FROM `creature_template` WHERE {tmpl_window};",
         "INSERT INTO `creature_template`",
         "(`entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`,",
         " `speed_walk`, `speed_run`, `rank`, `unit_class`, `unit_flags`,",
@@ -699,7 +703,7 @@ def emit(npc_rows, menu_rows, grant_rows, sell_rows, item_copies):
 
     lines += [
         "",
-        f"DELETE FROM `creature_template_model` WHERE `CreatureID` {window};",
+        f"DELETE FROM `creature_template_model` WHERE {model_window};",
         "INSERT INTO `creature_template_model`",
         "(`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)",
         "VALUES",
@@ -716,7 +720,7 @@ def emit(npc_rows, menu_rows, grant_rows, sell_rows, item_copies):
     # the live schema is base + updates.
     lines += [
         "",
-        f"DELETE FROM `creature` WHERE `guid` {window};",
+        f"DELETE FROM `creature` WHERE {guid_window};",
         "INSERT INTO `creature`",
         "(`guid`, `id`, `map`, `spawnMask`, `phaseMask`, `equipment_id`,",
         " `position_x`, `position_y`, `position_z`, `orientation`,",
@@ -819,7 +823,10 @@ def main():
     configs = load_configs()
     npc_rows, menu_rows, grant_rows, sell_rows, tabs_meta, item_copies = build(configs)
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(emit(npc_rows, menu_rows, grant_rows, sell_rows, item_copies))
+    reg = id_alloc.Registry()
+    OUTPUT.write_text(emit(npc_rows, menu_rows, grant_rows, sell_rows, item_copies,
+                           reg.blocks_of(id_alloc.CREATURE_TEMPLATE, "store"),
+                           reg.blocks_of(id_alloc.CREATURE_SPAWN, "store")))
     CATALOG_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     CATALOG_OUTPUT.write_text(emit_catalog(menu_rows, grant_rows, tabs_meta))
 

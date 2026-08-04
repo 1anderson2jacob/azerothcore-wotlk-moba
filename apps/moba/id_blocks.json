@@ -1,0 +1,70 @@
+{
+  "_comment": "ID ledger for the MOBA generators -- read by apps/moba/id_alloc.py. Every custom ID this fork assigns belongs to exactly one owner's block. Two owners must NEVER share a block: generators window-clear their blocks, so an overlap lets one wipe the other's rows. Namespaces are independent -- waypoint_data 900206 and creature_template 900206 are unrelated ids and both legal. A namespace names a table; the id is that table's primary key.",
+  "creature": {
+    "store": {
+      "blocks": [
+        "900300-900399"
+      ],
+      "note": "creature.guid, NOT an entry. gen_store.py spawns shopkeepers with guid == entry so the two read together, which is why these numbers match the creature_template/store block -- they are still unrelated ids in unrelated namespaces. The only static spawn rows the fork owns; towers, creeps, neutrals and domes are spawned from C++ and have no rows here.",
+      "source": "gen_store.py"
+    }
+  },
+  "creature_template": {
+    "creeps": {
+      "blocks": [
+        "900010-900099"
+      ],
+      "note": "auto-assigned; the record is maps/*/creep_config.lock.json",
+      "source": "gen_creep_roster.py"
+    },
+    "neutrals": {
+      "blocks": [
+        "900200-900249"
+      ],
+      "note": "auto-assigned; the record is maps/*/neutral_config.lock.json",
+      "source": "gen_neutral_camps.py"
+    },
+    "store": {
+      "blocks": [
+        "900300-900399"
+      ],
+      "note": "hand-assigned in maps/*/store_config.yaml under shopkeeper.teams; the generated SQL clears the whole block",
+      "source": "gen_store.py"
+    },
+    "towers": {
+      "blocks": [
+        "900000-900009"
+      ],
+      "note": "auto-assigned; the record is maps/*/tower_config.lock.json. 6 of 10 used -- map #2 overflows this block, and the right second-block size is knowable then, not now.",
+      "source": "gen_tower_data.py"
+    }
+  },
+  "gameobject_template": {
+    "base_dome": {
+      "blocks": [
+        "900400-900409"
+      ],
+      "note": "hand-assigned in maps/*/base_config.yaml under spawn.dome; the generated SQL clears the whole block",
+      "source": "gen_base.py"
+    }
+  },
+  "item_template": {
+    "item_copies": {
+      "blocks": [
+        "900000-999999"
+      ],
+      "enumerated": false,
+      "note": "NOT a dense window: a copy's entry is its SOURCE entry + 900000, so this block is a sparse mirror of the whole stock item space. Nothing allocates here and there is nothing to enumerate -- the block exists so a future allocator cannot wander in. The client-patch drop-item copies will land here too, under the same offset.",
+      "source": "gen_store.py"
+    }
+  },
+  "waypoint_data": {
+    "creep_paths": {
+      "blocks": [
+        "900100-900499"
+      ],
+      "note": "auto-assigned in forward/reverse pairs; the record is maps/*/lane_config.lock.json. Mirrors lane_config.yaml's id_range, which stays the generator's own input until step 3 -- a second bundle declaring a different id_range would diverge from this block until then.",
+      "source": "gen_creep_paths.py"
+    }
+  }
+}

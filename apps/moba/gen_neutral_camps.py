@@ -45,8 +45,9 @@ Override deltas vs the creep generator:
   - ScriptName = 'npc_moba_neutral'
   - equip optional (beasts carry nothing), default [0, 0, 0]
 
-creature_template entries are auto-assigned from ID_RANGE on first use and
-persisted to neutral_config.lock.json -- same rules as the creep lockfile:
+creature_template entries are auto-assigned from the generator's block in
+apps/moba/id_blocks.json on first use and persisted to neutral_config.lock.json --
+same rules as the creep lockfile:
 committed, machine-owned, never hand-edited, never deleted.
 
 Usage (from the repo root):
@@ -61,15 +62,15 @@ from pathlib import Path
 # parse_vertical_dump validates the CREEP generator's override columns; the
 # extra columns this generator stamps are checked in build_template_row.
 from gen_creep_roster import (apply_loot_overrides, build_drop_rows,
-                              collect_used_entries, emit_drops_table_sql,
-                              emit_loot_template_sql, fail, get_entry, note,
-                              parse_vertical_dump, resolve_units, sql_value,
-                              validate_drops)
+                              emit_drops_table_sql, emit_loot_template_sql,
+                              fail, get_entry, note, parse_vertical_dump,
+                              resolve_units, sql_value, validate_drops)
+
+import id_alloc
 
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_neutrals.sql")
-ID_RANGE = [900200, 900249]  # towers 900000+, creeps 900010+, waypoints 900100+
-SCAN_SQL_DIRS = ["data/sql/custom/db_world"]
+
 
 MOB_REQUIRED = ["key", "name", "subname", "source", "display_id", "display_scale",
                 "level", "health_modifier", "armor_modifier"]
@@ -210,19 +211,25 @@ def build_template_row(mob, entry, source_cols):
     return row
 
 
-def emit_sql(roster, camps, column_order):
-    entries = ", ".join(str(entry) for _, entry, _ in roster)
+def emit_sql(roster, camps, column_order, blocks):
+    ct_window = id_alloc.sql_window(blocks, "`entry`")
+    ctm_window = id_alloc.sql_window(blocks, "`CreatureID`")
+    loot_window = id_alloc.sql_window(blocks, "`Entry`")
+    spawn_window = id_alloc.sql_window(blocks, "`id`")
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE -- do not hand-edit.",
         "-- Produced by apps/moba/gen_neutral_camps.py from apps/moba/maps/*/neutral_config.yaml.",
         "-- Stats are full copies of real source creatures with a fixed override",
         "-- list enforced in code -- see the generator's docstring.",
+        "-- Every DELETE clears this generator's whole ID block, not just the rows",
+        "-- about to be inserted, so a mob removed from config loses its DB rows too.",
+        "-- Blocks are declared in apps/moba/id_blocks.json.",
         "-- ============================================================",
         "",
         "USE acore_world;",
         "",
-        f"DELETE FROM `creature_template` WHERE `entry` IN ({entries});",
+        f"DELETE FROM `creature_template` WHERE {ct_window};",
         "INSERT INTO `creature_template`",
         "(" + ", ".join(f"`{c}`" for c in column_order) + ")",
         "VALUES",
@@ -235,13 +242,18 @@ def emit_sql(roster, camps, column_order):
 
     lines += [
         "",
-        f"DELETE FROM `creature_template_model` WHERE `CreatureID` IN ({entries});",
+        "-- Neutrals spawn from C++, never from `creature` rows, so this normally deletes",
+        "-- nothing. It sweeps GM `.npc add` test spawns. The spawn table's entry column",
+        "-- is `id`, not `id1`: upstream 2026_06_16_00.sql renamed it.",
+        f"DELETE FROM `creature` WHERE {spawn_window};",
+        "",
+        f"DELETE FROM `creature_template_model` WHERE {ctm_window};",
         "INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)",
         "VALUES",
         ",\n".join(f"({entry}, 0, {mob['display_id']}, {mob['display_scale']}, 1, 0)"
                    for mob, entry, _ in roster) + ";",
         "",
-        f"DELETE FROM `creature_equip_template` WHERE `CreatureID` IN ({entries});",
+        f"DELETE FROM `creature_equip_template` WHERE {ctm_window};",
     ]
     equip_rows = [f"({entry}, 1, {m['equip'][0]}, {m['equip'][1]}, {m['equip'][2]}, 0)"
                   for m, entry, _ in roster if any(m.get("equip", [0, 0, 0]))]
@@ -325,7 +337,7 @@ def emit_sql(roster, camps, column_order):
         grant, loot = build_drop_rows(mob["key"], entry, mob.get("drops", []))
         grant_rows += grant
         loot_rows += loot
-    lines += emit_loot_template_sql(entries, loot_rows)
+    lines += emit_loot_template_sql(loot_window, loot_rows)
     lines += emit_drops_table_sql("mod_moba_neutral_drops", grant_rows)
     return "\n".join(lines) + "\n"
 
@@ -337,12 +349,11 @@ def main():
     if not configs:
         fail(f"no neutral configs found under {MAPS_DIR}/*/neutral_config.yaml")
 
-    used = collect_used_entries(SCAN_SQL_DIRS)
+    alloc = id_alloc.Allocator(id_alloc.Registry(), id_alloc.CREATURE_TEMPLATE, "neutrals")
     locks = {}
     for cp in configs:
         lp = cp.with_suffix(".lock.json")
         locks[cp] = json.loads(lp.read_text()) if lp.is_file() else {}
-        used.update(locks[cp].get("entries", {}).values())
 
     assigned_log = []
     roster = []  # (mob, entry, template_row); mob carries _map/_aggro_range/_leash_range
@@ -368,7 +379,7 @@ def main():
                 fail(f'source dumps disagree on column order ("{mob["source"]}" vs earlier) '
                      f"-- were they taken from the same schema?")
 
-            entry, _ = get_entry(lock, mob["key"], used, ID_RANGE, assigned_log)
+            entry, _ = get_entry(lock, mob["key"], alloc, assigned_log)
             entries_by_key[mob["key"]] = entry
             mob["_map"] = cfg["map"]
             mob["_aggro_range"], mob["_leash_range"] = ranges[mob["key"]]
@@ -391,7 +402,7 @@ def main():
         cp.with_suffix(".lock.json").write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(emit_sql(roster, camps_out, column_order))
+    OUTPUT.write_text(emit_sql(roster, camps_out, column_order, alloc.blocks))
 
     print(f"\nWrote {OUTPUT} ({len(roster)} mobs, {len(camps_out)} camps across {len(configs)} map(s)).")
     if assigned_log:
