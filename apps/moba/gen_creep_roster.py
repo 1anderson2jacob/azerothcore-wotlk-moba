@@ -88,18 +88,20 @@ CREEP_UNIT_FORBIDDEN_FIELDS = ["key", "lane", "slot"]
 CREEP_UNIT_FLAG_PLAYER_CONTROLLED = 0x8
 
 # Optional per-creature "drops" list, shared by the creep and neutral
-# generators. "buff"/"gold"/"team_gold" are rolled and delivered in C++ at the
-# killing blow (mod_moba_*_drops -> GrantDeathDrops); "item" rides the native loot
-# system (creature_loot_template, whose Chance column the engine rolls) and
-# additionally emits a type-2 drops row IF it carries a `sell` price, which
+# generators. "buff"/"gold"/"team_gold"/"team_buff" are rolled and delivered in
+# C++ at the killing blow (mod_moba_*_drops -> GrantDeathDrops); "item" rides the
+# native loot system (creature_loot_template, whose Chance column the engine rolls)
+# and additionally emits a type-2 drops row IF it carries a `sell` price, which
 # is the only way a looted item can be sold back at the shop.
 #
 # "gold" goes into the CORPSE, so the last hitter walks up and collects it.
-# "team_gold" is paid straight to the killer's whole team with no corpse -- the
-# objective payout a boss camp wants. A boss carrying both rows pays its team a
-# flat share AND leaves corpse gold for whoever landed the blow.
-DROP_REQUIRED = {"buff": "spell", "gold": "copper", "item": "item", "team_gold": "copper"}
-DROP_TYPE_IDS = {"buff": 0, "gold": 1, "item": 2, "team_gold": 3}
+# "team_gold"/"team_buff" are paid straight to the killer's whole team with no
+# corpse -- the objective payout a boss camp wants. A boss carrying a team row AND
+# a plain gold row pays its team a flat share and still leaves corpse gold for
+# whoever landed the blow. "team_buff" reaches LIVING players only.
+DROP_REQUIRED = {"buff": "spell", "gold": "copper", "item": "item",
+                 "team_gold": "copper", "team_buff": "spell"}
+DROP_TYPE_IDS = {"buff": 0, "gold": 1, "item": 2, "team_gold": 3, "team_buff": 4}
 
 
 # Columns the generator overrides or reads -- must exist in every source dump.
@@ -385,14 +387,16 @@ def emit_loot_template_sql(entries_csv, loot_rows):
 def emit_drops_table_sql(table, grant_rows):
     lines = [
         "",
-        "-- Buff/gold drops, rolled and delivered by BattlegroundMOBA::",
-        "-- GrantDeathDrops at the killing blow: Type 0 = buff (aura on the",
-        "-- killer; DurationMs 0 = the spell's default), 1 = gold (Copper",
-        "-- injected into the corpse loot). Type 2 = item is the ODD ONE: the",
-        "-- item itself comes from the creature_loot_template rows above, so a",
-        "-- type-2 row grants nothing and carries only Item + Sell, the per-unit",
-        "-- price npc_moba_store refunds. An item drop with no `sell` gets no row",
-        "-- here and cannot be sold back. Chance is a percent (config x 100).",
+        "-- Drops, rolled and delivered by BattlegroundMOBA::GrantDeathDrops at",
+        "-- the killing blow. Type 0 = buff (aura on the killer), 1 = gold",
+        "-- (Copper injected into the corpse loot), 3 = team gold, 4 = team buff.",
+        "-- The team types pay the whole killing team with no corpse; team buff",
+        "-- reaches living players only. DurationMs 0 = the spell's own duration.",
+        "-- Type 2 = item is the ODD ONE: the item itself comes from the",
+        "-- creature_loot_template rows above, so a type-2 row grants nothing and",
+        "-- carries only Item + Sell, the per-unit price npc_moba_store refunds. An",
+        "-- item drop with no `sell` gets no row here and cannot be sold back.",
+        "-- Chance is a percent (config x 100).",
         f"DROP TABLE IF EXISTS `{table}`;",
         f"CREATE TABLE `{table}` (",
         "    `CreatureEntry` INT UNSIGNED NOT NULL,",

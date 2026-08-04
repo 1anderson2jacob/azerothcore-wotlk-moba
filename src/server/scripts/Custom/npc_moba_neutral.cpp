@@ -79,14 +79,16 @@ struct npc_moba_neutral : public ScriptedAI
 
         moba->NotifyNeutralDied(me);
 
-        // Jungle CS + drops go to the killing-blow player (a pet's blow
-        // credits its owner), same rationale as npc_moba_creep::JustDied. No
-        // team guard: either team can take any camp. GrantDeathDrops runs
-        // even with no rewarded player -- it must strip the tapper-owned
-        // native loot -- and is status-guarded inside like CreditCreepKill,
-        // so the frozen post-match camps stay farmproof.
+        // Jungle CS + drops go to the killing-blow player (a pet's blow credits
+        // its owner), same rationale as npc_moba_creep::JustDied. No team guard:
+        // either team can take any camp, so the raw killer is ALWAYS a valid
+        // reward source here -- which is what lets a boss finished by a creep or
+        // tower still pay that side's team-wide drops. GrantDeathDrops runs even
+        // with no rewarded player -- it must strip the tapper-owned native loot --
+        // and is status-guarded inside like CreditCreepKill, so the frozen
+        // post-match camps stay farmproof.
         Player* p = killer ? killer->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
-        moba->GrantDeathDrops(me, p);
+        moba->GrantDeathDrops(me, p, killer);
         if (p)
             moba->CreditCreepKill(p);
     }

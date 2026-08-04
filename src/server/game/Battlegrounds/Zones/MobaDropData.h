@@ -18,6 +18,10 @@ enum MobaDropType : uint8
     // per-creature "boss" flag, so one creature can carry both this and a plain
     // gold row: a team share for everyone, corpse gold for the last hitter.
     MOBA_DROP_TEAM_GOLD = 3,
+    // Same team-wide delivery, as an aura, to LIVING players only -- dying
+    // before the boss falls costs you the buff, and nothing re-grants it on
+    // respawn (League's Baron rule).
+    MOBA_DROP_TEAM_BUFF = 4,
 };
 
 struct MobaDropInfo

@@ -267,6 +267,26 @@ void BattlegroundMOBA::AwardTeamGold(TeamId team, uint32 copper)
                 AddMatchGold(player, copper);
 }
 
+void BattlegroundMOBA::AwardTeamBuff(TeamId team, uint32 spell, uint32 durationMs)
+{
+    if (!spell)
+        return;
+
+    for (auto const& itr : GetPlayers())
+    {
+        Player* player = itr.second;
+        if (!player || player->GetBgTeamId() != team || !player->IsAlive())
+            continue;
+
+        Aura* aura = player->AddAura(spell, player);
+        if (aura && durationMs)
+        {
+            aura->SetMaxDuration(int32(durationMs));
+            aura->SetDuration(int32(durationMs));
+        }
+    }
+}
+
 void BattlegroundMOBA::SetShopAddonReady(Player* player)
 {
     if (player)
@@ -590,12 +610,13 @@ void BattlegroundMOBA::CreditCreepKill(Player* killer)
     }
 }
 
-void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer)
+void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer, Unit* killerUnit)
 {
-    // LoL rule: no last hit, no reward. The engine already filled native loot
-    // for the first TAPPER's group (Unit::Kill runs before JustDied), so a
-    // creep-finished or post-match kill must strip the corpse, not just skip.
-    if (!killer || GetStatus() != STATUS_IN_PROGRESS)
+    // Post-match kills reward nothing at all, which is what keeps the frozen
+    // creeps and camps farmproof. The engine already filled native loot for the
+    // first TAPPER's group (Unit::Kill runs before JustDied), so this must strip
+    // the corpse rather than merely skip.
+    if (GetStatus() != STATUS_IN_PROGRESS)
     {
         victim->loot.clear();
         victim->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
@@ -603,31 +624,49 @@ void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer)
         return;
     }
 
-    // Native loot rights follow the tapper's group; ours follow the killing blow,
-    // and only the killing blow. Three lines, each covering a different half:
-    //
-    //   SetLootRecipient(killer) is group-wide ON PURPOSE. Narrowing it with
-    //   withGroup=false zeroes the recipient GROUP, and Player::isAllowedToLoot
-    //   rejects any looter who HAS a group against a corpse that has none -- which
-    //   is every player in a battleground, the killer included. They would never be
-    //   sent UNIT_DYNFLAG_LOOTABLE and so could not click their own kill.
-    //
-    //   roundRobinPlayer must be ASSIGNED, never cleared: BG raids are GROUP_LOOT,
-    //   whose isAllowedToLoot branch admits anyone when no round-robin looter is
-    //   set. Setting it to the killer is what hides the corpse from teammates -- and
-    //   what shows the killer every item, over-threshold ones included. It is
-    //   cosmetic only; LootHandler clears it again if the killer closes a corpse
-    //   they did not empty, which is why moba_loot_rights_globalscript is what
-    //   actually enforces this.
-    //
-    //   loot_type suppresses the group roll. Player::SendLoot broadcasts a GroupLoot
-    //   window for every over-threshold item to the whole nearby raid, guarded only
-    //   by loot_type == LOOT_NONE -- and it fires on the KILLER's own first open,
-    //   before any permission check gets a say. Stamping the value SendLoot would
-    //   assign at its tail anyway skips that branch entirely.
-    victim->SetLootRecipient(killer);
-    victim->loot.roundRobinPlayer = killer->GetGUID();
-    victim->loot.loot_type        = LOOT_CORPSE;
+    // Team-wide drops follow the killing BLOW's side, which need not be a
+    // player's: a creep or tower that finishes a boss still pays its own team,
+    // as in League where a minion-executed Baron still buffs that side. Personal
+    // drops below stay strictly last-hit.
+    TeamId rewardTeam = killer ? killer->GetBgTeamId() : ResolveKillerTeam(killerUnit);
+
+    if (killer)
+    {
+        // Native loot rights follow the tapper's group; ours follow the killing blow,
+        // and only the killing blow. Three lines, each covering a different half:
+        //
+        //   SetLootRecipient(killer) is group-wide ON PURPOSE. Narrowing it with
+        //   withGroup=false zeroes the recipient GROUP, and Player::isAllowedToLoot
+        //   rejects any looter who HAS a group against a corpse that has none -- which
+        //   is every player in a battleground, the killer included. They would never be
+        //   sent UNIT_DYNFLAG_LOOTABLE and so could not click their own kill.
+        //
+        //   roundRobinPlayer must be ASSIGNED, never cleared: BG raids are GROUP_LOOT,
+        //   whose isAllowedToLoot branch admits anyone when no round-robin looter is
+        //   set. Setting it to the killer is what hides the corpse from teammates -- and
+        //   what shows the killer every item, over-threshold ones included. It is
+        //   cosmetic only; LootHandler clears it again if the killer closes a corpse
+        //   they did not empty, which is why moba_loot_rights_globalscript is what
+        //   actually enforces this.
+        //
+        //   loot_type suppresses the group roll. Player::SendLoot broadcasts a GroupLoot
+        //   window for every over-threshold item to the whole nearby raid, guarded only
+        //   by loot_type == LOOT_NONE -- and it fires on the KILLER's own first open,
+        //   before any permission check gets a say. Stamping the value SendLoot would
+        //   assign at its tail anyway skips that branch entirely.
+        victim->SetLootRecipient(killer);
+        victim->loot.roundRobinPlayer = killer->GetGUID();
+        victim->loot.loot_type        = LOOT_CORPSE;
+    }
+    else
+    {
+        // LoL rule: no last hit, no CORPSE. The team-wide rows below are NOT
+        // forfeited with it -- splitting this out of the early return is the
+        // whole point, so a boss finished by a stray creep still pays.
+        victim->loot.clear();
+        victim->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
+        victim->SetLootRecipient(nullptr);
+    }
 
     if (std::vector<MobaDropInfo> const* drops = sMobaDropDataStore->GetDrops(victim->GetEntry()))
         for (MobaDropInfo const& drop : *drops)
@@ -637,6 +676,9 @@ void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer)
 
             if (drop.type == MOBA_DROP_BUFF)
             {
+                if (!killer)
+                    continue;
+
                 if (Aura* aura = killer->AddAura(drop.spell, killer))
                     if (drop.durationMs)
                     {
@@ -645,16 +687,28 @@ void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer)
                     }
             }
             else if (drop.type == MOBA_DROP_GOLD)
-                victim->loot.gold += drop.copper;
+            {
+                if (killer)
+                    victim->loot.gold += drop.copper;
+            }
             else if (drop.type == MOBA_DROP_TEAM_GOLD)
-                AwardTeamGold(killer->GetBgTeamId(), drop.copper);
+            {
+                if (rewardTeam != TEAM_NEUTRAL)
+                    AwardTeamGold(rewardTeam, drop.copper);
+            }
+            else if (drop.type == MOBA_DROP_TEAM_BUFF)
+            {
+                if (rewardTeam != TEAM_NEUTRAL)
+                    AwardTeamBuff(rewardTeam, drop.spell, drop.durationMs);
+            }
         }
 
     // Gold-only minions have lootid 0, so Unit::Kill saw empty loot and never
     // flagged the corpse lootable (it marked it fully-looted instead); flag it
     // now that gold was injected. Item drops that all missed their roll stay
-    // unflagged -- native behavior for an empty corpse.
-    if (!victim->loot.isLooted())
+    // unflagged -- native behavior for an empty corpse. Guarded on `killer`: the
+    // no-last-hit branch above just stripped the corpse and must not re-flag it.
+    if (killer && !victim->loot.isLooted())
         victim->SetDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
 }
 
@@ -1015,7 +1069,7 @@ void BattlegroundMOBA::SpawnCreep(uint32 entry)
     if (TempSummon* summon = GetBgMap()->SummonCreature(entry, pos, nullptr, cfg->despawnMs))
     {
         summon->SetTempSummonType(TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT);
-        _spawnedCreeps.push_back(summon->GetGUID());
+        _spawnedCreeps[summon->GetGUID()] = cfg->team;
     }
 }
 
@@ -1092,9 +1146,9 @@ void BattlegroundMOBA::NotifyNeutralDied(Creature* member)
 
 void BattlegroundMOBA::FreezeAllCreeps()
 {
-    for (ObjectGuid const& guid : _spawnedCreeps)
+    for (auto const& itr : _spawnedCreeps)
     {
-        Creature* creep = GetBgMap()->GetCreature(guid);
+        Creature* creep = GetBgMap()->GetCreature(itr.first);
         if (!creep || !creep->IsAlive())
             continue;
 
@@ -1435,7 +1489,7 @@ uint32 BattlegroundMOBA::ClassifyKiller(Unit* killer) const
         if (t.guid == guid)
             return 1; // tower
 
-    if (std::find(_spawnedCreeps.begin(), _spawnedCreeps.end(), guid) != _spawnedCreeps.end())
+    if (_spawnedCreeps.count(guid))
         return 2; // lane creep
 
     for (MobaCampState const& c : _camps)
@@ -1443,6 +1497,29 @@ uint32 BattlegroundMOBA::ClassifyKiller(Unit* killer) const
             return 3; // neutral camp
 
     return 0; // unknown creature -> fall back to "the environment"
+}
+
+TeamId BattlegroundMOBA::ResolveKillerTeam(Unit* killer) const
+{
+    if (!killer)
+        return TEAM_NEUTRAL;
+
+    // Pets and guardians answer for their owner, matching how both JustDied
+    // callers resolve a killing-blow player.
+    if (Player* player = killer->GetCharmerOrOwnerPlayerOrPlayerItself())
+        return player->GetBgTeamId();
+
+    ObjectGuid guid = killer->GetGUID();
+
+    for (MobaTowerState const& t : _towers)
+        if (t.guid == guid)
+            return t.team;
+
+    auto itr = _spawnedCreeps.find(guid);
+    if (itr != _spawnedCreeps.end())
+        return itr->second;
+
+    return TEAM_NEUTRAL;
 }
 
 // Transient feed line for a death with no crediting enemy player. Broadcast to all,

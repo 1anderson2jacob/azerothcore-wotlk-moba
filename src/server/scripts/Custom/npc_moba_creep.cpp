@@ -189,15 +189,23 @@ struct npc_moba_creep : public ScriptedAI
         if (!_cfg)
             return;
 
+        // An own-team kill earns nothing -- not the personal drops, and not the
+        // team-wide ones either, so the reward source is dropped alongside the
+        // player. GrantDeathDrops cannot infer this: handed the raw unit it would
+        // resolve it straight back to a team and pay that team for its own creep.
         Player* p = killer ? killer->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
+        Unit* rewardSource = killer;
         if (p && p->GetBgTeamId() == _cfg->team)
+        {
             p = nullptr;
+            rewardSource = nullptr;
+        }
 
         if (BattlegroundMap* bgMap = me->GetMap()->ToBattlegroundMap())
         {
             if (auto* moba = dynamic_cast<BattlegroundMOBA*>(bgMap->GetBG()))
             {
-                moba->GrantDeathDrops(me, p);
+                moba->GrantDeathDrops(me, p, rewardSource);
                 if (p)
                     moba->CreditCreepKill(p);
             }

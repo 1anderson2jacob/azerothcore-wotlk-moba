@@ -181,12 +181,17 @@ public:
     void CreditCreepKill(Player* killer);
 
     // On-death drops for any minion (lane creep or neutral), called from both
-    // JustDied choke points with the killing-blow player (nullptr = none, or
-    // rejected by the caller's own policy). Grants buff drops, injects gold
-    // into the corpse loot, and re-points native loot rights -- the tapper's
-    // group by default -- at the killer's team; with no rewarded killer it
-    // strips the corpse instead.
-    void GrantDeathDrops(Creature* victim, Player* killer);
+    // JustDied choke points. `killer` is the killing-blow player the caller is
+    // willing to REWARD (nullptr = none, or refused by the caller's own policy);
+    // `killerUnit` is the raw unit that landed the blow, and exists only to name a
+    // side for team-wide drops when no player did. The two are separate because
+    // npc_moba_creep nulls `killer` on an own-team kill -- policy this function
+    // cannot re-derive, since it would resolve that same unit straight back to a
+    // team -- so a caller that rewards nothing must pass nullptr for BOTH. Grants
+    // buff drops, injects gold into the corpse loot, and re-points native loot
+    // rights -- the tapper's group by default -- at the killer's team; with no
+    // rewarded killer it strips the corpse instead.
+    void GrantDeathDrops(Creature* victim, Player* killer, Unit* killerUnit);
 
     // Grant a resolved kill's drops directly to the killer (buff/gold/item) --
     // no corpse, no native loot, unlike GrantDeathDrops. Called from
@@ -281,6 +286,11 @@ private:
     // Flat per player, NOT a split pot: the config number reads as what the
     // objective is worth to you, and team size never dilutes it.
     void AwardTeamGold(TeamId team, uint32 copper);
+    // The buff half of the same idea. The IsAlive() gate is the DESIGN rule, not
+    // belt-and-braces: Unit::AddAura already drops dead targets, but exempts any
+    // spell carrying SPELL_ATTR2_ALLOW_DEAD_TARGET, so without this an innocuous
+    // config spell change could silently start buffing corpses.
+    void AwardTeamBuff(TeamId team, uint32 spell, uint32 durationMs);
     void UpdateShopRange(uint32 diff);
     Player* ResolveKillCredit(Player* victim, Unit* killer);
     uint32 GetKillCreditWindowMs() const;
@@ -299,6 +309,10 @@ private:
     void BroadcastKillFeed(Player* killer, Player* victim);
     void BroadcastNonPlayerDeath(Player* victim, Unit* killer);
     uint32 ClassifyKiller(Unit* killer) const;   // 0 env, 1 tower, 2 lane creep, 3 neutral
+    // Which side a killing blow belongs to when no player landed it: towers and
+    // lane creeps carry their owner's team. TEAM_NEUTRAL = nobody to pay -- a
+    // jungle mob, the environment, or a unit in neither registry.
+    TeamId ResolveKillerTeam(Unit* killer) const;
     void SendScoreboard(Player* player);
     void BroadcastScoreboard();
     std::string BuildScoreboardBody(Player* player) const;
@@ -307,7 +321,9 @@ private:
     std::vector<MobaTowerState> _towers;
     MobaWaveComposition _waveComposition[2];
     bool _superMinionsActive[2] = {false, false}; // per beneficiary team: enemy inhibitor down -> super minions in waves
-    std::vector<ObjectGuid> _spawnedCreeps;
+    // Team rides along because a creep that lands a killing blow has to name its
+    // side for team-wide drops, which a bare GUID list could not do.
+    std::unordered_map<ObjectGuid, TeamId> _spawnedCreeps;
     std::vector<MobaCampState> _camps;
     uint32 _waveCount = 0;
     uint32 _matchElapsedMs = 0;   // time since doors opened (excludes prep phase)

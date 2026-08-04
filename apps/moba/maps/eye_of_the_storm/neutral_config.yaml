@@ -15,7 +15,7 @@
 #   creature_type                  optional; overrides source type (enum
 #                                  CreatureType). The jungle sources are
 #                                  Humanoid (7), so Beast (1) is explicit.
-#   drops[].type                   buff | gold | item
+#   drops[].type                   buff | gold | item | team_gold | team_buff
 
 map: 566
 initial_spawn_ms: 30000

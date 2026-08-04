@@ -107,14 +107,16 @@ VALUES
 (900011, 33470, 0, 100, 0, 1, 0, 1, 1, 'horde_melee_right (moba drop)'),
 (900017, 33470, 0, 100, 0, 1, 0, 1, 1, 'horde_melee_left (moba drop)');
 
--- Buff/gold drops, rolled and delivered by BattlegroundMOBA::
--- GrantDeathDrops at the killing blow: Type 0 = buff (aura on the
--- killer; DurationMs 0 = the spell's default), 1 = gold (Copper
--- injected into the corpse loot). Type 2 = item is the ODD ONE: the
--- item itself comes from the creature_loot_template rows above, so a
--- type-2 row grants nothing and carries only Item + Sell, the per-unit
--- price npc_moba_store refunds. An item drop with no `sell` gets no row
--- here and cannot be sold back. Chance is a percent (config x 100).
+-- Drops, rolled and delivered by BattlegroundMOBA::GrantDeathDrops at
+-- the killing blow. Type 0 = buff (aura on the killer), 1 = gold
+-- (Copper injected into the corpse loot), 3 = team gold, 4 = team buff.
+-- The team types pay the whole killing team with no corpse; team buff
+-- reaches living players only. DurationMs 0 = the spell's own duration.
+-- Type 2 = item is the ODD ONE: the item itself comes from the
+-- creature_loot_template rows above, so a type-2 row grants nothing and
+-- carries only Item + Sell, the per-unit price npc_moba_store refunds. An
+-- item drop with no `sell` gets no row here and cannot be sold back.
+-- Chance is a percent (config x 100).
 DROP TABLE IF EXISTS `mod_moba_creep_drops`;
 CREATE TABLE `mod_moba_creep_drops` (
     `CreatureEntry` INT UNSIGNED NOT NULL,
