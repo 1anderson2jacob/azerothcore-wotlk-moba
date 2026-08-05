@@ -240,8 +240,10 @@ public:
     // once its last member is down.
     void NotifyNeutralDied(Creature* member);
 
-    // Starts a player's respawn countdown (called from the OnPlayerReleasedGhost hook).
-    void StartRespawnTimer(Player* player);
+    // Starts a player's respawn countdown (called from the death and released-ghost
+    // hooks). `instant` revives on the next battleground tick instead of waiting out
+    // the scaled timer, for deaths that are not meant to cost anything.
+    void StartRespawnTimer(Player* player, bool instant = false);
 
     // Reply to a MobaHUD client "ready" ping with this player's current HUD state.
     void SendHudStateTo(Player* player);

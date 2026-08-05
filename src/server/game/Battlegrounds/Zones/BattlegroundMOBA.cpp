@@ -78,6 +78,12 @@ void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
     // the doors open. Everything below here is match-time only.
     UpdateShopRange(diff);
 
+    // Also ahead of it, for a harsher reason: players can die during prep, and an
+    // instanced map offers no way back on its own -- no spirit healer, and
+    // Player::Update skips its auto-release entirely on instanceable maps. Let
+    // this stop ticking before the doors open and a prep-phase death is permanent.
+    UpdateRespawnTimers(diff);
+
     if (GetStatus() != STATUS_IN_PROGRESS)
         return;
 
@@ -100,7 +106,6 @@ void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
             SpawnCamp(eventId - EVENT_MOBA_SPAWN_CAMP_FIRST);
     }
 
-    UpdateRespawnTimers(diff);
     UpdateFountainHealing(diff);
     UpdatePassiveGold(diff);
 
@@ -1199,7 +1204,7 @@ GraveyardStruct const* BattlegroundMOBA::GetClosestGraveyard(Player* player)
         : BG_MOBA_GRAVEYARD_MAIN_HORDE);
 }
 
-void BattlegroundMOBA::StartRespawnTimer(Player* player)
+void BattlegroundMOBA::StartRespawnTimer(Player* player, bool instant /*= false*/)
 {
     if (!player)
         return;
@@ -1208,18 +1213,22 @@ void BattlegroundMOBA::StartRespawnTimer(Player* player)
     if (_respawnTimers.find(player->GetGUID()) != _respawnTimers.end())
         return;
 
-    uint32 baseMs = 10000, perMinMs = 1500, capMs = 60000;
-    if (MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId()))
+    uint32 waitMs = 0;
+    if (!instant)
     {
-        baseMs   = cfg->respawnBaseMs;
-        perMinMs = cfg->respawnPerMinMs;
-        capMs    = cfg->respawnCapMs;
-    }
+        uint32 baseMs = 10000, perMinMs = 1500, capMs = 60000;
+        if (MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId()))
+        {
+            baseMs   = cfg->respawnBaseMs;
+            perMinMs = cfg->respawnPerMinMs;
+            capMs    = cfg->respawnCapMs;
+        }
 
-    // Grows continuously with match time (measured from doors-open, so the prep
-    // phase is excluded), clamped to the cap.
-    uint32 waitMs = std::min<uint32>(capMs,
-        baseMs + static_cast<uint32>(static_cast<uint64>(perMinMs) * _matchElapsedMs / 60000));
+        // Grows continuously with match time (measured from doors-open, so the prep
+        // phase is excluded), clamped to the cap.
+        waitMs = std::min<uint32>(capMs,
+            baseMs + static_cast<uint32>(static_cast<uint64>(perMinMs) * _matchElapsedMs / 60000));
+    }
 
     MobaRespawnState state;
     state.remainingMs = waitMs;

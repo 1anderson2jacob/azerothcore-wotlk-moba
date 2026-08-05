@@ -700,6 +700,13 @@ touching that area:
   overflow becomes a second line that spills out of the parent's backdrop. Measure
   the widest glyph at the live scale; never assume a font's digits are tabular, and
   never hardcode 8. → `client/addons/MobaHUD/Bar.lua`, `WidestDigit`.
+- **Releasing spirit is impossible during BG prep** — `SPELL_PREPARATION` (44521)
+  carries `SPELL_AURA_PREVENT_RESURRECTION`, so `HandleRepopRequestOpcode` drops the
+  request silently while the client auto-accepts its own death popup. Anything waiting
+  on the released-ghost hook never runs, and an instanced map has neither a spirit
+  healer nor `Player::Update`'s auto-release as a fallback, so a prep death strands the
+  player — looking alive, but rooted and dead — for the whole match (shipped as a real
+  bug). → `moba_respawn.cpp`, `OnPlayerJustDied`.
 
 Traps with no single code home:
 
