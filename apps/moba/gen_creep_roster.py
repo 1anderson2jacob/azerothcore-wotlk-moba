@@ -302,8 +302,15 @@ def validate_drops(block, label):
         chance = drop.get("chance", 1.0)
         if not isinstance(chance, (int, float)) or not 0 < chance <= 1:
             fail(f'{where}: "chance" must be in (0, 1] -- a coefficient, not a percent')
-        if drop["type"] == "buff" and not isinstance(drop.get("duration_ms", 0), int):
-            fail(f'{where}: "duration_ms" must be an integer (0 = the spell\'s default)')
+        # Both buff types share the DurationMs column; every other type emits it
+        # too and never reads it back, so an unguarded value there is a silent
+        # no-op. Rejected outright, same as "sell" on a non-item drop below.
+        if drop["type"] in ("buff", "team_buff"):
+            if not isinstance(drop.get("duration_ms", 0), int) or drop.get("duration_ms", 0) < 0:
+                fail(f'{where}: "duration_ms" must be an integer >= 0 '
+                     "(0 = the spell's own duration)")
+        elif "duration_ms" in drop:
+            fail(f'{where}: "duration_ms" applies only to buff and team_buff drops')
         if drop["type"] != "item" and "sell" in drop:
             fail(f'{where}: "sell" applies only to item drops')
         if drop["type"] == "item":

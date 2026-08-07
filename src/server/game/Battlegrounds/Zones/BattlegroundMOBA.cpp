@@ -53,6 +53,9 @@ namespace
     constexpr uint32 MOBA_HUD_RESYNC_MS    = 10000; // re-broadcast cadence for /reload + late joiners
     constexpr uint32 MOBA_NEUTRAL_CORPSE_DESPAWN_MS = 15000; // camp-member corpse cleanup (see SpawnCamp)
     constexpr uint32 MOBA_SHOP_RANGE_POLL_MS = 1000; // shop buy/sell affordance refresh
+    constexpr uint32 MOBA_INHIB_RESPAWN_WARN_MS = 10000; // "respawning soon" lead time
+    constexpr uint32 MOBA_WAVE_INTERVAL_MS = 30000; // lane-creep wave cadence
+    constexpr uint32 MOBA_WAVE_WARN_MS     = 10000; // "minions incoming" lead time
 }
 
 void BattlegroundMOBAScore::BuildObjectivesBlock(WorldPacket& data)
@@ -98,8 +101,22 @@ void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
             bool includeSiege = (_waveCount % 3 == 0);
             SpawnWave(TEAM_ALLIANCE, includeSiege);
             SpawnWave(TEAM_HORDE, includeSiege);
-            _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(30000));
+            _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(MOBA_WAVE_INTERVAL_MS));
+
+            // Announced from here rather than SpawnWave, which runs once per team and
+            // would say it twice. First wave only: after that the cadence is the
+            // clock's job, and a pair of lines every 30s would crowd out real events.
+            if (_waveCount == 1)
+                BroadcastNotice(MOBA_NOTICE_MINIONS_SPAWNED);
         }
+        else if (eventId == EVENT_MOBA_WAVE_WARN)
+            BroadcastNotice(MOBA_NOTICE_MINIONS_SOON, MOBA_WAVE_WARN_MS / 1000);
+        // Highest base first: each test is a >=, so an out-of-order branch swallows
+        // every base above it.
+        else if (eventId >= EVENT_MOBA_BOSS_WARN_FIRST)
+            WarnBossRespawn(eventId - EVENT_MOBA_BOSS_WARN_FIRST);
+        else if (eventId >= EVENT_MOBA_INHIB_WARN_FIRST)
+            WarnInhibitorRespawn(eventId - EVENT_MOBA_INHIB_WARN_FIRST);
         else if (eventId >= EVENT_MOBA_RESPAWN_INHIB_FIRST)
             RespawnInhibitor(eventId - EVENT_MOBA_RESPAWN_INHIB_FIRST);
         else if (eventId >= EVENT_MOBA_SPAWN_CAMP_FIRST)
@@ -132,10 +149,23 @@ void BattlegroundMOBA::StartingEventOpenDoors()
     // Achievement: Flurry
     StartTimedAchievement(ACHIEVEMENT_TIMED_TYPE_EVENT, BG_MOBA_EVENT_START_BATTLE);
 
-    _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(30000));
+    _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(MOBA_WAVE_INTERVAL_MS));
+
+    // Scheduled once and never re-armed: only the first wave is announced. Derived
+    // from the interval rather than written out, so the warning cannot drift off
+    // the spawn it announces when the cadence changes.
+    _bgEvents.ScheduleEvent(EVENT_MOBA_WAVE_WARN, Milliseconds(MOBA_WAVE_INTERVAL_MS - MOBA_WAVE_WARN_MS));
 
     for (size_t i = 0; i < _camps.size(); ++i)
-        _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_CAMP_FIRST + static_cast<uint32>(i), Milliseconds(_camps[i].initialSpawnMs));
+    {
+        uint32 index = static_cast<uint32>(i);
+        _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_CAMP_FIRST + index, Milliseconds(_camps[i].initialSpawnMs));
+
+        // A boss gets the same lead on its first appearance as on every respawn.
+        if (_camps[i].tier && _camps[i].spawnWarnMs && _camps[i].initialSpawnMs > _camps[i].spawnWarnMs)
+            _bgEvents.ScheduleEvent(EVENT_MOBA_BOSS_WARN_FIRST + index,
+                Milliseconds(_camps[i].initialSpawnMs - _camps[i].spawnWarnMs));
+    }
 
     // Match starts now (doors open): show the HUD bar at 0:00 with a zeroed scoreboard.
     BroadcastHudMessage("T:0");
@@ -144,6 +174,17 @@ void BattlegroundMOBA::StartingEventOpenDoors()
 
 void BattlegroundMOBA::EndBattleground(TeamId winnerTeamId)
 {
+    // The core's own double-end guard sits one level below, in
+    // Battleground::EndBattleground(PvPTeamId) -- past the broadcasts. Repeat it
+    // here or a second caller doubles the feed lines while the core work stays single.
+    if (GetStatus() == STATUS_WAIT_LEAVE)
+        return;
+
+    // Ahead of "E", and deliberately a separate payload rather than a field on it:
+    // the client tests E by exact match, so anything appended stops matching. The
+    // feed outlives the match, so this line needs no timer of its own.
+    BroadcastMatchResult(winnerTeamId);
+
     // Hide the client-side HUD bar as the match ends.
     BroadcastHudMessage("E");
 
@@ -361,6 +402,7 @@ void BattlegroundMOBA::RemovePlayer(Player* player)
     {
         _recentAttackers.erase(player->GetGUID());
         _allySupport.erase(player->GetGUID());
+        _streaks.erase(player->GetGUID());
         _shopAddonPlayers.erase(player->GetGUID());
         _shopInRange.erase(player->GetGUID());
 
@@ -487,12 +529,19 @@ bool BattlegroundMOBA::SetupBattleground()
     {
         MobaTowerConfig const& cfg = towerConfigs[i];
         uint32 slot = BG_MOBA_CREATURE_FIXED_MAX + static_cast<uint32>(i);
-        AddCreature(cfg.entry, slot, cfg.x, cfg.y, cfg.z, cfg.o);
+        // Battleground::AddCreature applies a respawn delay only when one is passed,
+        // so the default 0 leaves Creature's own 300s default in place and every
+        // structure quietly returns ~6 minutes after dying -- alive, but still
+        // flagged destroyed here, so inert to every code path that matters.
+        // Inhibitors are unaffected: RespawnInhibitor brings them back with
+        // Creature::Respawn(true), a forced respawn that ignores this timer.
+        AddCreature(cfg.entry, slot, cfg.x, cfg.y, cfg.z, cfg.o, DAY);
 
         MobaTowerState state;
         state.entry = cfg.entry;
         state.team = cfg.team;
         state.tier = cfg.tier;
+        state.lane = cfg.lane;
         state.guardedByEntry = cfg.guardedByEntry;
         state.kind = cfg.kind;
         state.respawnMs = cfg.respawnMs;
@@ -562,8 +611,10 @@ bool BattlegroundMOBA::SetupBattleground()
     {
         MobaCampState camp;
         camp.campId = cfg.campId;
+        camp.tier = cfg.tier;
         camp.initialSpawnMs = cfg.initialSpawnMs;
         camp.respawnMs = cfg.respawnMs;
+        camp.spawnWarnMs = cfg.spawnWarnMs;
         camp.members = cfg.members;
         _camps.push_back(std::move(camp));
     }
@@ -581,6 +632,8 @@ void BattlegroundMOBA::Init()
     _waveCount = 0;
     _superMinionsActive[0] = false;
     _superMinionsActive[1] = false;
+    _streaks.clear();
+    _firstBlood = false;
 }
 
 void BattlegroundMOBA::HandleKillPlayer(Player* /*player*/, Player* /*killer*/)
@@ -857,6 +910,14 @@ void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
     // only through HandleKillPlayer, which we no-op'd, so the tally lives here.
     UpdatePlayerScore(victim, SCORE_DEATHS, 1);
 
+    MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId());
+
+    // Read BEFORE the erase at the bottom: the victim's streak is the whole
+    // definition of a shutdown, and it is gone the moment this death is booked.
+    uint32 victimSpree = 0;
+    if (auto itr = _streaks.find(victim->GetGUID()); itr != _streaks.end())
+        victimSpree = itr->second.spree;
+
     Player* creditKiller = ResolveKillCredit(victim, killer);
     if (creditKiller && creditKiller != victim)
     {
@@ -922,7 +983,31 @@ void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
 
         ++_teamPlayerKills[team];
         GrantPlayerKillDrops(creditKiller);
-        BroadcastKillFeed(creditKiller, victim);
+
+        // The two flags cannot collide: first blood means no kill has landed yet,
+        // so no victim can be carrying a spree. The `else` is documentation, not a
+        // tie-break. The line and the money are separately gated -- a map that
+        // configures no bounty still gets told a shutdown happened.
+        uint32 flag = MOBA_KILL_FLAG_NONE;
+        if (!_firstBlood)
+        {
+            _firstBlood = true;
+            flag = MOBA_KILL_FLAG_FIRST_BLOOD;
+            if (cfg)
+                AddMatchGold(creditKiller, cfg->firstBloodGold);
+        }
+        else if (cfg && cfg->spreeMin && victimSpree >= cfg->spreeMin)
+        {
+            flag = MOBA_KILL_FLAG_SHUTDOWN;
+
+            uint32 bounty = cfg->shutdownPerStreak * victimSpree;
+            if (cfg->shutdownCapGold && bounty > cfg->shutdownCapGold)
+                bounty = cfg->shutdownCapGold;
+            AddMatchGold(creditKiller, bounty);   // guards 0 itself
+        }
+
+        BroadcastKillFeed(creditKiller, victim, flag);
+        UpdateKillStreak(creditKiller);
     }
     else
     {
@@ -930,11 +1015,88 @@ void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
         BroadcastNonPlayerDeath(victim, killer);
     }
 
-    // Both tracking lists are per-life; the victim is dead now.
+    // All three lists are per-life; the victim is dead now. The streak erase sits
+    // OUTSIDE the credited-kill branch on purpose -- dying to a creep ends a spree
+    // exactly as surely as dying to a player does.
     _recentAttackers.erase(victim->GetGUID());
     _allySupport.erase(victim->GetGUID());
+    _streaks.erase(victim->GetGUID());
+
+    // Last, so the sweep sees a fully-booked death.
+    CheckAce(victim->GetBgTeamId());
 
     BroadcastScoreboard();
+}
+
+// Advance the killer's two counters and announce whatever they crossed. Split out
+// of HandlePlayerDeath only because that function is already the longest here; it
+// has exactly one caller.
+void BattlegroundMOBA::UpdateKillStreak(Player* killer)
+{
+    if (!killer)
+        return;
+
+    MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId());
+    uint32 const now = GameTime::GetGameTimeMS().count();
+
+    MobaStreakState& st = _streaks[killer->GetGUID()];
+    ++st.spree;
+
+    // The window runs from the PREVIOUS kill, not from the first of the chain, so
+    // a steady stream keeps extending one multi-kill. That is what "rolling"
+    // means here, and it is how LoL counts. A zero window disables multi-kills
+    // outright: `multi` then never leaves 1 and the >= 2 test below never fires.
+    uint32 const windowMs = cfg ? cfg->multiKillWindowMs : 0;
+    if (st.multi && windowMs && getMSTimeDiff(st.lastKillMs, now) <= windowMs)
+        ++st.multi;
+    else
+        st.multi = 1;
+    st.lastKillMs = now;
+
+    TeamId const team = killer->GetBgTeamId();
+
+    // Spree first, so a kill that is both lands the multi-kill on top of it: the
+    // multi-kill is the rarer of the two and the one worth reading.
+    if (cfg && cfg->spreeMin && st.spree >= cfg->spreeMin)
+        BroadcastStreak(killer, team, MOBA_STREAK_SPREE, st.spree);
+
+    if (st.multi >= 2)
+        BroadcastStreak(killer, team, MOBA_STREAK_MULTI, st.multi);
+}
+
+// An ace is a whole team down at once. Swept after every death rather than kept
+// as a counter: respawns, disconnects and mid-match joins all move the number,
+// and a walk over a handful of players costs less than keeping a tally honest
+// against all three. Called with the team that just LOST someone -- the only
+// team whose alive-count can have reached zero on this death.
+void BattlegroundMOBA::CheckAce(TeamId wipedTeam)
+{
+    MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId());
+    uint32 const minTeam = cfg ? cfg->aceMinTeam : 0;
+    if (!minTeam)
+        return;
+
+    uint32 total = 0;
+    for (auto const& itr : GetPlayers())
+    {
+        Player* player = itr.second;
+        if (!player || player->GetBgTeamId() != wipedTeam)
+            continue;
+
+        // The player who just died already reads dead: OnUnitDeath is the last
+        // statement in Unit::Kill, long after setDeathState. No special case.
+        if (player->IsAlive())
+            return;
+
+        ++total;
+    }
+
+    // A solo player wiping is not an ace, it is a kill. minTeam is what keeps the
+    // line meaningful in a 1v1 test match.
+    if (total < minTeam)
+        return;
+
+    BroadcastStreak(nullptr, GetOtherTeamId(wipedTeam), MOBA_STREAK_ACE, 0);
 }
 
 void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Player* lastHitter)
@@ -951,6 +1113,10 @@ void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Pl
         return;
 
     itr->destroyed = true;
+
+    // Behind the `destroyed` guard so it cannot double-fire, and ahead of the core
+    // branch's early return below or a base kill would announce nothing.
+    BroadcastStructureEvent(*itr, MOBA_STRUCT_EVENT_DESTROYED, lastHitter);
 
     // Objective gold, paid behind the `destroyed` guard so nothing can double-pay,
     // and unconditionally on team so a creep-finished structure still rewards the
@@ -982,19 +1148,44 @@ void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Pl
         return;
     }
 
-    // Destroying an inhibitor: the killer team fields super minions until this
-    // inhibitor respawns, and the inhibitor schedules its own return. winnerTeamId
-    // is the destroyer -- i.e. the enemy of itr->team, so it is the beneficiary.
+    // Destroying an inhibitor: the enemy of its owner fields super minions until
+    // this inhibitor respawns, and the inhibitor schedules its own return.
     if (itr->kind == MOBA_STRUCTURE_INHIBITOR)
     {
-        _superMinionsActive[winnerTeamId] = true;
+        // The beneficiary is the enemy of the OWNER, never winnerTeamId (the
+        // killer's team, per npc_moba_tower::JustDied). Those agree in a real push
+        // and diverge on an own-team kill -- and since RespawnInhibitor clears the
+        // flag from the owner, any mismatch here leaks super minions permanently.
+        TeamId beneficiary = (itr->team == TEAM_ALLIANCE) ? TEAM_HORDE : TEAM_ALLIANCE;
+        _superMinionsActive[beneficiary] = true;
 
         if (itr->respawnMs)
         {
             uint32 towerIndex = static_cast<uint32>(std::distance(_towers.begin(), itr));
             _bgEvents.ScheduleEvent(EVENT_MOBA_RESPAWN_INHIB_FIRST + towerIndex, Milliseconds(itr->respawnMs));
+
+            // Skipped when the respawn is shorter than the lead time: a warning that
+            // fires at or after the thing it warns about is worse than none.
+            if (itr->respawnMs > MOBA_INHIB_RESPAWN_WARN_MS)
+                _bgEvents.ScheduleEvent(EVENT_MOBA_INHIB_WARN_FIRST + towerIndex,
+                    Milliseconds(itr->respawnMs - MOBA_INHIB_RESPAWN_WARN_MS));
         }
     }
+}
+
+// The pre-warning half of the inhibitor respawn, scheduled alongside it in
+// OnTowerDestroyed. Silent if the inhibitor is already back -- the warn is a
+// separate scheduled event and nothing cancels it if the timeline changes under it.
+void BattlegroundMOBA::WarnInhibitorRespawn(uint32 towerIndex)
+{
+    if (GetStatus() != STATUS_IN_PROGRESS || towerIndex >= _towers.size())
+        return;
+
+    MobaTowerState const& inhib = _towers[towerIndex];
+    if (!inhib.destroyed)
+        return;
+
+    BroadcastStructureEvent(inhib, MOBA_STRUCT_EVENT_RESPAWNING, nullptr);
 }
 
 // Inhibitor respawn (scheduled by OnTowerDestroyed). Brings the structure back,
@@ -1026,6 +1217,7 @@ void BattlegroundMOBA::RespawnInhibitor(uint32 towerIndex)
     // Super minions stop for the team that had knocked this inhibitor down (the enemy of its team).
     TeamId beneficiary = (inhib.team == TEAM_ALLIANCE) ? TEAM_HORDE : TEAM_ALLIANCE;
     _superMinionsActive[beneficiary] = false;
+    BroadcastStructureEvent(inhib, MOBA_STRUCT_EVENT_RESPAWNED, nullptr);
 }
 
 void BattlegroundMOBA::SpawnWave(TeamId team, bool includeSiege)
@@ -1102,6 +1294,28 @@ void BattlegroundMOBA::SpawnCamp(uint32 campIndex)
             ++camp.aliveCount;
         }
     }
+
+    // Announced on the first spawn as well as every respawn -- a boss nobody was
+    // told about is a boss nobody contests. Gated on aliveCount so a camp whose
+    // summons all failed announces nothing.
+    if (camp.tier && camp.aliveCount)
+        BroadcastBossEvent(camp, MOBA_BOSS_EVENT_SPAWNED, TEAM_NEUTRAL);
+}
+
+// Scheduled twice over a camp's life: by StartingEventOpenDoors ahead of the
+// first spawn, and by NotifyNeutralDied ahead of every respawn. Both subtract
+// the same lead from the delay they are pacing, so the warning cannot drift off
+// the spawn it announces when the camp is retuned.
+void BattlegroundMOBA::WarnBossRespawn(uint32 campIndex)
+{
+    if (GetStatus() != STATUS_IN_PROGRESS || campIndex >= _camps.size())
+        return;
+
+    MobaCampState const& camp = _camps[campIndex];
+    if (!camp.tier)
+        return;
+
+    BroadcastBossEvent(camp, MOBA_BOSS_EVENT_SPAWNING, TEAM_NEUTRAL, camp.spawnWarnMs / 1000);
 }
 
 MobaCampState* BattlegroundMOBA::FindCampOf(ObjectGuid guid)
@@ -1136,7 +1350,7 @@ void BattlegroundMOBA::PullCampMates(Creature* member, Unit* attacker)
     }
 }
 
-void BattlegroundMOBA::NotifyNeutralDied(Creature* member)
+void BattlegroundMOBA::NotifyNeutralDied(Creature* member, Unit* killer)
 {
     MobaCampState* camp = FindCampOf(member->GetGUID());
     if (!camp || !camp->aliveCount)
@@ -1146,6 +1360,21 @@ void BattlegroundMOBA::NotifyNeutralDied(Creature* member)
     {
         uint32 campIndex = static_cast<uint32>(camp - _camps.data());
         _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_CAMP_FIRST + campIndex, Milliseconds(camp->respawnMs));
+
+        if (camp->tier)
+        {
+            // The killing BLOW's side, which is the same rule GrantDeathDrops pays
+            // the team-wide rows on -- so the line and the payout can never name
+            // different teams. ResolveKillerTeam answers TEAM_NEUTRAL when nothing
+            // resolves, and the payload has a side value for that.
+            BroadcastBossEvent(*camp, MOBA_BOSS_EVENT_SLAIN, ResolveKillerTeam(killer));
+
+            // The generator already rejects a lead >= respawnMs; this guard is what
+            // keeps hand-edited SQL from scheduling the warning in the past.
+            if (camp->spawnWarnMs && camp->respawnMs > camp->spawnWarnMs)
+                _bgEvents.ScheduleEvent(EVENT_MOBA_BOSS_WARN_FIRST + campIndex,
+                    Milliseconds(camp->respawnMs - camp->spawnWarnMs));
+        }
     }
 }
 
@@ -1450,8 +1679,10 @@ void BattlegroundMOBA::SendHudStateTo(Player* player)
 // Emit a transient kill-feed line to every player, tailored per recipient: a POV
 // flag (you got the kill / you died / bystander) and team-relative sides so the
 // addon colours names blue/red without guessing factions (CFBG-safe). Player
-// kills only -- called from HandlePlayerDeath with a resolved killer.
-void BattlegroundMOBA::BroadcastKillFeed(Player* killer, Player* victim)
+// kills only -- called from HandlePlayerDeath with a resolved killer. `flag` is a
+// BG_MOBA_KillFlag, which the addon renders as a tag on this line rather than a
+// second one, so a shutdown cannot claim two of the feed's five slots.
+void BattlegroundMOBA::BroadcastKillFeed(Player* killer, Player* victim, uint32 flag)
 {
     if (!killer || !victim)
         return;
@@ -1480,8 +1711,8 @@ void BattlegroundMOBA::BroadcastKillFeed(Player* killer, Player* victim)
         uint32 killerSide = (killerTeam == team) ? 0u : 1u; // 0 = recipient's team (blue)
         uint32 victimSide = (victimTeam == team) ? 0u : 1u;
 
-        SendHudMessage(recipient, Acore::StringFormat("K:{},{},{},{},{},{},{}",
-            pov, killerName, killerClass, killerSide, victimName, victimClass, victimSide));
+        SendHudMessage(recipient, Acore::StringFormat("K:{},{},{},{},{},{},{},{}",
+            pov, killerName, killerClass, killerSide, victimName, victimClass, victimSide, flag));
     }
 }
 
@@ -1555,6 +1786,122 @@ void BattlegroundMOBA::BroadcastNonPlayerDeath(Player* victim, Unit* killer)
 
         SendHudMessage(recipient, Acore::StringFormat("D:{},{},{},{},{}",
             pov, vSide, victimClass, victimName, cat));
+    }
+}
+
+// Emit a boss event to every player, tailored per recipient. `team` is the side
+// the event belongs to, and is TEAM_NEUTRAL for both spawn events -- a boss
+// appearing is nobody's news, which is why the side field has a third value that
+// K:/O:/X: never needed. `arg` is the lead time in seconds on "spawning soon"
+// and 0 everywhere else, the same always-present rule N: uses.
+//
+// The name comes from creature_template rather than a live creature: the warning
+// fires while every member is dead, so there is nothing left to ask. Member 0 is
+// the boss by convention -- a tiered camp is a single mob today.
+void BattlegroundMOBA::BroadcastBossEvent(MobaCampState const& camp, uint32 event, TeamId team, uint32 arg)
+{
+    std::string name;
+    if (!camp.members.empty())
+        if (CreatureTemplate const* tmpl = sObjectMgr->GetCreatureTemplate(camp.members[0].entry))
+            name = tmpl->Name;
+
+    for (auto const& itr : GetPlayers())
+    {
+        Player* recipient = itr.second;
+        if (!recipient)
+            continue;
+
+        uint32 side = MOBA_BOSS_SIDE_NOBODY;
+        if (team == TEAM_ALLIANCE || team == TEAM_HORDE)
+            side = (team == recipient->GetBgTeamId()) ? MOBA_BOSS_SIDE_OURS : MOBA_BOSS_SIDE_ENEMY;
+
+        SendHudMessage(recipient, Acore::StringFormat("B:{},{},{},{}", event, side, arg, name));
+    }
+}
+
+// Emit a structure event to every player, tailored per recipient: which side owns
+// the structure, plus enough shape (kind/tier/lane) for the addon to name it. The
+// addon owns all wording. `actor` is nullptr when a creep finished the structure
+// (npc_moba_tower passes no lastHitter), and the payload's trailing field is then
+// EMPTY -- the Lua pattern uses [^,]* for it precisely so that still matches.
+//
+// This cannot fold into BroadcastKillFeed or BroadcastNonPlayerDeath: both take a
+// Player* victim and a structure has none. BroadcastBossEvent exists separately
+// for the same reason.
+void BattlegroundMOBA::BroadcastStructureEvent(MobaTowerState const& tower, uint32 event, Player* actor)
+{
+    std::string actorName = actor ? actor->GetName() : "";
+    // uint32 (not uint8) on purpose: fmt renders uint8 as a character.
+    uint32 kind = tower.kind;
+    uint32 tier = tower.tier;
+    uint32 lane = tower.lane;
+
+    for (auto const& itr : GetPlayers())
+    {
+        Player* recipient = itr.second;
+        if (!recipient)
+            continue;
+
+        // tower.team is the OWNER, never the destroyer: a structure falling is bad
+        // news for its own side, whoever landed the blow.
+        uint32 ownerSide = (tower.team == recipient->GetBgTeamId()) ? 0u : 1u;
+
+        SendHudMessage(recipient, Acore::StringFormat("O:{},{},{},{},{},{}",
+            event, ownerSide, kind, tier, lane, actorName));
+    }
+}
+
+// Emit a kill-streak line to every player, tailored per recipient. `subject` is
+// the player it is about, and is nullptr for an ace -- which belongs to a team,
+// not a person. The payload's name field is then EMPTY, so the Lua pattern reads
+// it with [^,]* for exactly the reason O:'s trailing actor does. `team` is the
+// side the line is GOOD news for, which for an ace is the team left standing.
+void BattlegroundMOBA::BroadcastStreak(Player* subject, TeamId team, uint32 type, uint32 count)
+{
+    std::string name = subject ? subject->GetName() : "";
+
+    for (auto const& itr : GetPlayers())
+    {
+        Player* recipient = itr.second;
+        if (!recipient)
+            continue;
+
+        uint32 pov  = (subject && recipient->GetGUID() == subject->GetGUID()) ? 0u : 1u;
+        uint32 side = (team == recipient->GetBgTeamId()) ? 0u : 1u;
+
+        SendHudMessage(recipient, Acore::StringFormat("X:{},{},{},{},{}",
+            pov, side, name, type, count));
+    }
+}
+
+// Emit a match-flow notice to every player. The server picks WHICH notice and the
+// addon owns every word, as with O: and X:. This is the one feed line that needs
+// no per-recipient tailoring -- the minion notices say the same thing to both
+// teams -- so it goes out as a single broadcast. `arg` carries any number the
+// wording needs; the addon decides whether its line uses one.
+void BattlegroundMOBA::BroadcastNotice(uint32 code, uint32 arg)
+{
+    BroadcastHudMessage(Acore::StringFormat("N:{},{}", code, arg));
+}
+
+// The one notice that is NOT the same for everyone: each player is told whether
+// THEY won, never which faction did. TEAM_NEUTRAL is a real outcome here --
+// Battleground::GetPrematureWinner returns it when neither side still fields
+// enough players -- and there is no honest victory or defeat line for it, so
+// nobody is told anything.
+void BattlegroundMOBA::BroadcastMatchResult(TeamId winnerTeamId)
+{
+    if (winnerTeamId != TEAM_ALLIANCE && winnerTeamId != TEAM_HORDE)
+        return;
+
+    for (auto const& itr : GetPlayers())
+    {
+        Player* recipient = itr.second;
+        if (!recipient)
+            continue;
+
+        uint32 code = (recipient->GetBgTeamId() == winnerTeamId) ? MOBA_NOTICE_VICTORY : MOBA_NOTICE_DEFEAT;
+        SendHudMessage(recipient, Acore::StringFormat("N:{},0", code));
     }
 }
 

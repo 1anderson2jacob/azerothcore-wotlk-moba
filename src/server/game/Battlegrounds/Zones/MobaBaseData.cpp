@@ -39,7 +39,9 @@ void MobaBaseDataStore::LoadIfNeeded()
         "FountainTickMs, FountainHpPct, FountainManaPct, FountainRadius, "
         "KillCreditWindowMs, AssistWindowMs, AssistBuffMaxDurationMs, "
         "DomeEntryAlliance, DomeEntryHorde, "
-        "StartingGold, PassiveTickMs, PassiveCopper FROM mod_moba_base");
+        "StartingGold, PassiveTickMs, PassiveCopper, "
+        "FirstBloodGold, ShutdownPerStreak, ShutdownCapGold, "
+        "MultiKillWindowMs, SpreeMin, AceMinTeam FROM mod_moba_base");
 
     if (!result)
     {
@@ -70,6 +72,12 @@ void MobaBaseDataStore::LoadIfNeeded()
         cfg.startingGold            = fields[15].Get<uint32>();
         cfg.passiveTickMs           = fields[16].Get<uint32>();
         cfg.passiveCopper           = fields[17].Get<uint32>();
+        cfg.firstBloodGold          = fields[18].Get<uint32>();
+        cfg.shutdownPerStreak       = fields[19].Get<uint32>();
+        cfg.shutdownCapGold         = fields[20].Get<uint32>();
+        cfg.multiKillWindowMs       = fields[21].Get<uint32>();
+        cfg.spreeMin                = fields[22].Get<uint32>();
+        cfg.aceMinTeam              = fields[23].Get<uint32>();
 
         _byMap[cfg.map] = cfg;
     } while (result->NextRow());

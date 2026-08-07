@@ -756,6 +756,20 @@ Traps with no single code home:
   and caching that verdict poisons the item for the session. Never cache a
   conclusion drawn from client data that may not have arrived; better, ask the
   server (which is why shop usability is pushed as `NU:` rather than scanned).
+- **A rename can *add* occurrences** — the same field is `snake_case` in yaml and
+  Python, `camelCase` in C++ and `PascalCase` in SQL, so a case-insensitive
+  find/replace also rewrites unrelated SCREAMING_CASE constants. Renaming
+  `respawn_warn_ms` silently turned `MOBA_INHIB_RESPAWN_WARN_MS` into
+  `MOBA_INHIB_spawn_warn_ms`, which still compiled and still linked. Confirming
+  the old token is gone proves nothing — count the new one too, and a *rise*
+  means something was over-matched.
+- **A stale `creature_template` looks like a client-side bug** — a creature whose
+  drops, timers and position are all correct can still show the wrong name,
+  because those come from tables that reloaded and the name comes from one that
+  did not. The client `Cache/` folder is the obvious suspect and the wrong one;
+  the fix is regenerating the SQL *and* restarting the worldserver. The
+  shopkeeper `Cache/` note above is the genuine client-side case — this is its
+  inverse, and they present identically.
 
 
 ## Reference: values that live in code

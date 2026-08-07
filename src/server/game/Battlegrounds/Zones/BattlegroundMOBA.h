@@ -66,13 +66,21 @@ enum BG_MOBA_Score
 enum BG_MOBA_Events
 {
     EVENT_MOBA_SPAWN_WAVE = 1,
-    // Two ranges keyed by a small container index:
-    //   EVENT_MOBA_SPAWN_CAMP_FIRST + camp index (into _camps)   -- jungle camp (re)spawn.
+    EVENT_MOBA_WAVE_WARN  = 2,   // one-shot "minions incoming"; no index, so no range
+    // Four ranges keyed by a small container index:
+    //   EVENT_MOBA_SPAWN_CAMP_FIRST + camp index (into _camps)      -- jungle camp (re)spawn.
     //   EVENT_MOBA_RESPAWN_INHIB_FIRST + tower index (into _towers) -- inhibitor return.
-    // PostUpdateImpl dispatches by threshold, so keep the two bases far apart and
-    // above any realistic camp/tower count.
+    //   EVENT_MOBA_INHIB_WARN_FIRST + tower index (into _towers)    -- "respawning soon" feed line.
+    //   EVENT_MOBA_BOSS_WARN_FIRST + camp index (into _camps)       -- boss "spawning soon" feed line.
+    // PostUpdateImpl dispatches by threshold in DESCENDING order, so keep the
+    // bases far apart, above any realistic camp/tower count, and test the highest
+    // base first -- a new base added below an existing test is swallowed by it.
+    // The bare ids above are matched with == ahead of that chain; a new bare id
+    // added WITHOUT its own == test falls through every >= branch and vanishes.
     EVENT_MOBA_SPAWN_CAMP_FIRST    = 100,
-    EVENT_MOBA_RESPAWN_INHIB_FIRST = 1000
+    EVENT_MOBA_RESPAWN_INHIB_FIRST = 1000,
+    EVENT_MOBA_INHIB_WARN_FIRST    = 2000,
+    EVENT_MOBA_BOSS_WARN_FIRST     = 3000
 };
 
 enum BG_MOBA_Recall
@@ -80,6 +88,74 @@ enum BG_MOBA_Recall
     BG_MOBA_RECALL_SPELL        = 8690,  // Hearthstone; redirected to base by moba_recall.cpp
     BG_MOBA_RECALL_ITEM         = 6948,  // Hearthstone item; granted in AddPlayer
     BG_MOBA_RECALL_EMPOWER_AURA = 1243   // PLACEHOLDER empower trigger (Power Word: Fortitude R1); swap for the real mechanic
+};
+
+// `event` field of the "O:" HUD payload. The addon owns all wording; this is
+// only the shape of what happened.
+enum BG_MOBA_StructureEvent
+{
+    MOBA_STRUCT_EVENT_DESTROYED  = 0,
+    MOBA_STRUCT_EVENT_RESPAWNING = 1,
+    MOBA_STRUCT_EVENT_RESPAWNED  = 2
+};
+
+// `flag` field of the "K:" HUD payload -- what made this kill special. First
+// blood and a shutdown are mutually exclusive by construction, so one field
+// suffices: nobody can be on a spree before the match's first kill.
+enum BG_MOBA_KillFlag
+{
+    MOBA_KILL_FLAG_NONE        = 0,
+    MOBA_KILL_FLAG_FIRST_BLOOD = 1,
+    MOBA_KILL_FLAG_SHUTDOWN    = 2
+};
+
+// `type` field of the "X:" HUD payload. As with structure events, the addon owns
+// every word -- the server sends a shape and a count, never a name, so the
+// Double/Triple/Rampage/Legendary ladder lives in exactly one file (Feed.lua).
+enum BG_MOBA_StreakType
+{
+    MOBA_STREAK_MULTI = 0,   // Double/Triple/... -- kills inside the rolling window
+    MOBA_STREAK_SPREE = 1,   // consecutive kills without dying
+    MOBA_STREAK_ACE   = 2    // a whole team down at once; no subject player
+};
+
+// `code` field of the "N:" HUD payload -- a match-flow notice. Same split as O:
+// and X:: the server picks WHICH notice, the addon owns every word. Victory and
+// defeat are two codes rather than one plus a side flag, because they are the
+// only pair here that differs per recipient -- the minion notices say the same
+// thing to both teams and go out as one broadcast. Codes start at 1; there has
+// never been a 0.
+//
+// The payload's trailing `arg` is a number the wording needs and the client
+// cannot know -- currently only the warning's lead time. Always present, 0 when
+// unused, so the Lua pattern stays one anchored match with no optional group.
+enum BG_MOBA_Notice
+{
+    MOBA_NOTICE_MINIONS_SOON    = 1,
+    MOBA_NOTICE_MINIONS_SPAWNED = 2,
+    MOBA_NOTICE_VICTORY         = 3,
+    MOBA_NOTICE_DEFEAT          = 4
+};
+
+// `event` field of the "B:" HUD payload -- something happened to a boss (a
+// neutral camp with a nonzero tier). Same split as O:/X:/N:: the server sends a
+// shape, the addon owns every word.
+enum BG_MOBA_BossEvent
+{
+    MOBA_BOSS_EVENT_SLAIN    = 0,
+    MOBA_BOSS_EVENT_SPAWNING = 1,
+    MOBA_BOSS_EVENT_SPAWNED  = 2
+};
+
+// `side` field of the "B:" payload. K:/O:/X: only ever had to say "yours or
+// theirs", because a kill and a structure both belong to someone. A boss
+// spawning belongs to nobody, and no two-state field can say that -- which is
+// the whole reason boss lines are not O: lines.
+enum BG_MOBA_BossSide
+{
+    MOBA_BOSS_SIDE_OURS   = 0,
+    MOBA_BOSS_SIDE_ENEMY  = 1,
+    MOBA_BOSS_SIDE_NOBODY = 2
 };
 
 // Tracks a spawned tower's registry data: which team it belongs to, its
@@ -91,6 +167,7 @@ struct MobaTowerState
     uint32 entry = 0;
     TeamId team = TEAM_ALLIANCE;
     uint8 tier = 0;
+    uint8 lane = MOBA_LANE_NONE;
     uint32 guardedByEntry = 0;
     uint8 kind = MOBA_STRUCTURE_TOWER;
     uint32 respawnMs = 0;
@@ -116,8 +193,10 @@ struct MobaWaveComposition
 struct MobaCampState
 {
     uint32 campId = 0;
+    uint8 tier = 0;
     uint32 initialSpawnMs = 0;
     uint32 respawnMs = 0;
+    uint32 spawnWarnMs = 0;
     std::vector<MobaNeutralMember> members;
     std::vector<ObjectGuid> memberGuids;
     uint32 aliveCount = 0;
@@ -129,6 +208,17 @@ struct MobaCampState
 struct MobaRespawnState
 {
     uint32 remainingMs = 0;
+};
+
+// Per-player kill streak. Both counters are per-life and die together, which is
+// why they share one struct and one erase: `spree` is consecutive kills since
+// the last death, `multi` is how many landed inside the rolling multi-kill
+// window. `lastKillMs` is what ages that window out.
+struct MobaStreakState
+{
+    uint32 spree = 0;
+    uint32 multi = 0;
+    uint32 lastKillMs = 0;
 };
 
 struct BattlegroundMOBAScore final : public BattlegroundScore
@@ -237,8 +327,9 @@ public:
     void PullCampMates(Creature* member, Unit* attacker);
 
     // Called from npc_moba_neutral::JustDied; starts the camp's respawn timer
-    // once its last member is down.
-    void NotifyNeutralDied(Creature* member);
+    // once its last member is down. `killer` is only read for a boss camp, to
+    // name the side that took it.
+    void NotifyNeutralDied(Creature* member, Unit* killer);
 
     // Starts a player's respawn countdown (called from the death and released-ghost
     // hooks). `instant` revives on the next battleground tick instead of waiting out
@@ -276,6 +367,7 @@ private:
     void SpawnCreep(uint32 entry);
     void RespawnInhibitor(uint32 towerIndex);
     void SpawnCamp(uint32 campIndex);
+    void WarnBossRespawn(uint32 campIndex);
     MobaCampState* FindCampOf(ObjectGuid guid);
     void FreezeAllCreeps();
     void UpdateRespawnTimers(uint32 diff);
@@ -302,14 +394,35 @@ private:
     // MobaHUD addon feed (client/addons/MobaHUD). `body` is the payload after the
     // "MobaHUD\t" prefix: "T:<sec>" clock start/sync, "E" hide the bar,
     // "S:<ally>,<enemy>,<k>,<d>,<a>,<cs>,<gold>" scoreboard, "R:<sec>" revive-countdown
-    // start (0 = hide), "K:<pov>,<killer>,<kClass>,<kSide>,<victim>,<vClass>,<vSide>"
-    // a player kill line, "D:<pov>,<vSide>,<vClass>,<victim>,<cat>" a non-player death
-    // line (cat 0=env 1=tower 2=creep 3=neutral). K:/D: are built per recipient.
+    // start (0 = hide), "K:<pov>,<killer>,<kClass>,<kSide>,<victim>,<vClass>,<vSide>,<flag>"
+    // a player kill line (flag = BG_MOBA_KillFlag), "D:<pov>,<vSide>,<vClass>,<victim>,<cat>"
+    // a non-player death line (cat 0=env 1=tower 2=creep 3=neutral),
+    // "O:<event>,<ownerSide>,<kind>,<tier>,<lane>,<actor>" a structure event
+    // (event 0=destroyed 1=respawning soon 2=respawned; ownerSide 0=recipient's team;
+    // kind = MobaStructureKind; lane = MobaLane; actor EMPTY when creeps finished it),
+    // "X:<pov>,<side>,<name>,<type>,<count>" a kill-streak line
+    // (type = BG_MOBA_StreakType; name EMPTY for an ace, which has no subject player),
+    // "B:<event>,<side>,<arg>,<name>" a boss event (event = BG_MOBA_BossEvent;
+    // side = BG_MOBA_BossSide, and 2 = nobody is what every spawn carries;
+    // arg = lead seconds on "spawning soon", 0 elsewhere; name from creature_template),
+    // and "N:<code>,<arg>" a match-flow notice (code = BG_MOBA_Notice; arg is a
+    // number the wording needs, 0 when unused).
+    // K:/D:/O:/X:/B: are built per recipient; N: only for victory/defeat.
     void SendAddonPacket(Player* player, char const* prefix, std::string const& body);
     void SendHudMessage(Player* player, std::string const& body);
     void BroadcastHudMessage(std::string const& body);
-    void BroadcastKillFeed(Player* killer, Player* victim);
+    void BroadcastKillFeed(Player* killer, Player* victim, uint32 flag);
     void BroadcastNonPlayerDeath(Player* victim, Unit* killer);
+    void BroadcastStructureEvent(MobaTowerState const& tower, uint32 event, Player* actor);
+    void BroadcastStreak(Player* subject, TeamId team, uint32 type, uint32 count);
+    void BroadcastNotice(uint32 code, uint32 arg = 0);
+    void BroadcastBossEvent(MobaCampState const& camp, uint32 event, TeamId team, uint32 arg = 0);
+    void BroadcastMatchResult(TeamId winnerTeamId);
+    // Advance the killer's streak counters and announce whatever they crossed.
+    void UpdateKillStreak(Player* killer);
+    // Announce an ace if `wipedTeam` has nobody left standing.
+    void CheckAce(TeamId wipedTeam);
+    void WarnInhibitorRespawn(uint32 towerIndex);
     uint32 ClassifyKiller(Unit* killer) const;   // 0 env, 1 tower, 2 lane creep, 3 neutral
     // Which side a killing blow belongs to when no player landed it: towers and
     // lane creeps carry their owner's team. TEAM_NEUTRAL = nobody to pay -- a
@@ -359,6 +472,12 @@ private:
     std::unordered_map<ObjectGuid, uint32> _wallets;
 
     std::unordered_map<ObjectGuid, MobaRespawnState> _respawnTimers;
+
+    // Per-player streaks, and the match's one-shot first-blood latch. Entries are
+    // erased on the owner's death (HandlePlayerDeath) and on exit (RemovePlayer);
+    // an absent entry IS a zero streak, so nothing has to be pre-seeded.
+    std::unordered_map<ObjectGuid, MobaStreakState> _streaks;
+    bool _firstBlood = false;
 
     // Players whose client announced the shop panel (HELLO). Everyone else gets
     // the gossip fallback, which goes away once the panel ships.

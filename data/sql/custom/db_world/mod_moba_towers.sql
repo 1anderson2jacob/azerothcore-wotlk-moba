@@ -9,6 +9,7 @@
 -- Kind: 0 = tower (attacks), 1 = inhibitor (passive; grants super minions
 -- and respawns after RespawnMs on death), 2 = core/base (passive; its
 -- destruction wins the match). RespawnMs applies to inhibitors; 0 = never.
+-- Lane: 0 = none (cores), 1 = top, 2 = mid, 3 = bot. Kill-feed wording only.
 -- ============================================================
 
 USE acore_world;
@@ -48,6 +49,7 @@ CREATE TABLE `mod_moba_tower_data` (
     `Map`              INT UNSIGNED NOT NULL,               -- BG map id
     `Team`             TINYINT UNSIGNED NOT NULL,           -- 0 = Alliance, 1 = Horde
     `Tier`             TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    `Lane`             TINYINT UNSIGNED NOT NULL DEFAULT 0,  -- 0 none, 1 top, 2 mid, 3 bot
     `GuardedByEntry`   INT UNSIGNED NOT NULL DEFAULT 0,      -- 0 = none / always vulnerable
     `Kind`             TINYINT UNSIGNED NOT NULL DEFAULT 0,  -- 0 tower, 1 inhibitor, 2 core
     `RespawnMs`        INT UNSIGNED NOT NULL DEFAULT 0,      -- inhibitor respawn delay; 0 = never
@@ -63,11 +65,11 @@ CREATE TABLE `mod_moba_tower_data` (
 );
 
 INSERT INTO `mod_moba_tower_data`
-(`CreatureEntry`, `Map`, `Team`, `Tier`, `GuardedByEntry`, `Kind`, `RespawnMs`, `PosX`, `PosY`, `PosZ`, `Orientation`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `TeamGold`, `LastHitGold`)
+(`CreatureEntry`, `Map`, `Team`, `Tier`, `Lane`, `GuardedByEntry`, `Kind`, `RespawnMs`, `PosX`, `PosY`, `PosZ`, `Orientation`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `TeamGold`, `LastHitGold`)
 VALUES
-(900000, 566, 0, 0, 0, 0, 0, 2285.5596, 1587.9965, 1165.4397, 3.2774656, 40, 1500, 9053, 3000, 1500),
-(900002, 566, 0, 1, 900000, 1, 120000, 2320.745, 1584.3153, 1169.2806, 4.106839, 0, 1500, 0, 0, 1500),
-(900004, 566, 0, 2, 900002, 2, 0, 2354.7302, 1587.6167, 1171.2659, 0.89613223, 0, 1500, 0, 0, 0),
-(900001, 566, 1, 0, 0, 0, 0, 2056.0195, 1547.1702, 1162.6882, 0.21284086, 40, 1500, 9053, 3000, 1500),
-(900003, 566, 1, 1, 900001, 1, 120000, 2018.5479, 1549.687, 1168.0171, 0.04476848, 0, 1500, 0, 0, 1500),
-(900005, 566, 1, 2, 900003, 2, 0, 1983.9092, 1547.2158, 1170.3706, 5.8048787, 0, 1500, 0, 0, 0);
+(900000, 566, 0, 0, 2, 0, 0, 0, 2285.5596, 1587.9965, 1165.4397, 3.2774656, 40, 1500, 9053, 3000, 1500),
+(900002, 566, 0, 1, 2, 900000, 1, 120000, 2320.745, 1584.3153, 1169.2806, 4.106839, 0, 1500, 0, 0, 1500),
+(900004, 566, 0, 2, 0, 900002, 2, 0, 2354.7302, 1587.6167, 1171.2659, 0.89613223, 0, 1500, 0, 0, 0),
+(900001, 566, 1, 0, 2, 0, 0, 0, 2056.0195, 1547.1702, 1162.6882, 0.21284086, 40, 1500, 9053, 3000, 1500),
+(900003, 566, 1, 1, 2, 900001, 1, 120000, 2018.5479, 1549.687, 1168.0171, 0.04476848, 0, 1500, 0, 0, 1500),
+(900005, 566, 1, 2, 0, 900003, 2, 0, 1983.9092, 1547.2158, 1170.3706, 5.8048787, 0, 1500, 0, 0, 0);

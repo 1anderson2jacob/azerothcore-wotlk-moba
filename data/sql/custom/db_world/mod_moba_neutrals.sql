@@ -29,7 +29,9 @@ VALUES
 -- boar_large (from creature_template_2279.txt)
 (900206,0,0,0,0,0,'Thornfang Boar','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- boar_small (from creature_template_2279.txt)
-(900207,0,0,0,0,0,'Young Boar','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0);
+(900207,0,0,0,0,0,'Young Boar','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
+-- rosham_bo (from creature_template_2279.txt)
+(900208,0,0,0,0,0,'Rosham Bo','The Low Blow',NULL,0,85,85,0,14,0,1.2,1.14286,1,1,12,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,4,1,2,1,0,0,1,0,0,'npc_moba_neutral',0);
 
 -- Neutrals spawn from C++, never from `creature` rows, so this normally deletes
 -- nothing. It sweeps GM `.npc add` test spawns. The spawn table's entry column
@@ -46,31 +48,40 @@ VALUES
 (900204, 0, 19407, 1.5, 1, 0),
 (900205, 0, 19407, 1.0, 1, 0),
 (900206, 0, 193, 1.5, 1, 0),
-(900207, 0, 193, 1.0, 1, 0);
+(900207, 0, 193, 1.0, 1, 0),
+(900208, 0, 20746, 1.0, 1, 0);
 
 DELETE FROM `creature_equip_template` WHERE `CreatureID` BETWEEN 900200 AND 900249;
 
 -- CampId is positional (config order) and scoped to Map; nothing
--- outside this file references it.
+-- outside this file references it. Tier 0 is an ordinary camp and the
+-- kill feed announces nothing for it; nonzero marks a boss. SpawnWarnMs
+-- is the lead time on the "spawning soon" line (0 = none) and must stay
+-- under RespawnMs -- the warning fires at RespawnMs - SpawnWarnMs.
 DROP TABLE IF EXISTS `mod_moba_neutral_camps`;
 CREATE TABLE `mod_moba_neutral_camps` (
     `Map`            INT UNSIGNED NOT NULL,
     `CampId`         INT UNSIGNED NOT NULL,
+    `Tier`           TINYINT UNSIGNED NOT NULL DEFAULT 0,
     `InitialSpawnMs` INT UNSIGNED NOT NULL DEFAULT 90000,
     `RespawnMs`      INT UNSIGNED NOT NULL DEFAULT 120000,
+    `SpawnWarnMs`  INT UNSIGNED NOT NULL DEFAULT 0,
     PRIMARY KEY (`Map`, `CampId`)
 );
 
-INSERT INTO `mod_moba_neutral_camps` (`Map`, `CampId`, `InitialSpawnMs`, `RespawnMs`)
+INSERT INTO `mod_moba_neutral_camps`
+(`Map`, `CampId`, `Tier`, `InitialSpawnMs`, `RespawnMs`, `SpawnWarnMs`)
 VALUES
 -- fel_reaver
-(566, 1, 30000, 30000),
+(566, 1, 0, 30000, 30000, 0),
 -- mage_tower
-(566, 2, 30000, 30000),
+(566, 2, 0, 30000, 30000, 0),
 -- draenei_ruins
-(566, 3, 30000, 30000),
+(566, 3, 0, 30000, 30000, 0),
 -- blood_elf
-(566, 4, 30000, 30000);
+(566, 4, 0, 30000, 30000, 0),
+-- rosham_bo
+(566, 5, 1, 60000, 60000, 15000);
 
 DROP TABLE IF EXISTS `mod_moba_neutral_members`;
 CREATE TABLE `mod_moba_neutral_members` (
@@ -110,7 +121,9 @@ VALUES
 -- blood_elf/boar_small
 (566, 4, 1, 900207, 2046.6493, 1371.3636, 1194.5441, 1.7294422),
 -- blood_elf/boar_small
-(566, 4, 2, 900207, 2053.9358, 1372.2905, 1194.548, 1.7467208);
+(566, 4, 2, 900207, 2053.9358, 1372.2905, 1194.548, 1.7467208),
+-- rosham_bo/rosham_bo
+(566, 5, 0, 900208, 2043.994, 1674.3622, 1176.1726, 5.576326);
 
 -- Per-entry behavior, looked up by npc_moba_neutral. Ranges are
 -- authored per CAMP in the config and denormalized here per entry.
@@ -144,7 +157,9 @@ VALUES
 -- boar_large
 (900206, 566, 8, 20),
 -- boar_small
-(900207, 566, 8, 20);
+(900207, 566, 8, 20),
+-- rosham_bo
+(900208, 566, 12, 20);
 
 DELETE FROM `creature_loot_template` WHERE `Entry` BETWEEN 900200 AND 900249;
 
@@ -196,4 +211,8 @@ VALUES
 -- boar_large
 (900206, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- boar_small
-(900207, 0, 1, 0, 0, 5000, 100, 0, 0);
+(900207, 0, 1, 0, 0, 5000, 100, 0, 0),
+-- rosham_bo
+(900208, 0, 3, 0, 0, 40000, 100, 0, 0),
+-- rosham_bo
+(900208, 1, 4, 48469, 180000, 0, 100, 0, 0);

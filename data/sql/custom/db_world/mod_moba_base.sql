@@ -27,12 +27,18 @@ CREATE TABLE `mod_moba_base` (
     `DomeEntryHorde`    INT UNSIGNED NOT NULL DEFAULT 0,  -- gameobject_template entry of the Horde spawn dome
     `StartingGold`  INT UNSIGNED NOT NULL DEFAULT 0,      -- copper in the match wallet on entry (0 = none)
     `PassiveTickMs` INT UNSIGNED NOT NULL DEFAULT 0,      -- passive income cadence (ms); 0 = passive income off
-    `PassiveCopper` INT UNSIGNED NOT NULL DEFAULT 0       -- copper per tick, per player
+    `PassiveCopper` INT UNSIGNED NOT NULL DEFAULT 0,      -- copper per tick, per player
+    `FirstBloodGold`      INT UNSIGNED NOT NULL DEFAULT 0,     -- bonus copper for the match's first player kill (0 = off)
+    `ShutdownPerStreak`   INT UNSIGNED NOT NULL DEFAULT 0,     -- bounty copper per kill on the victim's streak (0 = no bounty)
+    `ShutdownCapGold`     INT UNSIGNED NOT NULL DEFAULT 0,     -- ceiling on that bounty (0 = uncapped)
+    `MultiKillWindowMs`   INT UNSIGNED NOT NULL DEFAULT 10000, -- a kill this soon after the last extends the multi-kill (0 = multi-kills off)
+    `SpreeMin`            INT UNSIGNED NOT NULL DEFAULT 3,     -- consecutive kills that announce a spree AND mark a shutdown target (0 = both off)
+    `AceMinTeam`          INT UNSIGNED NOT NULL DEFAULT 2      -- smallest wiped team that counts as an ace (0 = ace off)
 );
 
-INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`, `StartingGold`, `PassiveTickMs`, `PassiveCopper`)
+INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`, `StartingGold`, `PassiveTickMs`, `PassiveCopper`, `FirstBloodGold`, `ShutdownPerStreak`, `ShutdownCapGold`, `MultiKillWindowMs`, `SpreeMin`, `AceMinTeam`)
 VALUES
-(566, 10000, 1500, 60000, 9000, 4500, 1000, 10, 10, 20, 15000, 10000, 60000, 900400, 900401, 15000, 5000, 100);
+(566, 10000, 1500, 60000, 9000, 4500, 1000, 10, 10, 20, 15000, 10000, 60000, 900400, 900401, 15000, 5000, 100, 5000, 5000, 40000, 10000, 3, 2);
 
 -- Spawn dome gameobjects. The whole block is cleared, not just the entries
 -- being inserted, so a dome dropped from a config is dropped from the DB too.

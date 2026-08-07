@@ -36,11 +36,25 @@ enum MobaStructureKind : uint8
     MOBA_STRUCTURE_CORE      = 2,
 };
 
+// Which lane a structure sits on. Kill-feed wording only -- nothing in the push
+// logic reads it. NONE is what a core carries: a base belongs to no lane, and
+// the HUD renders no lane word for 0, so that needs no special casing.
+// Mirrored by LANE_IDS in apps/moba/gen_tower_data.py and LANE_NAMES in
+// client/addons/MobaHUD/Feed.lua -- all three must agree.
+enum MobaLane : uint8
+{
+    MOBA_LANE_NONE = 0,
+    MOBA_LANE_TOP  = 1,
+    MOBA_LANE_MID  = 2,
+    MOBA_LANE_BOT  = 3,
+};
+
 struct MobaTowerConfig
 {
     uint32 entry = 0;
     uint32 map = 0;
     TeamId team = TEAM_ALLIANCE;
+    uint8 lane = MOBA_LANE_NONE;
     uint8 tier = 0;
     uint32 guardedByEntry = 0;
     uint8 kind = MOBA_STRUCTURE_TOWER;

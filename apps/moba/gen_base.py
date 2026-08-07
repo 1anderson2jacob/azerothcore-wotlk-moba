@@ -111,10 +111,19 @@ def validate(cfg, path):
     if gold is not None:
         if not isinstance(gold, dict):
             fail(f'{path}: "gold" must be an object')
-        for k in ("starting_stipend", "passive_tick_ms", "passive_per_tick"):
+        for k in ("starting_stipend", "passive_tick_ms", "passive_per_tick",
+                  "first_blood", "shutdown_per_streak", "shutdown_cap"):
             v = gold.get(k, 0)
             if not isinstance(v, int) or v < 0:
                 fail(f'{path}: "gold.{k}" must be a non-negative integer')
+    streaks = cfg.get("streaks")
+    if streaks is not None:
+        if not isinstance(streaks, dict):
+            fail(f'{path}: "streaks" must be an object')
+        for k in ("multi_kill_window_ms", "spree_min", "ace_min_team"):
+            v = streaks.get(k, 0)
+            if not isinstance(v, int) or v < 0:
+                fail(f'{path}: "streaks.{k}" must be a non-negative integer')
 
 
 def load_configs():
@@ -167,10 +176,16 @@ def emit(configs, blocks):
         "    `DomeEntryHorde`    INT UNSIGNED NOT NULL DEFAULT 0,  -- gameobject_template entry of the Horde spawn dome",
         "    `StartingGold`  INT UNSIGNED NOT NULL DEFAULT 0,      -- copper in the match wallet on entry (0 = none)",
         "    `PassiveTickMs` INT UNSIGNED NOT NULL DEFAULT 0,      -- passive income cadence (ms); 0 = passive income off",
-        "    `PassiveCopper` INT UNSIGNED NOT NULL DEFAULT 0       -- copper per tick, per player",
+        "    `PassiveCopper` INT UNSIGNED NOT NULL DEFAULT 0,      -- copper per tick, per player",
+        "    `FirstBloodGold`      INT UNSIGNED NOT NULL DEFAULT 0,     -- bonus copper for the match's first player kill (0 = off)",
+        "    `ShutdownPerStreak`   INT UNSIGNED NOT NULL DEFAULT 0,     -- bounty copper per kill on the victim's streak (0 = no bounty)",
+        "    `ShutdownCapGold`     INT UNSIGNED NOT NULL DEFAULT 0,     -- ceiling on that bounty (0 = uncapped)",
+        "    `MultiKillWindowMs`   INT UNSIGNED NOT NULL DEFAULT 10000, -- a kill this soon after the last extends the multi-kill (0 = multi-kills off)",
+        "    `SpreeMin`            INT UNSIGNED NOT NULL DEFAULT 3,     -- consecutive kills that announce a spree AND mark a shutdown target (0 = both off)",
+        "    `AceMinTeam`          INT UNSIGNED NOT NULL DEFAULT 2      -- smallest wiped team that counts as an ace (0 = ace off)",
         ");",
         "",
-        "INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`, `StartingGold`, `PassiveTickMs`, `PassiveCopper`)",
+        "INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`, `StartingGold`, `PassiveTickMs`, `PassiveCopper`, `FirstBloodGold`, `ShutdownPerStreak`, `ShutdownCapGold`, `MultiKillWindowMs`, `SpreeMin`, `AceMinTeam`)",
         "VALUES",
     ]
     rows = []
@@ -181,6 +196,7 @@ def emit(configs, blocks):
         recall_emp_ms = recall.get("empowered_cast_time_ms", 0)
         f = cfg.get("fountain") or {}
         gold = cfg.get("gold") or {}
+        streaks = cfg.get("streaks") or {}
         rows.append(
             f"({cfg['map']}, {t['base_ms']}, {t['per_min_ms']}, {t['cap_ms']}, {recall_ms}, {recall_emp_ms}, "
             f"{f.get('tick_ms', 0)}, {f.get('hp_pct', 0)}, {f.get('mana_pct', 0)}, "
@@ -192,7 +208,13 @@ def emit(configs, blocks):
             f"{cfg['spawn']['dome']['horde_entry']}, "
             f"{gold.get('starting_stipend', 0)}, "
             f"{gold.get('passive_tick_ms', 0)}, "
-            f"{gold.get('passive_per_tick', 0)})")        
+            f"{gold.get('passive_per_tick', 0)}, "
+            f"{gold.get('first_blood', 0)}, "
+            f"{gold.get('shutdown_per_streak', 0)}, "
+            f"{gold.get('shutdown_cap', 0)}, "
+            f"{streaks.get('multi_kill_window_ms', 10000)}, "
+            f"{streaks.get('spree_min', 3)}, "
+            f"{streaks.get('ace_min_team', 2)})")
     lines.append(",\n".join(rows) + ";")
 
     # One dome pair per map, sized from that map's spawn.radius. Copies of

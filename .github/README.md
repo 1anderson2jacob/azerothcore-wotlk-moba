@@ -40,6 +40,7 @@ Shipped:
 - [x] Sell items back — drop a bag item anywhere on the shop's catalog area to refund it; the drop zone appears only while an item is on the cursor. Price is `sell_ratio` of what it cost (per unit, so partial stacks work), or a `sell:` value on a creep/neutral item drop. Only what the match gave you can be sold, and only from inside your base
 - [x] Shop access — a draggable minimap button opens the panel from anywhere on the map, so a build can be planned on the walk back; an optional keybind (assigned in the game's Key Bindings UI) does the same, and right-clicking the shopkeeper still works. Buying and selling now gate on standing inside your base circle — the fountain's radius, so shopping and regen are one place — rather than on reaching the NPC, with Purchase greyed and the sell zone suppressed while you're outside it
 - [x] Match economy — a per-match gold wallet that funds the shop and never touches your character's real money. Fed by an opening stipend, a passive tick, last-hit gold from minions and neutrals, player kills, and objective gold from towers and inhibitors (flat to the whole team, plus a bonus to whoever lands the blow). Shown on the HUD bar beside CS. Minion gold now pays the last hitter alone rather than being split across nearby teammates, and corpses are invisible and unlootable to everyone else. Tuned per map from `base_config.yaml` and `tower_config.yaml`
+- [x] Kill feed coverage — the feed now reports structures (tower, inhibitor and core destroyed, inhibitor respawning and returned, each naming its lane), kill streaks (first blood, multi-kills, spree tiers, shutdowns with bounty gold, aces), match flow (minion warnings, victory/defeat) and boss neutrals (spawning soon, spawned, slain by team). Five ranked slots with per-tier lifetimes evict by importance rather than age, and the feed outlives the match so the result line stays readable
 
 Next, in order:
 
@@ -49,6 +50,7 @@ Next, in order:
 - [ ] Lane mob and neutral mob gold pass
 - [ ] Player kill rewards and bounties — gold values, bounty scaling, and assist-gold split on top of the shipped kill/assist attribution
 - [ ] Itemization pass
+- [ ] Boss steal line — announce when the killing blow on a boss goes to the team that did less damage; needs per-camp damage attribution, and only becomes meaningful once a contested execute (a smite-like ability) exists
 - [ ] Character creation scripts / level up automation - have the ability to create characters at a given level that have everything trained / learned, including armor proficiencies, weapon skill, class quest abilities, give bags, etc
 
 ## Housekeeping

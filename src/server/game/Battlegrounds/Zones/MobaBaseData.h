@@ -52,6 +52,15 @@ struct MobaBaseConfig
     uint32 startingGold = 0;    // copper granted once on entry; 0 = none
     uint32 passiveTickMs = 0;   // passive income cadence (ms); 0 = passive income off
     uint32 passiveCopper = 0;   // copper per tick, per player
+    // Streak bounties, paid on top of the flat per-kill reward in mod_moba_player_drops.
+    uint32 firstBloodGold = 0;      // bonus copper for the match's first player kill; 0 = off
+    uint32 shutdownPerStreak = 0;   // bounty copper per kill on the victim's streak; 0 = no bounty
+    uint32 shutdownCapGold = 0;     // ceiling on that bounty; 0 = uncapped
+    uint32 multiKillWindowMs = 10000; // a kill this soon after the last extends the multi-kill; 0 = multi-kills off
+    // Doubles as the shutdown threshold on purpose: a victim is "on a spree"
+    // exactly when the feed has already said so. 0 = sprees and shutdowns both off.
+    uint32 spreeMin = 3;
+    uint32 aceMinTeam = 2;          // smallest wiped team that counts as an ace; 0 = ace off
 };
 
 // Loads data/sql/custom/mod_moba_base.sql's `mod_moba_base` table once, keyed

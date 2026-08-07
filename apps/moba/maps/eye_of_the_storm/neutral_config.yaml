@@ -10,6 +10,11 @@
 #                                  list; `drops: []` means none). A unit may not
 #                                  set `key`.
 #   respawn_ms / initial_spawn_ms  milliseconds
+#   tier                           0 = ordinary camp. Nonzero marks a boss, which
+#                                  the kill feed announces (B: payload). It selects
+#                                  nothing else -- stats and drops are the mob's.
+#   spawn_warn_ms                lead time on the "spawning soon" line; 0 = none.
+#                                  Must be < respawn_ms.
 #   aggro_range / leash_range      yards
 #   *_modifier                     multiplier on the source creature's stat
 #   creature_type                  optional; overrides source type (enum
@@ -53,6 +58,15 @@ camps:
       - {mob: boar_large, pos: [2051.1995, 1366.716,  1194.5392, 1.6556144]}
       - {mob: boar_small, pos: [2046.6493, 1371.3636, 1194.5441, 1.7294422]}
       - {mob: boar_small, pos: [2053.9358, 1372.2905, 1194.548,  1.7467208]}
+  - key: rosham_bo
+    tier: 1
+    respawn_ms: 60000
+    initial_spawn_ms: 60000
+    spawn_warn_ms: 15000
+    aggro_range: 12
+    leash_range: 20
+    members:
+      - {mob: rosham_bo, pos: [2043.994, 1674.3622, 1176.1726, 5.576326]}
 
 units:
   jungle_large:
@@ -127,3 +141,17 @@ mobs:
     unit: jungle_small
     name: Young Boar
     display_id: 193
+
+  - key: rosham_bo
+    name: Rosham Bo
+    subname: The Terror from Below
+    source: apps/moba/sources/creature_template_2279.txt
+    display_id: 20746
+    display_scale: 1.0
+    level: 85
+    creature_type: 1
+    health_modifier: 4
+    armor_modifier: 2
+    drops:
+      - {type: team_gold, copper: 40000}
+      - {type: team_buff, spell: 48469, duration_ms: 180000}

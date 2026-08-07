@@ -77,7 +77,7 @@ struct npc_moba_neutral : public ScriptedAI
         if (!moba)
             return;
 
-        moba->NotifyNeutralDied(me);
+        moba->NotifyNeutralDied(me, killer);
 
         // Jungle CS + drops go to the killing-blow player (a pet's blow credits
         // its owner), same rationale as npc_moba_creep::JustDied. No team guard:

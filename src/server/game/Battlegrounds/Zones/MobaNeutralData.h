@@ -26,8 +26,12 @@ struct MobaNeutralCamp
 {
     uint32 campId = 0;
     uint32 map = 0;
+    // 0 = ordinary camp, announced by nothing. Nonzero marks a boss: the kill
+    // feed reports its spawn and death, and the addon picks wording off the tier.
+    uint8 tier = 0;
     uint32 initialSpawnMs = 0;
     uint32 respawnMs = 0;
+    uint32 spawnWarnMs = 0;   // "spawning soon" lead; 0 = no warning
     std::vector<MobaNeutralMember> members;
 };
 

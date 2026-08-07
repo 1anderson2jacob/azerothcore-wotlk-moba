@@ -50,7 +50,7 @@ void MobaNeutralDataStore::LoadIfNeeded()
         _byEntry[cfg.entry] = &cfg;
 
     QueryResult camps = WorldDatabase.Query(
-        "SELECT Map, CampId, InitialSpawnMs, RespawnMs "
+        "SELECT Map, CampId, Tier, InitialSpawnMs, RespawnMs, SpawnWarnMs "
         "FROM mod_moba_neutral_camps ORDER BY Map, CampId");
 
     if (!camps)
@@ -66,8 +66,10 @@ void MobaNeutralDataStore::LoadIfNeeded()
         MobaNeutralCamp camp;
         camp.map            = fields[0].Get<uint32>();
         camp.campId         = fields[1].Get<uint32>();
-        camp.initialSpawnMs = fields[2].Get<uint32>();
-        camp.respawnMs      = fields[3].Get<uint32>();
+        camp.tier           = fields[2].Get<uint8>();
+        camp.initialSpawnMs = fields[3].Get<uint32>();
+        camp.respawnMs      = fields[4].Get<uint32>();
+        camp.spawnWarnMs  = fields[5].Get<uint32>();
 
         _camps.push_back(camp);
     } while (camps->NextRow());

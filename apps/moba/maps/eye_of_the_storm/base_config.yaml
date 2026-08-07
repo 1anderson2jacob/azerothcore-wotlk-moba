@@ -46,3 +46,18 @@ gold:
   # the same 20 copper/sec as 1s at 20c, for a fifth of the messages.
   passive_tick_ms: 5000
   passive_per_tick: 100
+  # Streak bounties, paid ON TOP of the flat per-kill reward in player_config.yaml
+  # (10000c today). A shutdown scales with the streak it ended, so cutting down a
+  # fed player is a real swing -- capped so one kill can never fund a whole build.
+  first_blood: 5000            # bonus for the match's first player kill; 0 = off
+  shutdown_per_streak: 5000    # x the victim's consecutive-kill count
+  shutdown_cap: 40000          # ceiling on that product; 0 = uncapped
+
+# Kill streaks. spree_min does double duty deliberately: it is both the streak
+# length that first announces a spree and the length that makes a victim worth a
+# shutdown. "On a spree" has to mean one thing, or the feed says a player is on a
+# spree while the bounty says they are not.
+streaks:
+  multi_kill_window_ms: 10000  # a kill this soon after the last extends the multi-kill; 0 = multi-kills off
+  spree_min: 3                 # consecutive kills that announce a spree / mark a shutdown target; 0 = both off
+  ace_min_team: 2              # smallest wiped team that counts as an ace; 0 = ace off

@@ -44,6 +44,12 @@ REQUIRED_TOWER = ["key", "team", "tier",
 # MobaTowerData.h. "kind" is optional in config (default "tower").
 KIND_IDS = {"tower": 0, "inhibitor": 1, "core": 2}
 
+# Lane -> mod_moba_tower_data.Lane. Matches MobaLane in MobaTowerData.h and
+# LANE_NAMES in client/addons/MobaHUD/Feed.lua -- all three must agree.
+# "lane" is optional (default "none"): 0 is what a core carries, and the HUD
+# renders no lane word for it.
+LANE_IDS = {"none": 0, "top": 1, "mid": 2, "bot": 3}
+
 DEFAULT_SUBNAME = "MOBA Objective"
 DEFAULT_ARMOR_MODIFIER = 5
 
@@ -75,6 +81,8 @@ def validate(cfg, path):
             fail(f'{path}: structure {t["key"]} "team" must be 0 or 1')
         if t.get("kind", "tower") not in KIND_IDS:
             fail(f'{path}: structure {t["key"]} "kind" must be one of {sorted(KIND_IDS)}')
+        if t.get("lane", "none") not in LANE_IDS:
+            fail(f'{path}: structure {t["key"]} "lane" must be one of {sorted(LANE_IDS)}')
         for k in ("gold", "gold_last_hit"):
             v = t.get(k, 0)
             if not isinstance(v, int) or v < 0:
@@ -153,6 +161,7 @@ def emit(configs, blocks):
         "-- Kind: 0 = tower (attacks), 1 = inhibitor (passive; grants super minions",
         "-- and respawns after RespawnMs on death), 2 = core/base (passive; its",
         "-- destruction wins the match). RespawnMs applies to inhibitors; 0 = never.",
+        "-- Lane: 0 = none (cores), 1 = top, 2 = mid, 3 = bot. Kill-feed wording only.",
         "-- ============================================================",
         "",
         "USE acore_world;",
@@ -200,6 +209,7 @@ def emit(configs, blocks):
         "    `Map`              INT UNSIGNED NOT NULL,               -- BG map id",
         "    `Team`             TINYINT UNSIGNED NOT NULL,           -- 0 = Alliance, 1 = Horde",
         "    `Tier`             TINYINT UNSIGNED NOT NULL DEFAULT 0,",
+        "    `Lane`             TINYINT UNSIGNED NOT NULL DEFAULT 0,  -- 0 none, 1 top, 2 mid, 3 bot",
         "    `GuardedByEntry`   INT UNSIGNED NOT NULL DEFAULT 0,      -- 0 = none / always vulnerable",
         "    `Kind`             TINYINT UNSIGNED NOT NULL DEFAULT 0,  -- 0 tower, 1 inhibitor, 2 core",
         "    `RespawnMs`        INT UNSIGNED NOT NULL DEFAULT 0,      -- inhibitor respawn delay; 0 = never",
@@ -215,14 +225,15 @@ def emit(configs, blocks):
         ");",
         "",
         "INSERT INTO `mod_moba_tower_data`",
-        "(`CreatureEntry`, `Map`, `Team`, `Tier`, `GuardedByEntry`, `Kind`, `RespawnMs`, `PosX`, `PosY`, `PosZ`, `Orientation`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `TeamGold`, `LastHitGold`)",
+        "(`CreatureEntry`, `Map`, `Team`, `Tier`, `Lane`, `GuardedByEntry`, `Kind`, `RespawnMs`, `PosX`, `PosY`, `PosZ`, `Orientation`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `TeamGold`, `LastHitGold`)",
         "VALUES",
     ]
     data_rows = []
     for _, cfg in configs:
         for t in cfg["towers"]:
             data_rows.append(
-                f"({t['_entry']}, {cfg['map']}, {t['team']}, {t['tier']}, {t['_guarded_by_entry']}, "
+                f"({t['_entry']}, {cfg['map']}, {t['team']}, {t['tier']}, "
+                f"{LANE_IDS[t.get('lane', 'none')]}, {t['_guarded_by_entry']}, "
                 f"{KIND_IDS[t.get('kind', 'tower')]}, {t.get('respawn_ms', 0)}, "
                 f"{t['x']}, {t['y']}, {t['z']}, {t['o']}, "
                 f"{t['attack_range']}, {t['attack_interval_ms']}, {t['attack_spell_id']}, "

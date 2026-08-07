@@ -10,6 +10,10 @@
 #                         inhibitor -- passive; on death gives the enemy super
 #                                      minions and respawns after respawn_ms
 #                         core      -- the base; destroying it wins the match
+#   lane                top | mid | bot   (default: none)
+#                       Names the lane for kill-feed wording only. Omit it for
+#                       structures that belong to no lane -- the core/base --
+#                       and the feed says "base", not "mid base".
 #   gold                copper to EVERY player on the destroying team (flat per
 #                       player, not a split pot); 0 = none
 #   gold_last_hit       copper to the killing-blow player only, on top of the
@@ -37,6 +41,7 @@ towers:
     team: 0
     kind: tower
     tier: 0
+    lane: mid
     name: Alliance Tower
     display_id: 27101
     display_scale: 3.0
@@ -55,6 +60,7 @@ towers:
     team: 0
     kind: inhibitor
     tier: 1
+    lane: mid
     guarded_by: alliance_tower
     respawn_ms: 120000
     name: Alliance Inhibitor
@@ -95,6 +101,7 @@ towers:
     team: 1
     kind: tower
     tier: 0
+    lane: mid
     name: Horde Tower
     display_id: 18505
     display_scale: 2.0
@@ -113,6 +120,7 @@ towers:
     team: 1
     kind: inhibitor
     tier: 1
+    lane: mid
     guarded_by: horde_tower
     respawn_ms: 120000
     name: Horde Inhibitor

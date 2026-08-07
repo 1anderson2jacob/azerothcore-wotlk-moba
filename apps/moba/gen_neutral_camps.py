@@ -10,9 +10,7 @@ data/sql/custom/db_world/mod_moba_neutrals.sql wholesale: creature_template
 with gen_creep_roster.py), creature_template_model, creature_equip_template,
 and three data tables:
 
-    mod_moba_neutral_camps    -- per camp: spawn timing
-    mod_moba_neutral_members  -- per placement: camp, entry, position
-    mod_moba_neutral_camps    -- per camp: spawn timing
+    mod_moba_neutral_camps    -- per camp: spawn timing, tier, respawn warning
     mod_moba_neutral_members  -- per placement: camp, entry, position
     mod_moba_neutral_data     -- per entry: behavior (aggro, leash)
     mod_moba_neutral_drops    -- per entry: on-death buff/gold drops, and the
@@ -74,6 +72,7 @@ OUTPUT = Path("data/sql/custom/db_world/mod_moba_neutrals.sql")
 
 MOB_REQUIRED = ["key", "name", "subname", "source", "display_id", "display_scale",
                 "level", "health_modifier", "armor_modifier"]
+DEFAULT_INITIAL_SPAWN_MS = 90000
 CAMP_REQUIRED = ["key", "respawn_ms", "aggro_range", "leash_range", "members"]
 # Placement is the camp's ("members[].pos"), somewhere a unit cannot reach, so
 # "key" is the only field a shared unit must not carry.
@@ -137,6 +136,20 @@ def validate_config(cfg, path):
         if 0 < camp["leash_range"] <= camp["aggro_range"]:
             note(f'WARNING: camp "{key}" has leash_range <= aggro_range -- members '
                  f'will evade the moment a proximity pull starts')
+        if not isinstance(camp.get("tier", 0), int) or camp.get("tier", 0) < 0:
+            fail(f'camp "{key}": "tier" must be an integer >= 0 '
+                 f"(0 = ordinary camp, announced by nothing)")
+        warn_ms = camp.get("spawn_warn_ms", 0)
+        if not isinstance(warn_ms, int) or warn_ms < 0:
+            fail(f'camp "{key}": "spawn_warn_ms" must be an integer >= 0 (0 = no warning)')
+        initial_ms = camp.get("initial_spawn_ms", cfg.get("initial_spawn_ms", DEFAULT_INITIAL_SPAWN_MS))
+        if warn_ms and warn_ms >= min(camp["respawn_ms"], initial_ms):
+            fail(f'camp "{key}": "spawn_warn_ms" ({warn_ms}) must be under both '
+                 f'"respawn_ms" ({camp["respawn_ms"]}) and "initial_spawn_ms" '
+                 f"({initial_ms}) -- it leads the first spawn as well as every respawn")
+        if warn_ms and not camp.get("tier", 0):
+            note(f'WARNING: camp "{key}" sets spawn_warn_ms but is tier 0 -- '
+                 f"only tiered camps announce, so no warning will fire")
         members = camp.get("members")
         if not isinstance(members, list) or not members:
             fail(f'camp "{key}": "members" must be a non-empty list')
@@ -267,19 +280,26 @@ def emit_sql(roster, camps, column_order, blocks):
     lines += [
         "",
         "-- CampId is positional (config order) and scoped to Map; nothing",
-        "-- outside this file references it.",
+        "-- outside this file references it. Tier 0 is an ordinary camp and the",
+        "-- kill feed announces nothing for it; nonzero marks a boss. SpawnWarnMs",
+        "-- is the lead time on the \"spawning soon\" line (0 = none) and must stay",
+        "-- under RespawnMs -- the warning fires at RespawnMs - SpawnWarnMs.",
         "DROP TABLE IF EXISTS `mod_moba_neutral_camps`;",
         "CREATE TABLE `mod_moba_neutral_camps` (",
         "    `Map`            INT UNSIGNED NOT NULL,",
         "    `CampId`         INT UNSIGNED NOT NULL,",
+        "    `Tier`           TINYINT UNSIGNED NOT NULL DEFAULT 0,",
         "    `InitialSpawnMs` INT UNSIGNED NOT NULL DEFAULT 90000,",
         "    `RespawnMs`      INT UNSIGNED NOT NULL DEFAULT 120000,",
+        "    `SpawnWarnMs`  INT UNSIGNED NOT NULL DEFAULT 0,",
         "    PRIMARY KEY (`Map`, `CampId`)",
         ");",
         "",
-        "INSERT INTO `mod_moba_neutral_camps` (`Map`, `CampId`, `InitialSpawnMs`, `RespawnMs`)",
+        "INSERT INTO `mod_moba_neutral_camps`",
+        "(`Map`, `CampId`, `Tier`, `InitialSpawnMs`, `RespawnMs`, `SpawnWarnMs`)",
         "VALUES",
-        ",\n".join(f"-- {c['key']}\n({c['map']}, {c['camp_id']}, {c['initial_spawn_ms']}, {c['respawn_ms']})"
+        ",\n".join(f"-- {c['key']}\n({c['map']}, {c['camp_id']}, {c['tier']}, "
+                   f"{c['initial_spawn_ms']}, {c['respawn_ms']}, {c['spawn_warn_ms']})"
                    for c in camps) + ";",
         "",
         "DROP TABLE IF EXISTS `mod_moba_neutral_members`;",
@@ -365,7 +385,7 @@ def main():
         validate_config(cfg, cp)
         ranges = resolve_camp_ranges(cfg)
         lock = locks[cp]
-        default_initial = cfg.get("initial_spawn_ms", 90000)
+        default_initial = cfg.get("initial_spawn_ms", DEFAULT_INITIAL_SPAWN_MS)
 
         entries_by_key = {}
         for mob in cfg["mobs"]:
@@ -390,8 +410,10 @@ def main():
                 "map": cfg["map"],
                 "camp_id": camp_id,
                 "key": camp["key"],
+                "tier": camp.get("tier", 0),
                 "initial_spawn_ms": camp.get("initial_spawn_ms", default_initial),
                 "respawn_ms": camp["respawn_ms"],
+                "spawn_warn_ms": camp.get("spawn_warn_ms", 0),
                 "members": [(entries_by_key[m["mob"]], m["mob"], m["pos"])
                             for m in camp["members"]],
             })

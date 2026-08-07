@@ -171,7 +171,8 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 - Servers: `./acore.sh run-worldserver` / `run-authserver` in separate terminals (the worldserver console takes GM commands directly)
 - MySQL: user `acore`, password `acore`, DBs `acore_auth` / `acore_characters` / `acore_world`
 - **Config**: committed settings live in tracked `.dist` — `modules/mod-cfbg/conf/CFBG.conf.dist` holds CFBG tuning **and** the `AllowTwoSide.Interaction.Group` core override; machine-local test knobs (`Battleground.PrepTime`, `CFBG.EvenTeams.Enabled`) live in gitignored `apps/moba/local.conf`. `apps/moba/setup.sh` builds the runtime `.conf` from both.
-- **`.debug bg` must be re-run in-game after every worldserver restart** or the solo queue won't pop
+- **`.debug bg` must be re-run in-game after every worldserver restart** or the solo queue won't pop. It also FREEZES the premature-finish countdown — the decrement lives inside the `!isTesting()` announce branch (`Battleground.cpp:466`), so an under-strength test match never auto-ends and a core kill is the only thing that reaches `EndBattleground`
+- **DEFEAT is not observable solo.** `npc_moba_tower::JustDied` hands `OnTowerDestroyed` the KILLER's team, so any core you destroy — your own included — resolves the winner to your team and sends you VICTORY. Testing the defeat path needs a second player on the losing side, or enemy creeps finishing your base unassisted.
 - Test character: GM level 3, level 80. Useful: `.gps`, `.morph <id>` / `.demorph`, `.damage <n>`, `.character level 80`
 - Claude cannot see the game client or the worldserver console — ask Jacob to relay output and in-game observations
 
@@ -183,14 +184,15 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
   `Battleground::_ProcessJoin` — on the first BG *tick*, after players have already
   ported in. So `AddPlayer` and anything else running before that first tick must
   call `LoadIfNeeded()` themselves or they read an empty store on the first match of a process, and only that one. Cost a real bug in the gold stipend.
-
+- **A missing column takes the whole battleground down, not just the feature.** A `SELECT` naming a column that does not exist errors rather than returning partial rows, so the store loads *nothing*, `GetConfig` returns nullptr for every map, and `SetupBattleground` fails with "battleground not created!". Symptom and cause look unrelated. Always regenerate the SQL before restarting after a C++ store change — and confirm the running binary matches the DB before trusting either.
 - **The compiler is the refactoring checklist**: edit headers first, then let build errors enumerate every `.cpp` to clean up. 2–3 iterations on a big cut is the workflow, not a failure.
 - **When behavior contradicts the code, `grep` what's actually on disk** before
   deeper theories — an unsaved editor buffer caused one bug, and a skipped
   `make install` sent us hunting a phantom item-tracking bug for two rounds.
   Confirm the running binary is current before believing a symptom.
 - `creature_template` on this revision has no `scale` column (use `creature_template_model.DisplayScale`); immunities via `CreatureImmunitiesId`.
-- `AddCreature(entry, type, x, y, z, o, respawntime = 0, transport = nullptr)` — no TeamId param; faction comes from the template.
+- `AddCreature(entry, type, x, y, z, o, respawntime = 0, transport = nullptr)` — no TeamId param; faction comes from the template. **That `respawntime = 0` does not mean "never respawn"**: the setter runs only when the argument is non-zero, so the default leaves `Creature`'s own `m_respawnDelay(300)` + `m_corpseDelay(60)` in place and the creature quietly returns ~6 minutes after dying. Structures pass `DAY` to suppress it. One that came back this way was still flagged `destroyed` in `_towers` — alive and attackable, but inert to every code path that mattered, which is why it went unnoticed for so long.
+- **"Who destroyed it" and "whose enemy benefits" are different questions.** `npc_moba_tower::JustDied` hands `OnTowerDestroyed` the *killer's* team, not the owner's enemy. The two agree in a real push and diverge the moment an own-team unit lands the blow — so any flag set on destruction and cleared later (super minions) must derive **both** ends from the structure's owner, or it leaks for the rest of the match.
 - The original `BattlegroundEY.{h,cpp}` is untouched — reference for how spawning/worldstates worked before the strip-down.
 
 ## Documentation standards
@@ -219,3 +221,4 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 - Shop bag-space check counts empty slots only (`GetFreeInventorySpace`), so buying a stack of consumables with a full bag is refused even when a partial stack could absorb them
 - **The match-granted ledger drifts** — `_grantedCounts` grows on grant and shrinks only on sell or exit, so consuming or destroying a granted item leaves the claim behind, and it is then spent on the player's own copies of the same entry. Reproduced both on the sell path and the exit sweep. Deferred on purpose: an in-server ratchet was designed and rejected in favour of cloning drop items with the client patch, which deletes the ledger instead of patching it. Repro and rejected approaches in `.github/MOBA_SHOP_SELL_PLAN.md`.
 - Equipped items cannot be sold — the Lua→engine slot mapping cannot name EQUIPMENT_SLOT_*` by construction. Unequip first.
+- **A leaver can end the match with no result line.** Core premature-finish calls `EndBattleground(GetPrematureWinner())`, which is `TEAM_NEUTRAL` whenever neither team still meets `battleground_template.MinPlayersPerTeam` — `BroadcastMatchResult` then correctly says nothing, and players get a frozen bar with no explanation of why the match ended. Invisible in testing because `.debug bg` freezes the countdown; invisible on EotS specifically because that template's min is 8 and is Blizzard's row to own. Plan: `.github/MOBA_FORFEIT_PLAN.md`.

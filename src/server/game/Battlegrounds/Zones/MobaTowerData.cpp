@@ -37,7 +37,7 @@ void MobaTowerDataStore::LoadIfNeeded()
     QueryResult result = WorldDatabase.Query(
         "SELECT CreatureEntry, Team, Tier, GuardedByEntry, PosX, PosY, PosZ, Orientation, "
         "AttackRange, AttackIntervalMs, AttackSpellId, Map, Kind, RespawnMs, "
-        "TeamGold, LastHitGold FROM mod_moba_tower_data "
+        "TeamGold, LastHitGold, Lane FROM mod_moba_tower_data "
         "ORDER BY Team, Tier, CreatureEntry");
 
     if (!result)
@@ -69,6 +69,7 @@ void MobaTowerDataStore::LoadIfNeeded()
         cfg.respawnMs         = fields[13].Get<uint32>();
         cfg.teamGoldCopper    = fields[14].Get<uint32>();
         cfg.lastHitGoldCopper = fields[15].Get<uint32>();
+        cfg.lane              = fields[16].Get<uint8>();
 
         _configs.push_back(cfg);
     } while (result->NextRow());
