@@ -27,6 +27,7 @@ void AddSC_moba_hud();
 void AddSC_moba_kill_credit();
 void AddSC_npc_moba_store();
 void AddSC_moba_loot_rights();
+void AddSC_moba_surrender();
 
 // The name of this function should match:
 // void Add${NameOfDirectory}Scripts()
@@ -42,4 +43,5 @@ void AddCustomScripts()
     AddSC_moba_kill_credit();
     AddSC_npc_moba_store();
     AddSC_moba_loot_rights();
+    AddSC_moba_surrender();
 }

@@ -61,3 +61,11 @@ streaks:
   multi_kill_window_ms: 10000  # a kill this soon after the last extends the multi-kill; 0 = multi-kills off
   spree_min: 3                 # consecutive kills that announce a spree / mark a shutdown target; 0 = both off
   ace_min_team: 2              # smallest wiped team that counts as an ace; 0 = ace off
+
+# Surrender. A team votes; it passes at all-but-one of the team, floored so a duo
+# still needs both. The time gate is measured from doors open -- the same clock
+# the HUD bar shows -- so "available at 1:00" means the 1:00 the player can see.
+surrender:
+  min_match_ms: 60000          # earliest a vote may start; 0 = no gate
+  vote_duration_ms: 15000      # how long a vote stays open before silence fails it; must be > 0
+  vote_cooldown_ms: 60000      # after a FAILED vote, before that team may start another; 0 = none

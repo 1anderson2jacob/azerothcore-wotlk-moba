@@ -232,6 +232,38 @@ Both are anchored to the team's base and configured from `base_config.yaml`.
   server-side. Resolves when recall becomes its own spell in the client-patch
   phase.
 
+### Surrender
+
+A team ends the match by vote. `EndBattleground(TeamId)` stays the only exit — a
+passed vote is that call with the other team, so the victory/defeat pair comes
+free and no new result path exists.
+
+- **One entry point.** `.surrender` (alias `.ff`, `moba_surrender.cpp`) starts a
+  vote when none is open and casts a yes when one is; `.surrender no` refuses.
+  Every rule — match running, time gate, cooldown, threshold — lives on
+  `BattlegroundMOBA::HandleSurrenderRequest`, so the command owns nothing but
+  argument parsing and the refusals personal to whoever typed it. An addon button
+  would call the same method and need no rules of its own.
+- **Threshold is all-but-one, floored**: `(teamSize <= 2) ? teamSize : teamSize - 1`,
+  with the initiator counting as a yes. That is League's 4-of-5 at full size, but a
+  duo needs both — at a plain `size - 1` a two-player team would surrender on one
+  player's say-so, which is what the vote exists to prevent. A lone player meets it
+  unaided, so a solo test resolves instantly and announces nothing.
+- **Failure is early, not only on the deadline.** A vote closes the moment the
+  threshold is out of reach — one refusal on a team of two leaves the remaining
+  player unable to get there — and earns that team a cooldown. Silence for the full
+  `vote_duration_ms` fails it the same way. `UpdateSurrenderVotes` (from
+  `PostUpdateImpl`, below the `STATUS_IN_PROGRESS` guard) re-evaluates every tick
+  rather than only on a ballot, because a player leaving shrinks the team and the
+  threshold with it.
+- **Vote traffic is system chat, not the kill feed.** The feed's wording lives
+  entirely in the addon and `N:<code>,<arg>` carries one number — it cannot say
+  "2 of 4" or name the initiator. `AnnounceToTeam` sends to the voting team only;
+  the enemy learns nothing until the vote passes, at which point both sides get the
+  usual per-recipient notice pair (`N:6`/`N:7`) ahead of victory/defeat.
+- **Ballots from players who have left do not count** — the roster a vote is
+  measured against is the one standing now, not the one that started it.
+
 ### Item shop
 
 One shopkeeper NPC per base, right-clicked to open a League-style panel drawn by
@@ -475,7 +507,7 @@ drops load once per process. Buffs normally only on a camp's large.
 only if the existing baseline doesn't fit (all current camp mobs share the
 creep melee source — identity is name + `display_id` + `display_scale`).
 
-## Recipes: base (spawn, respawn, recall, fountain)
+## Recipes: base (spawn, respawn, recall, fountain, surrender)
 
 All four live in one per-map bundle: `maps/<mode>/base_config.yaml` →
 `gen_base.py` → `mod_moba_base.sql`.
@@ -511,6 +543,13 @@ of the bubble: the dome gameobjects' scale and `mod_moba_base.FountainRadius` (s
 *not* written to `battleground_template.StartMaxDist` — see the gotcha index.
 Regenerate and restart, then confirm the dome visibly changed size *and* that
 healing reaches its new edge. Scale is uniform, so a wider dome is also a taller one.
+
+**Change surrender timings** — `surrender` block. `min_match_ms` is the earliest a
+vote may start, measured from doors open (the clock on the HUD bar, not from
+entry); `vote_duration_ms` is how long a vote stays open before silence fails it
+(must be > 0); `vote_cooldown_ms` is how long a team waits after a *failed* vote.
+Test `.surrender` before the gate for the countdown refusal, then after it. The
+threshold is deliberately not config — see the architecture section.
 
 ## Recipes: item shop
 
@@ -707,6 +746,10 @@ touching that area:
   healer nor `Player::Update`'s auto-release as a fallback, so a prep death strands the
   player — looking alive, but rooted and dead — for the whole match (shipped as a real
   bug). → `moba_respawn.cpp`, `OnPlayerJustDied`.
+- **The no-winner line never fires at `MinPlayersPerTeam = 1`** — "neither team
+  meets a min of 1" means zero players, and `Battleground::Update` returns on an
+  empty BG before the status switch. Kept as a guard for a mode whose template
+  carries a real minimum. → `BroadcastMatchResult` comment in `BattlegroundMOBA.cpp`.
 
 Traps with no single code home:
 

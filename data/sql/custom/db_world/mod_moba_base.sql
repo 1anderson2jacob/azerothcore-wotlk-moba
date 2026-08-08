@@ -33,12 +33,15 @@ CREATE TABLE `mod_moba_base` (
     `ShutdownCapGold`     INT UNSIGNED NOT NULL DEFAULT 0,     -- ceiling on that bounty (0 = uncapped)
     `MultiKillWindowMs`   INT UNSIGNED NOT NULL DEFAULT 10000, -- a kill this soon after the last extends the multi-kill (0 = multi-kills off)
     `SpreeMin`            INT UNSIGNED NOT NULL DEFAULT 3,     -- consecutive kills that announce a spree AND mark a shutdown target (0 = both off)
-    `AceMinTeam`          INT UNSIGNED NOT NULL DEFAULT 2      -- smallest wiped team that counts as an ace (0 = ace off)
+    `AceMinTeam`          INT UNSIGNED NOT NULL DEFAULT 2,     -- smallest wiped team that counts as an ace (0 = ace off)
+    `SurrenderMinMs`      INT UNSIGNED NOT NULL DEFAULT 0,     -- earliest a surrender vote may start, from doors open (0 = no gate, not 'off')
+    `SurrenderVoteMs`     INT UNSIGNED NOT NULL DEFAULT 15000, -- how long a surrender vote stays open before silence fails it
+    `SurrenderCooldownMs` INT UNSIGNED NOT NULL DEFAULT 60000  -- after a failed vote, before that team may start another (0 = none)
 );
 
-INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`, `StartingGold`, `PassiveTickMs`, `PassiveCopper`, `FirstBloodGold`, `ShutdownPerStreak`, `ShutdownCapGold`, `MultiKillWindowMs`, `SpreeMin`, `AceMinTeam`)
+INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`, `StartingGold`, `PassiveTickMs`, `PassiveCopper`, `FirstBloodGold`, `ShutdownPerStreak`, `ShutdownCapGold`, `MultiKillWindowMs`, `SpreeMin`, `AceMinTeam`, `SurrenderMinMs`, `SurrenderVoteMs`, `SurrenderCooldownMs`)
 VALUES
-(566, 10000, 1500, 60000, 9000, 4500, 1000, 10, 10, 20, 15000, 10000, 60000, 900400, 900401, 15000, 5000, 100, 5000, 5000, 40000, 10000, 3, 2);
+(566, 10000, 1500, 60000, 9000, 4500, 1000, 10, 10, 20, 15000, 10000, 60000, 900400, 900401, 15000, 5000, 100, 5000, 5000, 40000, 10000, 3, 2, 60000, 15000, 60000);
 
 -- Spawn dome gameobjects. The whole block is cleared, not just the entries
 -- being inserted, so a dome dropped from a config is dropped from the DB too.

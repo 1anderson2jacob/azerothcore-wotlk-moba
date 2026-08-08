@@ -61,6 +61,9 @@ struct MobaBaseConfig
     // exactly when the feed has already said so. 0 = sprees and shutdowns both off.
     uint32 spreeMin = 3;
     uint32 aceMinTeam = 2;          // smallest wiped team that counts as an ace; 0 = ace off
+    uint32 surrenderMinMs = 0;          // earliest a surrender vote may start, from doors open; 0 = no gate
+    uint32 surrenderVoteMs = 15000;     // how long a vote stays open before silence fails it
+    uint32 surrenderCooldownMs = 60000; // after a failed vote, before that team may start another
 };
 
 // Loads data/sql/custom/mod_moba_base.sql's `mod_moba_base` table once, keyed

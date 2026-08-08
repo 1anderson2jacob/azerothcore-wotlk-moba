@@ -120,11 +120,11 @@ enum BG_MOBA_StreakType
 };
 
 // `code` field of the "N:" HUD payload -- a match-flow notice. Same split as O:
-// and X:: the server picks WHICH notice, the addon owns every word. Victory and
-// defeat are two codes rather than one plus a side flag, because they are the
-// only pair here that differs per recipient -- the minion notices say the same
-// thing to both teams and go out as one broadcast. Codes start at 1; there has
-// never been a 0.
+// and X:: the server picks WHICH notice, the addon owns every word. The pairs --
+// victory/defeat, and the two surrender lines -- are two codes each rather than
+// one plus a side flag, because a pair is exactly what differs per recipient; the
+// minion notices and the no-winner line say the same thing to both teams and go
+// out as one broadcast. Codes start at 1; there has never been a 0.
 //
 // The payload's trailing `arg` is a number the wording needs and the client
 // cannot know -- currently only the warning's lead time. Always present, 0 when
@@ -134,7 +134,27 @@ enum BG_MOBA_Notice
     MOBA_NOTICE_MINIONS_SOON    = 1,
     MOBA_NOTICE_MINIONS_SPAWNED = 2,
     MOBA_NOTICE_VICTORY         = 3,
-    MOBA_NOTICE_DEFEAT          = 4
+    MOBA_NOTICE_DEFEAT          = 4,
+    MOBA_NOTICE_DRAW            = 5,
+    MOBA_NOTICE_SURRENDER_ENEMY = 6,
+    MOBA_NOTICE_SURRENDER_OWN   = 7
+};
+
+// The outcome of one player's surrender request. The battleground owns the RULES
+// and announces to the team itself -- a vote deadline expires inside
+// PostUpdateImpl, with no command and no ChatHandler in sight -- so a caller only
+// words the refusals that are personal to whoever asked.
+enum BG_MOBA_SurrenderResult
+{
+    MOBA_SURRENDER_PASSED        = 0,  // threshold met; the match has ended
+    MOBA_SURRENDER_VOTE_STARTED  = 1,
+    MOBA_SURRENDER_VOTE_COUNTED  = 2,
+    MOBA_SURRENDER_VOTE_FAILED   = 3,  // this ballot put the threshold out of reach
+    MOBA_SURRENDER_NOT_IN_MATCH  = 4,  // no match running, or it is already over
+    MOBA_SURRENDER_TOO_EARLY     = 5,  // time gate; secondsRemaining set
+    MOBA_SURRENDER_ON_COOLDOWN   = 6,  // a recent vote failed; secondsRemaining set
+    MOBA_SURRENDER_ALREADY_VOTED = 7,
+    MOBA_SURRENDER_NO_VOTE       = 8   // refused a vote that is not running
 };
 
 // `event` field of the "B:" HUD payload -- something happened to a boss (a
@@ -185,6 +205,19 @@ struct MobaTowerState
 struct MobaWaveComposition
 {
     std::vector<uint32> byRole[MOBA_CREEP_ROLE_MAX];
+};
+
+// One team's surrender vote. `blockedUntilMs` deliberately outlives the vote that
+// earned it: everything else is cleared when a vote resolves, but the cooldown a
+// failed vote buys has to survive into the next attempt. Times are on
+// _matchElapsedMs, the same clock the HUD bar shows.
+struct MobaSurrenderVote
+{
+    ObjectGuid initiator;
+    GuidUnorderedSet yes;
+    GuidUnorderedSet no;
+    uint32 endsAtMs = 0;        // 0 = no vote running
+    uint32 blockedUntilMs = 0;
 };
 
 // Runtime state of one neutral (jungle) camp: the static member list from
@@ -254,6 +287,10 @@ public:
     bool SetupBattleground() override;
     void Init() override;
     void EndBattleground(TeamId winnerTeamId) override;
+    // A player asking to surrender: starts a vote, or casts a ballot in the one
+    // already running. `agree` false is a refusal. `secondsRemaining` is written
+    // only on MOBA_SURRENDER_TOO_EARLY and MOBA_SURRENDER_ON_COOLDOWN.
+    BG_MOBA_SurrenderResult HandleSurrenderRequest(Player* player, bool agree, uint32& secondsRemaining);
     bool UpdatePlayerScore(Player* player, uint32 type, uint32 value, bool doAddHonor = true) override;
     void FillInitialWorldStates(WorldPackets::WorldState::InitWorldStates& packet) override;
 
@@ -390,6 +427,17 @@ private:
     uint32 GetKillCreditWindowMs() const;
     uint32 GetAssistWindowMs() const;
     uint32 GetAssistBuffMaxDurationMs() const;
+    uint32 GetSurrenderMinMs() const;
+    uint32 GetSurrenderVoteMs() const;
+    uint32 GetSurrenderCooldownMs() const;
+    uint32 GetSurrenderVotesNeeded(TeamId team) const;
+    uint32 CountSurrenderVotes(TeamId team, bool agree) const;
+    BG_MOBA_SurrenderResult ResolveSurrenderVote(TeamId team);
+    void CloseSurrenderVote(TeamId team, bool startCooldown);
+    void UpdateSurrenderVotes();
+    void ExecuteSurrender(TeamId loser);
+    void AnnounceToTeam(TeamId team, std::string const& text);
+    void AnnounceSurrenderTally(TeamId team);
 
     // MobaHUD addon feed (client/addons/MobaHUD). `body` is the payload after the
     // "MobaHUD\t" prefix: "T:<sec>" clock start/sync, "E" hide the bar,
@@ -407,7 +455,7 @@ private:
     // arg = lead seconds on "spawning soon", 0 elsewhere; name from creature_template),
     // and "N:<code>,<arg>" a match-flow notice (code = BG_MOBA_Notice; arg is a
     // number the wording needs, 0 when unused).
-    // K:/D:/O:/X:/B: are built per recipient; N: only for victory/defeat.
+    // K:/D:/O:/X:/B: are built per recipient; N: only for the result and surrender pairs.
     void SendAddonPacket(Player* player, char const* prefix, std::string const& body);
     void SendHudMessage(Player* player, std::string const& body);
     void BroadcastHudMessage(std::string const& body);
@@ -446,6 +494,7 @@ private:
     uint32 _fountainTickMs = 0;   // accumulates toward the next fountain heal tick
     uint32 _passiveGoldMs = 0;    // accumulates toward the next passive income tick
     uint32 _teamPlayerKills[2] = {0, 0}; // enemy-player kills per team (the "X vs Y" score)
+    MobaSurrenderVote _surrenderVote[2];
     // victim GUID -> (enemy-attacker GUID -> last damage/debuff time, ms). Per life:
     // cleared on the victim's death and when they leave. Keeps every recent attacker
     // (not just the latest) so assist-split and bounties can read it later.

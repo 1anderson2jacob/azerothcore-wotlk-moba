@@ -41,7 +41,7 @@ void MobaBaseDataStore::LoadIfNeeded()
         "DomeEntryAlliance, DomeEntryHorde, "
         "StartingGold, PassiveTickMs, PassiveCopper, "
         "FirstBloodGold, ShutdownPerStreak, ShutdownCapGold, "
-        "MultiKillWindowMs, SpreeMin, AceMinTeam FROM mod_moba_base");
+        "MultiKillWindowMs, SpreeMin, AceMinTeam, SurrenderMinMs, SurrenderVoteMs, SurrenderCooldownMs FROM mod_moba_base");
 
     if (!result)
     {
@@ -78,6 +78,9 @@ void MobaBaseDataStore::LoadIfNeeded()
         cfg.multiKillWindowMs       = fields[21].Get<uint32>();
         cfg.spreeMin                = fields[22].Get<uint32>();
         cfg.aceMinTeam              = fields[23].Get<uint32>();
+        cfg.surrenderMinMs          = fields[24].Get<uint32>();
+        cfg.surrenderVoteMs         = fields[25].Get<uint32>();
+        cfg.surrenderCooldownMs     = fields[26].Get<uint32>();
 
         _byMap[cfg.map] = cfg;
     } while (result->NextRow());

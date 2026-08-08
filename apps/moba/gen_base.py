@@ -124,6 +124,14 @@ def validate(cfg, path):
             v = streaks.get(k, 0)
             if not isinstance(v, int) or v < 0:
                 fail(f'{path}: "streaks.{k}" must be a non-negative integer')
+    surrender = cfg.get("surrender")
+    if surrender is not None:
+        if not isinstance(surrender, dict):
+            fail(f'{path}: "surrender" must be an object')
+        for k in ("min_match_ms", "vote_duration_ms", "vote_cooldown_ms"):
+            v = surrender.get(k, 0)
+            if not isinstance(v, int) or v < 0:
+                fail(f'{path}: "surrender.{k}" must be a non-negative integer')
 
 
 def load_configs():
@@ -182,10 +190,13 @@ def emit(configs, blocks):
         "    `ShutdownCapGold`     INT UNSIGNED NOT NULL DEFAULT 0,     -- ceiling on that bounty (0 = uncapped)",
         "    `MultiKillWindowMs`   INT UNSIGNED NOT NULL DEFAULT 10000, -- a kill this soon after the last extends the multi-kill (0 = multi-kills off)",
         "    `SpreeMin`            INT UNSIGNED NOT NULL DEFAULT 3,     -- consecutive kills that announce a spree AND mark a shutdown target (0 = both off)",
-        "    `AceMinTeam`          INT UNSIGNED NOT NULL DEFAULT 2      -- smallest wiped team that counts as an ace (0 = ace off)",
+        "    `AceMinTeam`          INT UNSIGNED NOT NULL DEFAULT 2,     -- smallest wiped team that counts as an ace (0 = ace off)",
+        "    `SurrenderMinMs`      INT UNSIGNED NOT NULL DEFAULT 0,     -- earliest a surrender vote may start, from doors open (0 = no gate, not 'off')",
+        "    `SurrenderVoteMs`     INT UNSIGNED NOT NULL DEFAULT 15000, -- how long a surrender vote stays open before silence fails it",
+        "    `SurrenderCooldownMs` INT UNSIGNED NOT NULL DEFAULT 60000  -- after a failed vote, before that team may start another (0 = none)",
         ");",
         "",
-        "INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`, `StartingGold`, `PassiveTickMs`, `PassiveCopper`, `FirstBloodGold`, `ShutdownPerStreak`, `ShutdownCapGold`, `MultiKillWindowMs`, `SpreeMin`, `AceMinTeam`)",
+        "INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`, `StartingGold`, `PassiveTickMs`, `PassiveCopper`, `FirstBloodGold`, `ShutdownPerStreak`, `ShutdownCapGold`, `MultiKillWindowMs`, `SpreeMin`, `AceMinTeam`, `SurrenderMinMs`, `SurrenderVoteMs`, `SurrenderCooldownMs`)",
         "VALUES",
     ]
     rows = []
@@ -197,6 +208,7 @@ def emit(configs, blocks):
         f = cfg.get("fountain") or {}
         gold = cfg.get("gold") or {}
         streaks = cfg.get("streaks") or {}
+        surrender = cfg.get("surrender") or {}
         rows.append(
             f"({cfg['map']}, {t['base_ms']}, {t['per_min_ms']}, {t['cap_ms']}, {recall_ms}, {recall_emp_ms}, "
             f"{f.get('tick_ms', 0)}, {f.get('hp_pct', 0)}, {f.get('mana_pct', 0)}, "
@@ -214,7 +226,10 @@ def emit(configs, blocks):
             f"{gold.get('shutdown_cap', 0)}, "
             f"{streaks.get('multi_kill_window_ms', 10000)}, "
             f"{streaks.get('spree_min', 3)}, "
-            f"{streaks.get('ace_min_team', 2)})")
+            f"{streaks.get('ace_min_team', 2)}, "
+            f"{surrender.get('min_match_ms', 0)}, "
+            f"{surrender.get('vote_duration_ms', 15000)}, "
+            f"{surrender.get('vote_cooldown_ms', 60000)})")
     lines.append(",\n".join(rows) + ";")
 
     # One dome pair per map, sized from that map's spawn.radius. Copies of

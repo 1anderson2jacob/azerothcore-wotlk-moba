@@ -17,6 +17,7 @@
 
 #include "BattlegroundMOBA.h"
 #include "BattlegroundMgr.h"
+#include "Chat.h"
 #include "Creature.h"
 #include "CreatureAI.h"
 #include "GameGraveyard.h"
@@ -91,6 +92,10 @@ void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
         return;
 
     _matchElapsedMs += diff;
+
+    // Below the status guard deliberately: a vote deadline is match time, and the
+    // two calls above that guard run during prep, where no vote can exist.
+    UpdateSurrenderVotes();
 
     _bgEvents.Update(diff);
     while (uint32 eventId = _bgEvents.ExecuteEvent())
@@ -189,6 +194,210 @@ void BattlegroundMOBA::EndBattleground(TeamId winnerTeamId)
     BroadcastHudMessage("E");
 
     Battleground::EndBattleground(winnerTeamId);
+}
+
+// A player asking to surrender. Starting a vote and agreeing to one are the same
+// intent, so one entry point covers both and the command needs no branch of its own.
+BG_MOBA_SurrenderResult BattlegroundMOBA::HandleSurrenderRequest(Player* player, bool agree, uint32& secondsRemaining)
+{
+    secondsRemaining = 0;
+
+    if (!player || GetStatus() != STATUS_IN_PROGRESS)
+        return MOBA_SURRENDER_NOT_IN_MATCH;
+
+    TeamId const team = player->GetBgTeamId();
+    MobaSurrenderVote& vote = _surrenderVote[team];
+    ObjectGuid const guid = player->GetGUID();
+
+    if (!vote.endsAtMs)
+    {
+        if (!agree)
+            return MOBA_SURRENDER_NO_VOTE;
+
+        // The gate reads the HUD's own clock, not Battleground::GetStartTime(), which
+        // also counts the prep phase. "Available at 1:00" has to mean the 1:00 on the bar.
+        uint32 const gateMs = GetSurrenderMinMs();
+        if (_matchElapsedMs < gateMs)
+        {
+            secondsRemaining = (gateMs - _matchElapsedMs + 999) / 1000;
+            return MOBA_SURRENDER_TOO_EARLY;
+        }
+
+        if (_matchElapsedMs < vote.blockedUntilMs)
+        {
+            secondsRemaining = (vote.blockedUntilMs - _matchElapsedMs + 999) / 1000;
+            return MOBA_SURRENDER_ON_COOLDOWN;
+        }
+
+        vote.initiator = guid;
+        vote.yes.clear();
+        vote.no.clear();
+        vote.yes.insert(guid);
+        vote.endsAtMs = _matchElapsedMs + GetSurrenderVoteMs();
+
+        // Resolved before announcing: a team small enough to meet the threshold on
+        // the initiator alone never has a vote worth talking about.
+        if (ResolveSurrenderVote(team) == MOBA_SURRENDER_PASSED)
+            return MOBA_SURRENDER_PASSED;
+
+        AnnounceToTeam(team, Acore::StringFormat(
+            "{} wants to surrender -- .surrender to agree, .surrender no to refuse ({}s).",
+            player->GetName(), GetSurrenderVoteMs() / 1000));
+        AnnounceSurrenderTally(team);
+        return MOBA_SURRENDER_VOTE_STARTED;
+    }
+
+    if (vote.yes.count(guid) || vote.no.count(guid))
+        return MOBA_SURRENDER_ALREADY_VOTED;
+
+    if (agree)
+        vote.yes.insert(guid);
+    else
+        vote.no.insert(guid);
+
+    BG_MOBA_SurrenderResult const result = ResolveSurrenderVote(team);
+    if (result == MOBA_SURRENDER_VOTE_COUNTED)
+        AnnounceSurrenderTally(team);
+
+    return result;
+}
+
+// League's all-but-one, floored so a two-player team still needs both: at a plain
+// size - 1 a duo surrenders on one player's say-so, which is the unilateral
+// behaviour the vote exists to remove. A lone player meets it unaided.
+uint32 BattlegroundMOBA::GetSurrenderVotesNeeded(TeamId team) const
+{
+    uint32 const size = GetPlayersCountByTeam(team);
+    return (size <= 2) ? size : size - 1;
+}
+
+// Ballots from players who have since left do not count: the roster a vote is
+// measured against is the one standing now, not the one that started it.
+uint32 BattlegroundMOBA::CountSurrenderVotes(TeamId team, bool agree) const
+{
+    GuidUnorderedSet const& ballots = agree ? _surrenderVote[team].yes : _surrenderVote[team].no;
+
+    uint32 count = 0;
+    for (ObjectGuid const& guid : ballots)
+        if (IsPlayerInBattleground(guid))
+            ++count;
+
+    return count;
+}
+
+// Ends the match on a pass, closes the vote and starts the cooldown once the
+// threshold is out of reach, otherwise leaves it running.
+BG_MOBA_SurrenderResult BattlegroundMOBA::ResolveSurrenderVote(TeamId team)
+{
+    uint32 const needed = GetSurrenderVotesNeeded(team);
+
+    if (CountSurrenderVotes(team, true) >= needed)
+    {
+        CloseSurrenderVote(team, false);
+        ExecuteSurrender(team);
+        return MOBA_SURRENDER_PASSED;
+    }
+
+    // Out of reach: every player who has not already refused voting yes still falls
+    // short. Refusals only ever come from players on this team, so the subtraction
+    // cannot underflow.
+    if (GetPlayersCountByTeam(team) - CountSurrenderVotes(team, false) < needed)
+    {
+        AnnounceToTeam(team, "The surrender vote failed.");
+        CloseSurrenderVote(team, true);
+        return MOBA_SURRENDER_VOTE_FAILED;
+    }
+
+    return MOBA_SURRENDER_VOTE_COUNTED;
+}
+
+void BattlegroundMOBA::CloseSurrenderVote(TeamId team, bool startCooldown)
+{
+    MobaSurrenderVote& vote = _surrenderVote[team];
+
+    if (startCooldown)
+        vote.blockedUntilMs = _matchElapsedMs + GetSurrenderCooldownMs();
+
+    vote.initiator.Clear();
+    vote.yes.clear();
+    vote.no.clear();
+    vote.endsAtMs = 0;
+}
+
+void BattlegroundMOBA::UpdateSurrenderVotes()
+{
+    for (uint8 i = 0; i < 2; ++i)
+    {
+        // A pass ends the match, and anything still open on the other team dies with
+        // it -- resolving that one too would send a second N: pair.
+        if (GetStatus() != STATUS_IN_PROGRESS)
+            return;
+
+        TeamId const team = TeamId(i);
+        if (!_surrenderVote[i].endsAtMs)
+            continue;
+
+        // An empty team's threshold is zero, which every vote trivially meets.
+        // Premature finish already owns the abandoned-team case.
+        if (!GetPlayersCountByTeam(team))
+        {
+            CloseSurrenderVote(team, false);
+            continue;
+        }
+
+        // Re-evaluated every tick rather than only when someone votes: a player
+        // leaving shrinks the team and the threshold with it, so a vote can pass
+        // with no new ballot cast.
+        if (ResolveSurrenderVote(team) != MOBA_SURRENDER_VOTE_COUNTED)
+            continue;
+
+        if (_matchElapsedMs >= _surrenderVote[i].endsAtMs)
+        {
+            AnnounceToTeam(team, "The surrender vote failed.");
+            CloseSurrenderVote(team, true);
+        }
+    }
+}
+
+void BattlegroundMOBA::ExecuteSurrender(TeamId loser)
+{
+    TeamId const winner = (loser == TEAM_ALLIANCE) ? TEAM_HORDE : TEAM_ALLIANCE;
+
+    // Ahead of EndBattleground, which sends the VICTORY/DEFEAT pair itself: this
+    // line says WHY, that one says what. Per recipient for the same reason.
+    for (auto const& itr : GetPlayers())
+    {
+        Player* recipient = itr.second;
+        if (!recipient)
+            continue;
+
+        uint32 const code = (recipient->GetBgTeamId() == loser)
+            ? MOBA_NOTICE_SURRENDER_OWN : MOBA_NOTICE_SURRENDER_ENEMY;
+        SendHudMessage(recipient, Acore::StringFormat("N:{},0", code));
+    }
+
+    EndBattleground(winner);
+}
+
+// Vote traffic is system chat, not the kill feed: the feed's wording lives entirely
+// in the addon and "N:<code>,<arg>" carries one number, which cannot say "2 of 4"
+// or name the initiator. The enemy team is told nothing until the vote passes.
+void BattlegroundMOBA::AnnounceToTeam(TeamId team, std::string const& text)
+{
+    for (auto const& itr : GetPlayers())
+    {
+        Player* recipient = itr.second;
+        if (!recipient || recipient->GetBgTeamId() != team)
+            continue;
+
+        ChatHandler(recipient->GetSession()).SendSysMessage(text.c_str());
+    }
+}
+
+void BattlegroundMOBA::AnnounceSurrenderTally(TeamId team)
+{
+    AnnounceToTeam(team, Acore::StringFormat("Surrender vote: {} of {} needed.",
+        CountSurrenderVotes(team, true), GetSurrenderVotesNeeded(team)));
 }
 
 void BattlegroundMOBA::AddPlayer(Player* player)
@@ -634,6 +843,8 @@ void BattlegroundMOBA::Init()
     _superMinionsActive[1] = false;
     _streaks.clear();
     _firstBlood = false;
+    _surrenderVote[0] = MobaSurrenderVote();
+    _surrenderVote[1] = MobaSurrenderVote();
 }
 
 void BattlegroundMOBA::HandleKillPlayer(Player* /*player*/, Player* /*killer*/)
@@ -856,6 +1067,27 @@ uint32 BattlegroundMOBA::GetKillCreditWindowMs() const
 {
     if (MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId()))
         return cfg->killCreditWindowMs;
+    return 0;
+}
+
+uint32 BattlegroundMOBA::GetSurrenderMinMs() const
+{
+    if (MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId()))
+        return cfg->surrenderMinMs;
+    return 0;
+}
+
+uint32 BattlegroundMOBA::GetSurrenderVoteMs() const
+{
+    if (MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId()))
+        return cfg->surrenderVoteMs;
+    return 0;
+}
+
+uint32 BattlegroundMOBA::GetSurrenderCooldownMs() const
+{
+    if (MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId()))
+        return cfg->surrenderCooldownMs;
     return 0;
 }
 
@@ -1887,12 +2119,22 @@ void BattlegroundMOBA::BroadcastNotice(uint32 code, uint32 arg)
 // The one notice that is NOT the same for everyone: each player is told whether
 // THEY won, never which faction did. TEAM_NEUTRAL is a real outcome here --
 // Battleground::GetPrematureWinner returns it when neither side still fields
-// enough players -- and there is no honest victory or defeat line for it, so
-// nobody is told anything.
+// enough players -- and there is no honest victory or defeat line for it, so it
+// takes the one line that is the same for everyone.
+//
+// That branch is UNREACHABLE wherever battleground_template.MinPlayersPerTeam is
+// 1, and EotS's is 1 deliberately -- a MOBA keeps playing 4v5. "Neither team
+// meets a min of 1" means zero players total, and Battleground::Update returns on
+// an empty BG before the status switch. Kept as a guard, not dead code: a mode
+// whose template carries a real minimum reaches it, and without it that match ends
+// on a frozen bar that never says why.
 void BattlegroundMOBA::BroadcastMatchResult(TeamId winnerTeamId)
 {
     if (winnerTeamId != TEAM_ALLIANCE && winnerTeamId != TEAM_HORDE)
+    {
+        BroadcastNotice(MOBA_NOTICE_DRAW);
         return;
+    }
 
     for (auto const& itr : GetPlayers())
     {

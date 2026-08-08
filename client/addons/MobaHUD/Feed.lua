@@ -217,16 +217,20 @@ local KILL_TTL = {
 -- notice, this table holds every word, the icon and the rank -- same split as
 -- the structure and streak tables above.
 --
--- `good` is nil for the two that belong to neither side, and the colour falls
--- through to C_DIM. Only the result pair is anyone's news. `arg = true` marks a
+-- `good` is nil for the lines that belong to neither side, and the colour falls
+-- through to C_DIM. Only the result and surrender pairs are anyone's news; the
+-- minion lines and a match with no winner are nobody's. `arg = true` marks a
 -- line whose text is a format string fed the payload's trailing number -- opt-in
 -- rather than formatting everything, so a future line containing a literal % is
 -- not silently mangled.
 local NOTICE = {
-    [1] = { icon = "INV_Misc_Head_Orc_01", text = "%d seconds until minions spawn", arg = true, prio = PRIO_EVENT },
-    [2] = { icon = "INV_Misc_Head_Orc_01", text = "Minions have spawned!", prio = PRIO_EVENT },
-    [3] = { icon = "INV_BannerPVP_02",     text = "VICTORY!", good = true,  prio = PRIO_BIG   },
-    [4] = { icon = "INV_BannerPVP_01",     text = "DEFEAT!",  good = false, prio = PRIO_BIG   },
+    [1] = { icon = "INV_Misc_Head_Orc_01",    text = "%d seconds until minions spawn", arg = true, prio = PRIO_EVENT },
+    [2] = { icon = "INV_Misc_Head_Orc_01",    text = "Minions have spawned!", prio = PRIO_EVENT },
+    [3] = { icon = "INV_BannerPVP_02",        text = "VICTORY!", good = true,  prio = PRIO_BIG   },
+    [4] = { icon = "INV_BannerPVP_01",        text = "DEFEAT!",  good = false, prio = PRIO_BIG   },
+    [5] = { icon = "INV_Misc_PocketWatch_01", text = "MATCH ENDED -- NO WINNER", prio = PRIO_BIG },
+    [6] = { icon = "INV_BannerPVP_02",        text = "THE ENEMY TEAM HAS SURRENDERED", good = true,  prio = PRIO_BIG },
+    [7] = { icon = "INV_BannerPVP_01",        text = "YOUR TEAM HAS SURRENDERED",      good = false, prio = PRIO_BIG },
 }
 
 local killFrame = CreateFrame("Frame", "MobaHUDKillFeed", UIParent)

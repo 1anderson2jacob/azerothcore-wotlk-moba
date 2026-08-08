@@ -50,11 +50,12 @@
 --                                        name = the boss's creature_template name
 --   N:<code>,<arg>                     transient match-flow notice:
 --                                        1 minions incoming, 2 minions have spawned,
---                                        3 victory, 4 defeat
+--                                        3 victory, 4 defeat, 5 ended with no winner,
+--                                        6 enemy surrendered, 7 your team surrendered
 --                                        arg = a number the wording needs (the
 --                                        warning's lead time in seconds); 0 unused
---                                      Only 3/4 are per recipient -- everyone is
---                                      told whether THEY won, never which faction did
+--                                      Only 3/4 and 6/7 are per recipient -- everyone
+--                                      is told whether THEY won, never which faction did
 --   E                                  match over -- freeze the bar; it hides when
 --                                      you leave the instance, not on this
 
@@ -295,13 +296,16 @@ SlashCmdList["MOBAHUD"] = function(msg)
         Print("structure test: 6 lines into 5 slots -- the oldest turret evicts, both inhibitor lines and the base survive.")
     elseif msg == "notice" then
         -- Every N: code, in the order a real match produces them. Note the arg
-        -- field on all four: the pattern is anchored, so a payload written before
+        -- field on all seven: the pattern is anchored, so a payload written before
         -- it existed matches nothing and shows nothing.
         ns.Feed.Notice("1,10")   -- minions incoming, 10s lead
         ns.Feed.Notice("2,0")    -- minions have spawned
         ns.Feed.Notice("3,0")    -- victory
         ns.Feed.Notice("4,0")    -- defeat
-        Print("notice test: both minion lines, victory and defeat.")
+        ns.Feed.Notice("5,0")    -- ended with no winner
+        ns.Feed.Notice("6,0")    -- the enemy surrendered
+        ns.Feed.Notice("7,0")    -- your team surrendered
+        Print("notice test: 7 lines into 5 slots -- both minion lines evict, the five big ones survive.")
     elseif msg == "boss" then
         -- Every B: event and all three sides, in the order a real match produces
         -- them. The feed renders newest-on-top, so this reads bottom-to-top.
