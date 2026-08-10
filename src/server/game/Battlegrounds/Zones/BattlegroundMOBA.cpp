@@ -1,20 +1,3 @@
-/*
- * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 #include "BattlegroundMOBA.h"
 #include "BattlegroundMgr.h"
 #include "Chat.h"
@@ -39,7 +22,6 @@
 #include "Timer.h"
 #include "Random.h"
 #include "SpellAuras.h"
-#include "Chat.h"
 #include "StringFormat.h"
 #include "ObjectAccessor.h"
 #include "TemporarySummon.h"
@@ -77,15 +59,10 @@ BattlegroundMOBA::~BattlegroundMOBA()
 
 void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
 {
-    // Ahead of the status guard on purpose: buying starting gear during the prep
-    // phase is intended, so the panel's buy/sell affordance has to be live before
-    // the doors open. Everything below here is match-time only.
+    // Both of these run ahead of the status guard. Buying starting gear during prep
+    // is intended, and a prep-phase death is otherwise permanent -- an instanced map
+    // has no spirit healer and Player::Update skips its auto-release.
     UpdateShopRange(diff);
-
-    // Also ahead of it, for a harsher reason: players can die during prep, and an
-    // instanced map offers no way back on its own -- no spirit healer, and
-    // Player::Update skips its auto-release entirely on instanceable maps. Let
-    // this stop ticking before the doors open and a prep-phase death is permanent.
     UpdateRespawnTimers(diff);
 
     if (GetStatus() != STATUS_IN_PROGRESS)
@@ -93,8 +70,6 @@ void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
 
     _matchElapsedMs += diff;
 
-    // Below the status guard deliberately: a vote deadline is match time, and the
-    // two calls above that guard run during prep, where no vote can exist.
     UpdateSurrenderVotes();
 
     _bgEvents.Update(diff);
@@ -108,16 +83,13 @@ void BattlegroundMOBA::PostUpdateImpl(uint32 diff)
             SpawnWave(TEAM_HORDE, includeSiege);
             _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(MOBA_WAVE_INTERVAL_MS));
 
-            // Announced from here rather than SpawnWave, which runs once per team and
-            // would say it twice. First wave only: after that the cadence is the
-            // clock's job, and a pair of lines every 30s would crowd out real events.
+            // Not in SpawnWave, which runs once per team and would say it twice.
             if (_waveCount == 1)
                 BroadcastNotice(MOBA_NOTICE_MINIONS_SPAWNED);
         }
         else if (eventId == EVENT_MOBA_WAVE_WARN)
             BroadcastNotice(MOBA_NOTICE_MINIONS_SOON, MOBA_WAVE_WARN_MS / 1000);
-        // Highest base first: each test is a >=, so an out-of-order branch swallows
-        // every base above it.
+        // Descending order is mandatory -- see BG_MOBA_Events.
         else if (eventId >= EVENT_MOBA_BOSS_WARN_FIRST)
             WarnBossRespawn(eventId - EVENT_MOBA_BOSS_WARN_FIRST);
         else if (eventId >= EVENT_MOBA_INHIB_WARN_FIRST)
@@ -151,14 +123,11 @@ void BattlegroundMOBA::StartingEventOpenDoors()
     SpawnBGObject(BG_MOBA_OBJECT_DOOR_A, RESPAWN_ONE_DAY);
     SpawnBGObject(BG_MOBA_OBJECT_DOOR_H, RESPAWN_ONE_DAY);
 
-    // Achievement: Flurry
     StartTimedAchievement(ACHIEVEMENT_TIMED_TYPE_EVENT, BG_MOBA_EVENT_START_BATTLE);
 
     _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(MOBA_WAVE_INTERVAL_MS));
 
-    // Scheduled once and never re-armed: only the first wave is announced. Derived
-    // from the interval rather than written out, so the warning cannot drift off
-    // the spawn it announces when the cadence changes.
+    // Scheduled once and never re-armed: only the first wave is announced.
     _bgEvents.ScheduleEvent(EVENT_MOBA_WAVE_WARN, Milliseconds(MOBA_WAVE_INTERVAL_MS - MOBA_WAVE_WARN_MS));
 
     for (size_t i = 0; i < _camps.size(); ++i)
@@ -172,32 +141,24 @@ void BattlegroundMOBA::StartingEventOpenDoors()
                 Milliseconds(_camps[i].initialSpawnMs - _camps[i].spawnWarnMs));
     }
 
-    // Match starts now (doors open): show the HUD bar at 0:00 with a zeroed scoreboard.
     BroadcastHudMessage("T:0");
     BroadcastScoreboard();
 }
 
 void BattlegroundMOBA::EndBattleground(TeamId winnerTeamId)
 {
-    // The core's own double-end guard sits one level below, in
-    // Battleground::EndBattleground(PvPTeamId) -- past the broadcasts. Repeat it
-    // here or a second caller doubles the feed lines while the core work stays single.
+    // The core's own double-end guard sits below this, in
+    // Battleground::EndBattleground(PvPTeamId) -- past the broadcasts.
     if (GetStatus() == STATUS_WAIT_LEAVE)
         return;
 
-    // Ahead of "E", and deliberately a separate payload rather than a field on it:
-    // the client tests E by exact match, so anything appended stops matching. The
-    // feed outlives the match, so this line needs no timer of its own.
+    // A separate payload, not a field on "E": the client tests E by exact match.
     BroadcastMatchResult(winnerTeamId);
-
-    // Hide the client-side HUD bar as the match ends.
     BroadcastHudMessage("E");
 
     Battleground::EndBattleground(winnerTeamId);
 }
 
-// A player asking to surrender. Starting a vote and agreeing to one are the same
-// intent, so one entry point covers both and the command needs no branch of its own.
 BG_MOBA_SurrenderResult BattlegroundMOBA::HandleSurrenderRequest(Player* player, bool agree, uint32& secondsRemaining)
 {
     secondsRemaining = 0;
@@ -214,8 +175,8 @@ BG_MOBA_SurrenderResult BattlegroundMOBA::HandleSurrenderRequest(Player* player,
         if (!agree)
             return MOBA_SURRENDER_NO_VOTE;
 
-        // The gate reads the HUD's own clock, not Battleground::GetStartTime(), which
-        // also counts the prep phase. "Available at 1:00" has to mean the 1:00 on the bar.
+        // The HUD's clock, not Battleground::GetStartTime(), which also counts prep:
+        // "available at 1:00" has to mean the 1:00 on the bar.
         uint32 const gateMs = GetSurrenderMinMs();
         if (_matchElapsedMs < gateMs)
         {
@@ -235,8 +196,8 @@ BG_MOBA_SurrenderResult BattlegroundMOBA::HandleSurrenderRequest(Player* player,
         vote.yes.insert(guid);
         vote.endsAtMs = _matchElapsedMs + GetSurrenderVoteMs();
 
-        // Resolved before announcing: a team small enough to meet the threshold on
-        // the initiator alone never has a vote worth talking about.
+        // Resolved before announcing: a team that meets the threshold on the
+        // initiator alone never has a vote worth talking about.
         if (ResolveSurrenderVote(team) == MOBA_SURRENDER_PASSED)
             return MOBA_SURRENDER_PASSED;
 
@@ -263,16 +224,15 @@ BG_MOBA_SurrenderResult BattlegroundMOBA::HandleSurrenderRequest(Player* player,
 }
 
 // League's all-but-one, floored so a two-player team still needs both: at a plain
-// size - 1 a duo surrenders on one player's say-so, which is the unilateral
-// behaviour the vote exists to remove. A lone player meets it unaided.
+// size - 1 a duo surrenders on one player's say-so.
 uint32 BattlegroundMOBA::GetSurrenderVotesNeeded(TeamId team) const
 {
     uint32 const size = GetPlayersCountByTeam(team);
     return (size <= 2) ? size : size - 1;
 }
 
-// Ballots from players who have since left do not count: the roster a vote is
-// measured against is the one standing now, not the one that started it.
+// The roster a vote is measured against is the one standing now, not the one that
+// started it.
 uint32 BattlegroundMOBA::CountSurrenderVotes(TeamId team, bool agree) const
 {
     GuidUnorderedSet const& ballots = agree ? _surrenderVote[team].yes : _surrenderVote[team].no;
@@ -285,8 +245,6 @@ uint32 BattlegroundMOBA::CountSurrenderVotes(TeamId team, bool agree) const
     return count;
 }
 
-// Ends the match on a pass, closes the vote and starts the cooldown once the
-// threshold is out of reach, otherwise leaves it running.
 BG_MOBA_SurrenderResult BattlegroundMOBA::ResolveSurrenderVote(TeamId team)
 {
     uint32 const needed = GetSurrenderVotesNeeded(team);
@@ -298,9 +256,8 @@ BG_MOBA_SurrenderResult BattlegroundMOBA::ResolveSurrenderVote(TeamId team)
         return MOBA_SURRENDER_PASSED;
     }
 
-    // Out of reach: every player who has not already refused voting yes still falls
-    // short. Refusals only ever come from players on this team, so the subtraction
-    // cannot underflow.
+    // Out of reach: everyone who has not already refused voting yes still falls
+    // short. Refusals only come from this team, so the subtraction cannot underflow.
     if (GetPlayersCountByTeam(team) - CountSurrenderVotes(team, false) < needed)
     {
         AnnounceToTeam(team, "The surrender vote failed.");
@@ -328,8 +285,8 @@ void BattlegroundMOBA::UpdateSurrenderVotes()
 {
     for (uint8 i = 0; i < 2; ++i)
     {
-        // A pass ends the match, and anything still open on the other team dies with
-        // it -- resolving that one too would send a second N: pair.
+        // A pass ends the match; resolving the other team's vote too would send a
+        // second N: pair.
         if (GetStatus() != STATUS_IN_PROGRESS)
             return;
 
@@ -338,16 +295,14 @@ void BattlegroundMOBA::UpdateSurrenderVotes()
             continue;
 
         // An empty team's threshold is zero, which every vote trivially meets.
-        // Premature finish already owns the abandoned-team case.
         if (!GetPlayersCountByTeam(team))
         {
             CloseSurrenderVote(team, false);
             continue;
         }
 
-        // Re-evaluated every tick rather than only when someone votes: a player
-        // leaving shrinks the team and the threshold with it, so a vote can pass
-        // with no new ballot cast.
+        // Every tick, not only when someone votes: a player leaving shrinks the
+        // threshold, so a vote can pass with no new ballot cast.
         if (ResolveSurrenderVote(team) != MOBA_SURRENDER_VOTE_COUNTED)
             continue;
 
@@ -363,8 +318,8 @@ void BattlegroundMOBA::ExecuteSurrender(TeamId loser)
 {
     TeamId const winner = (loser == TEAM_ALLIANCE) ? TEAM_HORDE : TEAM_ALLIANCE;
 
-    // Ahead of EndBattleground, which sends the VICTORY/DEFEAT pair itself: this
-    // line says WHY, that one says what. Per recipient for the same reason.
+    // Ahead of EndBattleground, which sends the VICTORY/DEFEAT pair: this line
+    // says WHY, that one says what.
     for (auto const& itr : GetPlayers())
     {
         Player* recipient = itr.second;
@@ -379,9 +334,8 @@ void BattlegroundMOBA::ExecuteSurrender(TeamId loser)
     EndBattleground(winner);
 }
 
-// Vote traffic is system chat, not the kill feed: the feed's wording lives entirely
-// in the addon and "N:<code>,<arg>" carries one number, which cannot say "2 of 4"
-// or name the initiator. The enemy team is told nothing until the vote passes.
+// System chat, not the kill feed: "N:<code>,<arg>" carries one number, which cannot
+// say "2 of 4" or name the initiator.
 void BattlegroundMOBA::AnnounceToTeam(TeamId team, std::string const& text)
 {
     for (auto const& itr : GetPlayers())
@@ -405,26 +359,19 @@ void BattlegroundMOBA::AddPlayer(Player* player)
     Battleground::AddPlayer(player);
     PlayerScores.emplace(player->GetGUID().GetCounter(), new BattlegroundMOBAScore(player->GetGUID()));
 
-    // Recall (moba_recall.cpp) is triggered by casting Hearthstone, redirected to
-    // base while in this BG. Ensure the player is holding one, and clear any
-    // pre-existing cooldown so recall is available the moment they enter (each
-    // recall cast resets it thereafter -- see spell_moba_hearthstone_recall::HandleTeleport).
     if (!player->HasItemCount(BG_MOBA_RECALL_ITEM))
         player->AddItem(BG_MOBA_RECALL_ITEM, 1);
 
+    // Recall must be up the moment they enter; each cast clears it again.
     player->RemoveSpellCooldown(BG_MOBA_RECALL_SPELL, true);
 
-    // The store is NOT loaded yet on the first match of a worldserver process.
-    // SetupBattleground -- which is what normally loads it -- runs from
-    // Battleground::_ProcessJoin, i.e. on the first BG tick AFTER a player has
-    // already ported in, so this hook beats it. Cheap to repeat: LoadIfNeeded is a
-    // bool check once loaded.
+    // SetupBattleground normally loads the stores, but it runs from
+    // Battleground::_ProcessJoin -- the first BG tick, AFTER players have ported in.
+    // On the first match of a process this hook beats it.
     sMobaBaseDataStore->LoadIfNeeded();
 
-    // Opening buy, so the prep phase is a decision rather than a wait. AddPlayer
-    // runs again on a reconnect and the wallet deliberately outlives RemovePlayer,
-    // so paying unconditionally would pay twice; an absent wallet entry is the
-    // "never been paid" test, because AddMatchGold is the only thing that creates one.
+    // AddPlayer runs again on a reconnect and the wallet outlives RemovePlayer, so an
+    // absent wallet entry is the "never been paid" test.
     if (MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId()))
         if (cfg->startingGold && _wallets.find(player->GetGUID()) == _wallets.end())
             AddMatchGold(player, cfg->startingGold);
@@ -553,11 +500,6 @@ bool BattlegroundMOBA::HasShopAddon(Player* player) const
     return player && _shopAddonPlayers.count(player->GetGUID()) != 0;
 }
 
-// Arithmetic against a cached Position, not a creature lookup: the shopkeeper is
-// decoration and a convenience click, and the base circle is what actually gates
-// trading. Deliberately NOT merged into UpdateFountainHealing despite the
-// identical test -- that one is paced by a config tunable, and the shop
-// affordance must not become a hostage of a healing knob.
 bool BattlegroundMOBA::IsInShopRange(Player* player) const
 {
     if (!player)
@@ -603,8 +545,8 @@ void BattlegroundMOBA::UpdateShopRange(uint32 diff)
 
 void BattlegroundMOBA::RemovePlayer(Player* player)
 {
-    // Hide the HUD bar for anyone leaving the match early (Leave button, logout, GM
-    // removal). The normal win-condition path hides it via EndBattleground.
+    // Covers every early exit (Leave, logout, GM removal); EndBattleground covers
+    // the normal path.
     SendHudMessage(player, "E");
 
     if (player)
@@ -615,11 +557,10 @@ void BattlegroundMOBA::RemovePlayer(Player* player)
         _shopAddonPlayers.erase(player->GetGUID());
         _shopInRange.erase(player->GetGUID());
 
-        // Match-granted items are match-only, and this hook covers every exit
-        // path. Two passes, because the ledger alone would let DestroyItemCount
-        // pick the player's own copy of a shared entry while a soulbound one of
-        // ours escapes: the GUID pass takes exactly what we handed over, and the
-        // ledger pass mops up whatever was split off it under a new GUID.
+        // Two passes: the ledger alone would let DestroyItemCount pick the player's
+        // own copy of a shared entry while a soulbound one of ours escapes. The GUID
+        // pass takes exactly what we handed over; the ledger pass mops up whatever
+        // was split off it under a new GUID.
         auto guids  = _grantedItems.find(player->GetGUID());
         auto counts = _grantedCounts.find(player->GetGUID());
         bool destroyed = false;
@@ -641,9 +582,8 @@ void BattlegroundMOBA::RemovePlayer(Player* player)
                         owed = itr->second;
                 }
 
-                // Never take more of a stack than the match gave: StoreLootItem
-                // merges ours into one the player already held, so this GUID can
-                // cover their potions as well as ours.
+                // Never take more of a stack than the match gave: StoreLootItem merges
+                // ours into one the player already held.
                 uint32 take = std::min(item->GetCount(), owed);
                 if (!take)
                     continue;
@@ -670,12 +610,10 @@ void BattlegroundMOBA::RemovePlayer(Player* player)
 
         if (destroyed)
         {
-            // DestroyItem zeroes the PLAYER_VISIBLE_ITEM fields, but this runs in
-            // the same tick the player is pulled from the world, so the normal
-            // flush never reaches the client -- and the client relocates its own
-            // player object on a map change rather than recreating it, so the
-            // stripped gear stays rendered on the model until relog. Send the
-            // changed values synchronously instead.
+            // This runs in the tick the player is pulled from the world, so the normal
+            // flush never reaches the client -- and the 3.3.5 client relocates its own
+            // player object on a map change rather than recreating it, so stripped gear
+            // stays rendered until relog. Send the changed values synchronously.
             UpdateData upd;
             WorldPacket packet;
             player->BuildValuesUpdateBlockForPlayer(&upd, player);
@@ -690,7 +628,6 @@ void BattlegroundMOBA::HandleAreaTrigger(Player* player, uint32 trigger)
     if (GetStatus() != STATUS_IN_PROGRESS || !player->IsAlive())
         return;
 }
-
 bool BattlegroundMOBA::SetupBattleground()
 {
     sMobaTowerDataStore->LoadIfNeeded();
@@ -715,12 +652,9 @@ bool BattlegroundMOBA::SetupBattleground()
         return false;
     }
 
-    // Spawn domes (the prep-phase barrier), each centered on its team's start
-    // position -- the same source respawn and the fountain read, so a dome cannot
-    // drift off the spawn point. Entries are per-map so each mode's dome is sized
-    // to its own spawn.radius (see gen_base.py).
-    // The zero quaternion is deliberate: SetWorldRotation derives the rotation from
-    // the orientation when the quat is zero, which is the Z-axis spin a dome wants.
+    // Spawn domes, centered on the same team start position respawn and the fountain
+    // read. The zero quaternion is deliberate: SetWorldRotation derives the rotation
+    // from the orientation when the quat is zero, which is the Z-axis spin a dome wants.
     Position const* allianceStart = GetTeamStartPosition(TEAM_ALLIANCE);
     Position const* hordeStart    = GetTeamStartPosition(TEAM_HORDE);
 
@@ -731,19 +665,17 @@ bool BattlegroundMOBA::SetupBattleground()
         hordeStart->GetPositionX(), hordeStart->GetPositionY(), hordeStart->GetPositionZ(),
         hordeStart->GetOrientation(), 0.0f, 0.0f, 0.0f, 0.0f, RESPAWN_IMMEDIATELY);
 
-    // towers (data-driven; see mod_moba_tower_data / MobaTowerData.h)
+    // towers
     _towers.clear();
     _towers.reserve(towerConfigs.size());
     for (size_t i = 0; i < towerConfigs.size(); ++i)
     {
         MobaTowerConfig const& cfg = towerConfigs[i];
         uint32 slot = BG_MOBA_CREATURE_FIXED_MAX + static_cast<uint32>(i);
-        // Battleground::AddCreature applies a respawn delay only when one is passed,
-        // so the default 0 leaves Creature's own 300s default in place and every
-        // structure quietly returns ~6 minutes after dying -- alive, but still
-        // flagged destroyed here, so inert to every code path that matters.
-        // Inhibitors are unaffected: RespawnInhibitor brings them back with
-        // Creature::Respawn(true), a forced respawn that ignores this timer.
+        // DAY, not the default 0: AddCreature applies a respawn delay only when one is
+        // passed, so 0 leaves Creature's own 300s in place and every structure quietly
+        // returns ~6 minutes after dying, still flagged destroyed here. Inhibitors are
+        // unaffected -- RespawnInhibitor forces a respawn that ignores this.
         AddCreature(cfg.entry, slot, cfg.x, cfg.y, cfg.z, cfg.o, DAY);
 
         MobaTowerState state;
@@ -761,7 +693,7 @@ bool BattlegroundMOBA::SetupBattleground()
         {
             state.guid = creature->GetGUID();
 
-            // Inert/guarded towers start unattackable until their guard tower falls (cleared in OnTowerDestroyed).
+            // Guarded towers stay unattackable until their guard falls (OnTowerDestroyed).
             if (cfg.guardedByEntry)
                 creature->SetUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE));
         }
@@ -783,7 +715,7 @@ bool BattlegroundMOBA::SetupBattleground()
             return false;
         }
 
-    // creep wave composition (data-driven; see mod_moba_creep_data / MobaCreepData.h)
+    // creep wave composition
     sMobaCreepDataStore->LoadIfNeeded();
     for (MobaCreepConfig const& cfg : sMobaCreepDataStore->GetForMap(GetMapId()))
         if (cfg.role < MOBA_CREEP_ROLE_MAX && cfg.team < 2)
@@ -812,8 +744,7 @@ bool BattlegroundMOBA::SetupBattleground()
             LOG_WARN("sql.sql", "BattlegroundMOBA: map {} team {} has an inhibitor but no super creep (role=super) in `mod_moba_creep_data` -- taking that inhibitor will field no super minions.", GetMapId(), team);
     }
 
-    // neutral camps (data-driven; see mod_moba_neutral_* / MobaNeutralData.h).
-    // Optional content: a map with no camps is legal, so warn rather than fail.
+    // neutral camps -- optional content, so a map with none warns rather than fails
     sMobaNeutralDataStore->LoadIfNeeded();
     _camps.clear();
     for (MobaNeutralCamp const& cfg : sMobaNeutralDataStore->GetCampsForMap(GetMapId()))
@@ -849,21 +780,18 @@ void BattlegroundMOBA::Init()
 
 void BattlegroundMOBA::HandleKillPlayer(Player* /*player*/, Player* /*killer*/)
 {
-    // Intentionally empty. The engine only calls this on a player/pet killing
-    // blow, but MOBA deaths are just as often finished by a creep, tower, or the
-    // environment -- so ALL kill crediting and death tallying is centralized in
-    // HandlePlayerDeath, driven by the moba_kill_credit UnitScript's OnUnitDeath
-    // (which fires for every death regardless of killer). Scoring here too would
+    // Intentionally empty. The engine calls this only on a player/pet killing blow, but
+    // MOBA deaths are as often finished by a creep, tower, or the environment, so all
+    // crediting and death tallying lives in HandlePlayerDeath. Scoring here would
     // double-count the player-blow case.
 }
 
 void BattlegroundMOBA::HandleKillUnit(Creature* /*creature*/, Player* /*killer*/)
 {
-    // Intentionally empty, for the same shape of reason as HandleKillPlayer. The
-    // engine hands this hook the LOOT RECIPIENT rather than the killing blow --
-    // Unit::Kill reassigns player = creature->GetLootRecipient() before calling us
-    // -- which is wrong for a tower's last-hit bonus and wrong for creep CS. Both
-    // are credited from the creature AI's JustDied, which receives the real killer.
+    // Intentionally empty. Unit::Kill reassigns player = creature->GetLootRecipient()
+    // before calling this hook, so `killer` here is the first TAPPER, not the killing
+    // blow -- wrong for a tower's last-hit bonus and wrong for creep CS. Both are
+    // credited from the creature AI's JustDied, which receives the real killer.
 }
 
 void BattlegroundMOBA::CreditCreepKill(Player* killer)
@@ -881,10 +809,9 @@ void BattlegroundMOBA::CreditCreepKill(Player* killer)
 
 void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer, Unit* killerUnit)
 {
-    // Post-match kills reward nothing at all, which is what keeps the frozen
-    // creeps and camps farmproof. The engine already filled native loot for the
-    // first TAPPER's group (Unit::Kill runs before JustDied), so this must strip
-    // the corpse rather than merely skip.
+    // Post-match kills reward nothing, which is what keeps frozen creeps and camps
+    // farmproof. Unit::Kill already filled native loot for the first tapper's group, so
+    // this must strip the corpse rather than merely skip.
     if (GetStatus() != STATUS_IN_PROGRESS)
     {
         victim->loot.clear();
@@ -893,45 +820,26 @@ void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer, Unit* k
         return;
     }
 
-    // Team-wide drops follow the killing BLOW's side, which need not be a
-    // player's: a creep or tower that finishes a boss still pays its own team,
-    // as in League where a minion-executed Baron still buffs that side. Personal
-    // drops below stay strictly last-hit.
+    // Team-wide drops follow the killing BLOW's side, which need not be a player's: a
+    // creep that finishes a boss still pays its own team. Personal drops stay last-hit.
     TeamId rewardTeam = killer ? killer->GetBgTeamId() : ResolveKillerTeam(killerUnit);
 
     if (killer)
     {
-        // Native loot rights follow the tapper's group; ours follow the killing blow,
-        // and only the killing blow. Three lines, each covering a different half:
-        //
-        //   SetLootRecipient(killer) is group-wide ON PURPOSE. Narrowing it with
-        //   withGroup=false zeroes the recipient GROUP, and Player::isAllowedToLoot
-        //   rejects any looter who HAS a group against a corpse that has none -- which
-        //   is every player in a battleground, the killer included. They would never be
-        //   sent UNIT_DYNFLAG_LOOTABLE and so could not click their own kill.
-        //
-        //   roundRobinPlayer must be ASSIGNED, never cleared: BG raids are GROUP_LOOT,
-        //   whose isAllowedToLoot branch admits anyone when no round-robin looter is
-        //   set. Setting it to the killer is what hides the corpse from teammates -- and
-        //   what shows the killer every item, over-threshold ones included. It is
-        //   cosmetic only; LootHandler clears it again if the killer closes a corpse
-        //   they did not empty, which is why moba_loot_rights_globalscript is what
-        //   actually enforces this.
-        //
-        //   loot_type suppresses the group roll. Player::SendLoot broadcasts a GroupLoot
-        //   window for every over-threshold item to the whole nearby raid, guarded only
-        //   by loot_type == LOOT_NONE -- and it fires on the KILLER's own first open,
-        //   before any permission check gets a say. Stamping the value SendLoot would
-        //   assign at its tail anyway skips that branch entirely.
+        // Ours follow the killing blow, not the tapper's group. None of the three is
+        // redundant: withGroup=false would zero the recipient group and
+        // Player::isAllowedToLoot then rejects every grouped looter (i.e. everyone in a
+        // BG); GROUP_LOOT admits anyone when roundRobinPlayer is unset; and SendLoot
+        // broadcasts a GroupLoot window for over-threshold items unless loot_type is
+        // already stamped. All cosmetic -- moba_loot_rights_globalscript enforces it.
         victim->SetLootRecipient(killer);
         victim->loot.roundRobinPlayer = killer->GetGUID();
         victim->loot.loot_type        = LOOT_CORPSE;
     }
     else
     {
-        // LoL rule: no last hit, no CORPSE. The team-wide rows below are NOT
-        // forfeited with it -- splitting this out of the early return is the
-        // whole point, so a boss finished by a stray creep still pays.
+        // No last hit, no CORPSE. The team-wide rows below are NOT forfeited with it --
+        // that is why this is a branch and not an early return.
         victim->loot.clear();
         victim->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
         victim->SetLootRecipient(nullptr);
@@ -972,11 +880,9 @@ void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer, Unit* k
             }
         }
 
-    // Gold-only minions have lootid 0, so Unit::Kill saw empty loot and never
-    // flagged the corpse lootable (it marked it fully-looted instead); flag it
-    // now that gold was injected. Item drops that all missed their roll stay
-    // unflagged -- native behavior for an empty corpse. Guarded on `killer`: the
-    // no-last-hit branch above just stripped the corpse and must not re-flag it.
+    // Gold-only minions have lootid 0, so Unit::Kill saw empty loot and marked the
+    // corpse fully-looted; flag it now that gold was injected. Guarded on `killer`:
+    // the no-last-hit branch above just stripped the corpse and must not re-flag it.
     if (killer && !victim->loot.isLooted())
         victim->SetDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
 }
@@ -1023,9 +929,6 @@ void BattlegroundMOBA::RecordPlayerDamage(Player* victim, Player* attacker)
 
 void BattlegroundMOBA::RecordAllyHeal(Player* ally, Player* healer)
 {
-    // Healing (direct or HoT tick) links the healer to any fight the healed ally
-    // is in -- no duration gate, and overheal counts (OnHeal fires regardless of
-    // effective healing; LoL credits the attempt).
     if (GetStatus() != STATUS_IN_PROGRESS || !ally || !healer
         || ally == healer || ally->GetBgTeamId() != healer->GetBgTeamId())
         return;
@@ -1039,9 +942,8 @@ void BattlegroundMOBA::RecordAllyBuff(Player* ally, Player* buffer, int32 buffMa
         || ally == buffer || ally->GetBgTeamId() != buffer->GetBgTeamId())
         return;
 
-    // Only a SHORT buff/shield counts as a fight buff -- a combat cooldown (Power
-    // Infusion, Bloodlust, Power Word: Shield), not a maintenance buff (Fortitude,
-    // Blessing of Wisdom). Permanent auras report -1. Threshold is per-map config.
+    // A combat cooldown (Power Infusion, PW:S), not a maintenance buff (Fortitude,
+    // Blessing of Wisdom). Permanent auras report -1.
     uint32 const maxDur = GetAssistBuffMaxDurationMs();
     if (buffMaxDurationMs <= 0 || uint32(buffMaxDurationMs) > maxDur)
         return;
@@ -1093,9 +995,8 @@ uint32 BattlegroundMOBA::GetSurrenderCooldownMs() const
 
 Player* BattlegroundMOBA::ResolveKillCredit(Player* victim, Unit* killer)
 {
-    // The true blow-lander, resolved to its controlling player (pets/totems
-    // credit the owner). If that's an enemy player still in the match, it wins
-    // outright -- the window only matters when no crediting player finished it.
+    // An enemy player who landed the blow (pets/totems credit the owner) wins outright;
+    // the window below only matters when no crediting player finished it.
     Player* direct = killer ? killer->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
     if (direct && direct != victim && direct->GetBgTeamId() != victim->GetBgTeamId()
         && IsPlayerInBattleground(direct->GetGUID()))
@@ -1105,9 +1006,8 @@ Player* BattlegroundMOBA::ResolveKillCredit(Player* victim, Unit* killer)
     if (itr == _recentAttackers.end())
         return nullptr;
 
-    // Otherwise (creep/tower/environment/suicide): the most recent enemy player
-    // who damaged or debuffed the victim within the window. getMSTimeDiff is
-    // wraparound-safe; "most recent" = smallest elapsed.
+    // Otherwise: the most recent enemy player to damage or debuff the victim inside the
+    // window. getMSTimeDiff is wraparound-safe; "most recent" = smallest elapsed.
     uint32 const windowMs = GetKillCreditWindowMs();
     uint32 const now = GameTime::GetGameTimeMS().count();
     Player* best = nullptr;
@@ -1138,14 +1038,13 @@ void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
     if (!victim || GetStatus() != STATUS_IN_PROGRESS)
         return;
 
-    // Death always counts, whatever landed the blow -- the engine scores deaths
-    // only through HandleKillPlayer, which we no-op'd, so the tally lives here.
+    // The engine scores deaths only through HandleKillPlayer, which we no-op'd.
     UpdatePlayerScore(victim, SCORE_DEATHS, 1);
 
     MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId());
 
-    // Read BEFORE the erase at the bottom: the victim's streak is the whole
-    // definition of a shutdown, and it is gone the moment this death is booked.
+    // Read BEFORE the erase at the bottom: the victim's streak is the whole definition
+    // of a shutdown, and it is gone the moment this death is booked.
     uint32 victimSpree = 0;
     if (auto itr = _streaks.find(victim->GetGUID()); itr != _streaks.end())
         victimSpree = itr->second.spree;
@@ -1156,12 +1055,10 @@ void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
         UpdatePlayerScore(creditKiller, SCORE_HONORABLE_KILLS, 1);
         UpdatePlayerScore(creditKiller, SCORE_KILLING_BLOWS, 1);
 
-        // Contribution-based assists (LoL-style), replacing proximity. Build the
-        // set of kill participants on the killer's team: the killer, plus everyone
-        // who damaged/debuffed the victim within the assist window, then -- expanded
-        // to a fixed point -- everyone who healed or short-buffed a participant
-        // within the window. Each pass adds only distinct players, so the fixed
-        // point can't exceed team size: that's the "up to N hops" chain, self-bounding.
+        // Participants on the killer's team: the killer, everyone who damaged or
+        // debuffed the victim inside the window, then -- expanded to a fixed point --
+        // everyone who healed or short-buffed a participant. Each pass adds only
+        // distinct players, so the fixed point cannot exceed team size.
         TeamId const team = creditKiller->GetBgTeamId();
         uint32 const windowMs = GetAssistWindowMs();
         uint32 const now = GameTime::GetGameTimeMS().count();
@@ -1176,15 +1073,12 @@ void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
         std::unordered_set<ObjectGuid> participants;
         participants.insert(creditKiller->GetGUID());
 
-        // Direct damage/debuff assistors.
         if (auto itr = _recentAttackers.find(victim->GetGUID()); itr != _recentAttackers.end())
             for (auto const& rec : itr->second)
                 if (inWindow(rec.second))
                     if (Player* a = teammateInBg(rec.first))
                         participants.insert(a->GetGUID());
 
-        // Support chain: add anyone who healed/short-buffed a participant, repeat
-        // until the set stops growing (bounded by team size).
         bool grew = true;
         while (grew)
         {
@@ -1206,8 +1100,7 @@ void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
             }
         }
 
-        // Everyone but the killer gets an assist (honorable kill); the killer
-        // already has both HK and KB above, so their assist column stays 0.
+        // The killer already has both HK and KB above, so their assist column stays 0.
         for (ObjectGuid const& guid : participants)
             if (guid != creditKiller->GetGUID())
                 if (Player* p = ObjectAccessor::FindPlayer(guid))
@@ -1216,10 +1109,9 @@ void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
         ++_teamPlayerKills[team];
         GrantPlayerKillDrops(creditKiller);
 
-        // The two flags cannot collide: first blood means no kill has landed yet,
-        // so no victim can be carrying a spree. The `else` is documentation, not a
-        // tie-break. The line and the money are separately gated -- a map that
-        // configures no bounty still gets told a shutdown happened.
+        // The two flags cannot collide: first blood means no victim can be carrying a
+        // spree yet. Line and money are separately gated, so a map that configures no
+        // bounty is still told a shutdown happened.
         uint32 flag = MOBA_KILL_FLAG_NONE;
         if (!_firstBlood)
         {
@@ -1243,13 +1135,11 @@ void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
     }
     else
     {
-        // No enemy player credited: creep / tower / neutral / environment / suicide.
         BroadcastNonPlayerDeath(victim, killer);
     }
 
-    // All three lists are per-life; the victim is dead now. The streak erase sits
-    // OUTSIDE the credited-kill branch on purpose -- dying to a creep ends a spree
-    // exactly as surely as dying to a player does.
+    // All three are per-life. The streak erase sits OUTSIDE the credited-kill branch:
+    // dying to a creep ends a spree exactly as surely as dying to a player does.
     _recentAttackers.erase(victim->GetGUID());
     _allySupport.erase(victim->GetGUID());
     _streaks.erase(victim->GetGUID());
@@ -1260,9 +1150,6 @@ void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
     BroadcastScoreboard();
 }
 
-// Advance the killer's two counters and announce whatever they crossed. Split out
-// of HandlePlayerDeath only because that function is already the longest here; it
-// has exactly one caller.
 void BattlegroundMOBA::UpdateKillStreak(Player* killer)
 {
     if (!killer)
@@ -1274,10 +1161,9 @@ void BattlegroundMOBA::UpdateKillStreak(Player* killer)
     MobaStreakState& st = _streaks[killer->GetGUID()];
     ++st.spree;
 
-    // The window runs from the PREVIOUS kill, not from the first of the chain, so
-    // a steady stream keeps extending one multi-kill. That is what "rolling"
-    // means here, and it is how LoL counts. A zero window disables multi-kills
-    // outright: `multi` then never leaves 1 and the >= 2 test below never fires.
+    // The window runs from the PREVIOUS kill, not the first of the chain, so a steady
+    // stream keeps extending one multi-kill. A zero window disables multi-kills: `multi`
+    // never leaves 1 and the >= 2 test below never fires.
     uint32 const windowMs = cfg ? cfg->multiKillWindowMs : 0;
     if (st.multi && windowMs && getMSTimeDiff(st.lastKillMs, now) <= windowMs)
         ++st.multi;
@@ -1287,8 +1173,8 @@ void BattlegroundMOBA::UpdateKillStreak(Player* killer)
 
     TeamId const team = killer->GetBgTeamId();
 
-    // Spree first, so a kill that is both lands the multi-kill on top of it: the
-    // multi-kill is the rarer of the two and the one worth reading.
+    // Spree first, so a kill that is both lands the multi-kill on top -- it is the rarer
+    // of the two and the one worth reading.
     if (cfg && cfg->spreeMin && st.spree >= cfg->spreeMin)
         BroadcastStreak(killer, team, MOBA_STREAK_SPREE, st.spree);
 
@@ -1296,11 +1182,8 @@ void BattlegroundMOBA::UpdateKillStreak(Player* killer)
         BroadcastStreak(killer, team, MOBA_STREAK_MULTI, st.multi);
 }
 
-// An ace is a whole team down at once. Swept after every death rather than kept
-// as a counter: respawns, disconnects and mid-match joins all move the number,
-// and a walk over a handful of players costs less than keeping a tally honest
-// against all three. Called with the team that just LOST someone -- the only
-// team whose alive-count can have reached zero on this death.
+// Swept after every death rather than kept as a counter: respawns, disconnects and
+// mid-match joins all move the number. Called with the team that just LOST someone.
 void BattlegroundMOBA::CheckAce(TeamId wipedTeam)
 {
     MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId());
@@ -1315,16 +1198,16 @@ void BattlegroundMOBA::CheckAce(TeamId wipedTeam)
         if (!player || player->GetBgTeamId() != wipedTeam)
             continue;
 
-        // The player who just died already reads dead: OnUnitDeath is the last
-        // statement in Unit::Kill, long after setDeathState. No special case.
+        // The player who just died already reads dead: OnUnitDeath is the last statement
+        // in Unit::Kill, long after setDeathState.
         if (player->IsAlive())
             return;
 
         ++total;
     }
 
-    // A solo player wiping is not an ace, it is a kill. minTeam is what keeps the
-    // line meaningful in a 1v1 test match.
+    // A solo player wiping is a kill, not an ace. minTeam keeps the line meaningful in
+    // a 1v1 test match.
     if (total < minTeam)
         return;
 
@@ -1346,19 +1229,17 @@ void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Pl
 
     itr->destroyed = true;
 
-    // Behind the `destroyed` guard so it cannot double-fire, and ahead of the core
-    // branch's early return below or a base kill would announce nothing.
+    // Ahead of the core branch's early return, or a base kill would announce nothing.
     BroadcastStructureEvent(*itr, MOBA_STRUCT_EVENT_DESTROYED, lastHitter);
 
-    // Objective gold, paid behind the `destroyed` guard so nothing can double-pay,
-    // and unconditionally on team so a creep-finished structure still rewards the
-    // push. A re-killed inhibitor pays AGAIN on purpose -- RespawnInhibitor clears
-    // the flag, and taking the same objective twice is worth the same twice.
+    // Behind the `destroyed` guard so nothing can double-pay, and unconditional on team
+    // so a creep-finished structure still rewards the push. A re-killed inhibitor pays
+    // AGAIN on purpose: taking the same objective twice is worth the same twice.
     AwardTeamGold(winnerTeamId, itr->teamGoldCopper);
     if (lastHitter)
         AddMatchGold(lastHitter, itr->lastHitGoldCopper);
 
-    // Unlock any structures this one was guarding (the next tier becomes attackable).
+    // Unlock any structures this one was guarding.
     for (MobaTowerState& other : _towers)
     {
         if (other.guardedByEntry != itr->entry || other.destroyed)
@@ -1372,7 +1253,6 @@ void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Pl
     UpdateWorldState(winnerTeamId == TEAM_ALLIANCE ? WORLD_STATE_BATTLEGROUND_EY_ALLIANCE_RESOURCES : WORLD_STATE_BATTLEGROUND_EY_HORDE_RESOURCES,
         static_cast<uint32>(m_TeamScores[winnerTeamId]));
 
-    // Destroying the enemy base (core) ends the match.
     if (itr->kind == MOBA_STRUCTURE_CORE)
     {
         FreezeAllCreeps();
@@ -1380,14 +1260,12 @@ void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Pl
         return;
     }
 
-    // Destroying an inhibitor: the enemy of its owner fields super minions until
-    // this inhibitor respawns, and the inhibitor schedules its own return.
     if (itr->kind == MOBA_STRUCTURE_INHIBITOR)
     {
-        // The beneficiary is the enemy of the OWNER, never winnerTeamId (the
-        // killer's team, per npc_moba_tower::JustDied). Those agree in a real push
-        // and diverge on an own-team kill -- and since RespawnInhibitor clears the
-        // flag from the owner, any mismatch here leaks super minions permanently.
+        // The beneficiary is the enemy of the OWNER, never winnerTeamId (the killer's
+        // team, per npc_moba_tower::JustDied). Those agree in a real push and diverge on
+        // an own-team kill -- and since RespawnInhibitor clears the flag from the owner,
+        // any mismatch here leaks super minions for the rest of the match.
         TeamId beneficiary = (itr->team == TEAM_ALLIANCE) ? TEAM_HORDE : TEAM_ALLIANCE;
         _superMinionsActive[beneficiary] = true;
 
@@ -1396,8 +1274,7 @@ void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Pl
             uint32 towerIndex = static_cast<uint32>(std::distance(_towers.begin(), itr));
             _bgEvents.ScheduleEvent(EVENT_MOBA_RESPAWN_INHIB_FIRST + towerIndex, Milliseconds(itr->respawnMs));
 
-            // Skipped when the respawn is shorter than the lead time: a warning that
-            // fires at or after the thing it warns about is worse than none.
+            // A warning that fires at or after the thing it warns about is worse than none.
             if (itr->respawnMs > MOBA_INHIB_RESPAWN_WARN_MS)
                 _bgEvents.ScheduleEvent(EVENT_MOBA_INHIB_WARN_FIRST + towerIndex,
                     Milliseconds(itr->respawnMs - MOBA_INHIB_RESPAWN_WARN_MS));
@@ -1405,9 +1282,8 @@ void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Pl
     }
 }
 
-// The pre-warning half of the inhibitor respawn, scheduled alongside it in
-// OnTowerDestroyed. Silent if the inhibitor is already back -- the warn is a
-// separate scheduled event and nothing cancels it if the timeline changes under it.
+// Silent if the inhibitor is already back: the warn is a separate scheduled event and
+// nothing cancels it if the timeline changes under it.
 void BattlegroundMOBA::WarnInhibitorRespawn(uint32 towerIndex)
 {
     if (GetStatus() != STATUS_IN_PROGRESS || towerIndex >= _towers.size())
@@ -1420,8 +1296,6 @@ void BattlegroundMOBA::WarnInhibitorRespawn(uint32 towerIndex)
     BroadcastStructureEvent(inhib, MOBA_STRUCT_EVENT_RESPAWNING, nullptr);
 }
 
-// Inhibitor respawn (scheduled by OnTowerDestroyed). Brings the structure back,
-// re-locks the base it guards, and ends the beneficiary team's super minions.
 void BattlegroundMOBA::RespawnInhibitor(uint32 towerIndex)
 {
     if (GetStatus() != STATUS_IN_PROGRESS || towerIndex >= _towers.size())
@@ -1446,7 +1320,6 @@ void BattlegroundMOBA::RespawnInhibitor(uint32 towerIndex)
             guarded->SetUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE));
     }
 
-    // Super minions stop for the team that had knocked this inhibitor down (the enemy of its team).
     TeamId beneficiary = (inhib.team == TEAM_ALLIANCE) ? TEAM_HORDE : TEAM_ALLIANCE;
     _superMinionsActive[beneficiary] = false;
     BroadcastStructureEvent(inhib, MOBA_STRUCT_EVENT_RESPAWNED, nullptr);
@@ -1472,16 +1345,13 @@ void BattlegroundMOBA::SpawnWave(TeamId team, bool includeSiege)
             SpawnCreep(entry);
 }
 
-// Creeps are TempSummons, not Battleground::AddCreature/BgCreatures -- that
-// registry is a fixed-size, persistent roster, wrong for repeatedly-spawned
-// ephemerals. Two engine traps live here:
-//   * Map::SummonCreature takes no TempSummonType (only WorldObject's
-//     convenience overload does), and TempSummon's constructor defaults to
-//     TEMPSUMMON_MANUAL_DESPAWN -- skip the SetTempSummonType call below and
-//     every creep silently never cleans up.
-//   * TIMED_DESPAWN_OUT_OF_COMBAT, not CORPSE_TIMED_DESPAWN: the corpse
-//     variant's countdown never advances while the creep is alive, so one that
-//     paces the lane unengaged would never despawn.
+// Creeps are TempSummons, not Battleground::AddCreature/BgCreatures -- that registry is
+// fixed-size and persistent, wrong for repeatedly-spawned ephemerals. Two engine traps:
+// Map::SummonCreature takes no TempSummonType (only WorldObject's overload does) and
+// TempSummon's constructor defaults to TEMPSUMMON_MANUAL_DESPAWN, so skipping the
+// SetTempSummonType below means no creep ever cleans up; and it must be
+// TIMED_DESPAWN_OUT_OF_COMBAT, since the CORPSE_ variant's countdown never advances
+// while the creep is alive.
 void BattlegroundMOBA::SpawnCreep(uint32 entry)
 {
     MobaCreepConfig const* cfg = sMobaCreepDataStore->GetConfig(entry);
@@ -1502,11 +1372,9 @@ void BattlegroundMOBA::SpawnCreep(uint32 entry)
     }
 }
 
-// Camp members are TempSummons for the same reason lane creeps are (see
-// SpawnCreep) but with CORPSE_TIMED_DESPAWN: that type's countdown only runs
-// once the creature is dead -- the trap documented above for creeps is the
-// point here. A living camp never despawns; a corpse vanishes shortly after
-// death, long before the respawn event re-summons the whole camp.
+// CORPSE_TIMED_DESPAWN, unlike SpawnCreep: that type's countdown only runs once the
+// creature is dead, which is the point here -- a living camp never despawns, and a
+// corpse vanishes long before the respawn event re-summons the whole camp.
 void BattlegroundMOBA::SpawnCamp(uint32 campIndex)
 {
     if (campIndex >= _camps.size())
@@ -1527,17 +1395,11 @@ void BattlegroundMOBA::SpawnCamp(uint32 campIndex)
         }
     }
 
-    // Announced on the first spawn as well as every respawn -- a boss nobody was
-    // told about is a boss nobody contests. Gated on aliveCount so a camp whose
-    // summons all failed announces nothing.
+    // Gated on aliveCount so a camp whose summons all failed announces nothing.
     if (camp.tier && camp.aliveCount)
         BroadcastBossEvent(camp, MOBA_BOSS_EVENT_SPAWNED, TEAM_NEUTRAL);
 }
 
-// Scheduled twice over a camp's life: by StartingEventOpenDoors ahead of the
-// first spawn, and by NotifyNeutralDied ahead of every respawn. Both subtract
-// the same lead from the delay they are pacing, so the warning cannot drift off
-// the spawn it announces when the camp is retuned.
 void BattlegroundMOBA::WarnBossRespawn(uint32 campIndex)
 {
     if (GetStatus() != STATUS_IN_PROGRESS || campIndex >= _camps.size())
@@ -1558,9 +1420,8 @@ MobaCampState* BattlegroundMOBA::FindCampOf(ObjectGuid guid)
     return nullptr;
 }
 
-// League camp-link: the whole camp fights as one. AttackStart works on a
-// REACT_DEFENSIVE mate -- react states gate only self-initiated aggro. The
-// status guard matters: post-match camps are frozen passive, and DamageTaken
+// AttackStart works on a REACT_DEFENSIVE mate -- react states gate only self-initiated
+// aggro. The status guard matters: post-match camps are frozen passive but DamageTaken
 // still fires on them, so without it poking a frozen camp would wake it.
 void BattlegroundMOBA::PullCampMates(Creature* member, Unit* attacker)
 {
@@ -1595,14 +1456,12 @@ void BattlegroundMOBA::NotifyNeutralDied(Creature* member, Unit* killer)
 
         if (camp->tier)
         {
-            // The killing BLOW's side, which is the same rule GrantDeathDrops pays
-            // the team-wide rows on -- so the line and the payout can never name
-            // different teams. ResolveKillerTeam answers TEAM_NEUTRAL when nothing
-            // resolves, and the payload has a side value for that.
+            // Same rule GrantDeathDrops pays the team-wide rows on, so the line and the
+            // payout can never name different teams.
             BroadcastBossEvent(*camp, MOBA_BOSS_EVENT_SLAIN, ResolveKillerTeam(killer));
 
-            // The generator already rejects a lead >= respawnMs; this guard is what
-            // keeps hand-edited SQL from scheduling the warning in the past.
+            // The generator already rejects a lead >= respawnMs; this guard is what keeps
+            // hand-edited SQL from scheduling the warning in the past.
             if (camp->spawnWarnMs && camp->respawnMs > camp->spawnWarnMs)
                 _bgEvents.ScheduleEvent(EVENT_MOBA_BOSS_WARN_FIRST + campIndex,
                     Milliseconds(camp->respawnMs - camp->spawnWarnMs));
@@ -1623,7 +1482,6 @@ void BattlegroundMOBA::FreezeAllCreeps()
         creep->GetMotionMaster()->MoveIdle();
     }
 
-    // Neutral camps freeze under the same end-of-match rules.
     for (MobaCampState const& camp : _camps)
         for (ObjectGuid const& guid : camp.memberGuids)
         {
@@ -1685,8 +1543,6 @@ void BattlegroundMOBA::StartRespawnTimer(Player* player, bool instant /*= false*
             capMs    = cfg->respawnCapMs;
         }
 
-        // Grows continuously with match time (measured from doors-open, so the prep
-        // phase is excluded), clamped to the cap.
         waitMs = std::min<uint32>(capMs,
             baseMs + static_cast<uint32>(static_cast<uint64>(perMinMs) * _matchElapsedMs / 60000));
     }
@@ -1695,8 +1551,7 @@ void BattlegroundMOBA::StartRespawnTimer(Player* player, bool instant /*= false*
     state.remainingMs = waitMs;
     _respawnTimers[player->GetGUID()] = state;
 
-    // Seed the client-side revive countdown; the addon ticks it down locally
-    // (like the T: clock) and shows the center-screen number.
+    // The addon ticks this down locally, like the T: clock.
     SendHudMessage(player, Acore::StringFormat("R:{}", (waitMs + 999) / 1000));
 }
 
@@ -1736,15 +1591,13 @@ void BattlegroundMOBA::RespawnAtBase(Player* player)
     player->CastSpell(player, 44535, true);  // full mana
     player->SpawnCorpseBones(false);
 
-    // Dismiss the client countdown (it self-hides at 0, but nail it here in case
-    // the local tick hasn't quite reached 0 at the moment of revive).
+    // The countdown self-hides at 0, but nail it here in case the local tick has not
+    // quite reached 0 at the moment of revive.
     SendHudMessage(player, "R:0");
 }
 
-// Fountain heal: players inside their own spawn dome regain a % of max
-// health/mana per tick. The radius is the dome's (mod_moba_base.FountainRadius),
-// so the heal zone and the visible dome cannot drift apart. The compare is 2D,
-// making the zone a cylinder -- forgiving of the base's terrain slope.
+// The radius is the spawn dome's, so the heal zone and the visible dome cannot drift
+// apart. The compare is 2D, making the zone a cylinder -- forgiving of terrain slope.
 void BattlegroundMOBA::UpdateFountainHealing(uint32 diff)
 {
     MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId());
@@ -1785,10 +1638,7 @@ void BattlegroundMOBA::UpdateFountainHealing(uint32 diff)
     }
 }
 
-// The trickle that funds a build even for a player farming badly, and the reason a
-// losing lane is not a dead one. Paid to EVERYONE including the dead: respawning
-// already costs time on the map, and taxing it twice is what stops a team that is
-// behind from ever coming back.
+// Paid to EVERYONE including the dead: respawning already costs time on the map.
 void BattlegroundMOBA::UpdatePassiveGold(uint32 diff)
 {
     MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId());
@@ -1799,21 +1649,18 @@ void BattlegroundMOBA::UpdatePassiveGold(uint32 diff)
     if (_passiveGoldMs < cfg->passiveTickMs)
         return;
 
-    // Catch up rather than drop ticks. A world update longer than the cadence would
-    // otherwise silently pay less, making income depend on server load -- the kind
-    // of thing nobody notices until the economy has been tuned around it.
+    // Catch up rather than drop ticks: a world update longer than the cadence would
+    // otherwise pay less, making income depend on server load.
     uint32 ticks = _passiveGoldMs / cfg->passiveTickMs;
     _passiveGoldMs %= cfg->passiveTickMs;
 
-    // Not AwardTeamGold: passive income has no team concept, and going through it
-    // twice would walk the player list twice to say the same thing.
     for (auto const& itr : GetPlayers())
         if (Player* player = itr.second)
             AddMatchGold(player, cfg->passiveCopper * ticks);
 }
 
-// One addon packet. LANG_ADDON marks this as addon traffic client-side; the
-// chat-type byte is irrelevant to delivery.
+// LANG_ADDON is what marks this as addon traffic client-side; the chat-type byte is
+// irrelevant to delivery.
 void BattlegroundMOBA::SendAddonPacket(Player* player, char const* prefix, std::string const& body)
 {
     if (!player)
@@ -1850,8 +1697,8 @@ void BattlegroundMOBA::BroadcastHudMessage(std::string const& body)
             SendHudMessage(player, body);
 }
 
-// Builds the per-recipient scoreboard payload. Team kills are team-relative
-// (ally = the recipient's team) so the addon can colour segment 1 as "you".
+// Team kills are team-relative (ally = the recipient's team) so the addon can colour
+// segment 1 as "you".
 std::string BattlegroundMOBA::BuildScoreboardBody(Player* player) const
 {
     TeamId team  = player->GetBgTeamId();
@@ -1861,15 +1708,14 @@ std::string BattlegroundMOBA::BuildScoreboardBody(Player* player) const
     auto itr = PlayerScores.find(player->GetGUID().GetCounter());
     if (itr != PlayerScores.end())
     {
-        // Must go through BattlegroundMOBAScore* (not the base pointer): GetDeaths /
-        // GetHonorableKills are protected on BattlegroundScore, reachable here only
-        // because BattlegroundMOBA is a friend of BattlegroundMOBAScore, and the
-        // protected-member rule requires access via the friended (derived) type.
+        // Must go through BattlegroundMOBAScore*: GetDeaths / GetHonorableKills are
+        // protected on BattlegroundScore, and the protected-member rule requires access
+        // via the friended (derived) type.
         BattlegroundMOBAScore* score = static_cast<BattlegroundMOBAScore*>(itr->second);
         k  = score->GetKillingBlows();
         d  = score->GetDeaths();
-        uint32 hk = score->GetHonorableKills();   // credited kills (own killing blows + assists)
-        a  = hk > k ? hk - k : 0;                  // assists = credited kills minus own killing blows
+        uint32 hk = score->GetHonorableKills();
+        a  = hk > k ? hk - k : 0;   // assists = credited kills minus own killing blows
         cs = score->CreepKills;
     }
 
@@ -1896,24 +1742,18 @@ void BattlegroundMOBA::SendHudStateTo(Player* player)
         return;
 
     SendScoreboard(player);
-    // Only start the clock if the match is live; during warmup it stays frozen at 0:00
-    // until StartingEventOpenDoors sends T:0.
+    // During warmup the clock stays frozen at 0:00 until StartingEventOpenDoors sends T:0.
     if (GetStatus() == STATUS_IN_PROGRESS)
         SendHudMessage(player, Acore::StringFormat("T:{}", _matchElapsedMs / 1000));
 
-    // Re-arm the revive countdown for a player who reloaded / rejoined while dead.
-    // Persistent per-player state, unlike the transient kill feed (never re-sent).
+    // Persistent per-player state, unlike the transient kill feed, which is never re-sent.
     auto itr = _respawnTimers.find(player->GetGUID());
     if (itr != _respawnTimers.end())
         SendHudMessage(player, Acore::StringFormat("R:{}", (itr->second.remainingMs + 999) / 1000));
 }
 
-// Emit a transient kill-feed line to every player, tailored per recipient: a POV
-// flag (you got the kill / you died / bystander) and team-relative sides so the
-// addon colours names blue/red without guessing factions (CFBG-safe). Player
-// kills only -- called from HandlePlayerDeath with a resolved killer. `flag` is a
-// BG_MOBA_KillFlag, which the addon renders as a tag on this line rather than a
-// second one, so a shutdown cannot claim two of the feed's five slots.
+// Tailored per recipient: a POV flag and team-relative sides, so the addon colours names
+// without guessing factions (CFBG-safe).
 void BattlegroundMOBA::BroadcastKillFeed(Player* killer, Player* victim, uint32 flag)
 {
     if (!killer || !victim)
@@ -1923,7 +1763,8 @@ void BattlegroundMOBA::BroadcastKillFeed(Player* killer, Player* victim, uint32 
     TeamId victimTeam = victim->GetBgTeamId();
     std::string killerName = killer->GetName();
     std::string victimName = victim->GetName();
-    // uint32 (not uint8) on purpose: fmt renders uint8 as a character.
+    // uint32, not uint8: fmt renders uint8 as a character. Same below and in the other
+    // Broadcast* builders.
     uint32 killerClass = killer->getClass();
     uint32 victimClass = victim->getClass();
 
@@ -1948,8 +1789,6 @@ void BattlegroundMOBA::BroadcastKillFeed(Player* killer, Player* victim, uint32 
     }
 }
 
-// Classify a non-player killer into a HUD category, using the BG's own guid state
-// (a pet-landed blow never reaches here -- ResolveKillCredit credits its owner).
 uint32 BattlegroundMOBA::ClassifyKiller(Unit* killer) const
 {
     if (!killer)
@@ -1976,8 +1815,8 @@ TeamId BattlegroundMOBA::ResolveKillerTeam(Unit* killer) const
     if (!killer)
         return TEAM_NEUTRAL;
 
-    // Pets and guardians answer for their owner, matching how both JustDied
-    // callers resolve a killing-blow player.
+    // Pets and guardians answer for their owner, matching how both JustDied callers
+    // resolve a killing-blow player.
     if (Player* player = killer->GetCharmerOrOwnerPlayerOrPlayerItself())
         return player->GetBgTeamId();
 
@@ -1994,9 +1833,7 @@ TeamId BattlegroundMOBA::ResolveKillerTeam(Unit* killer) const
     return TEAM_NEUTRAL;
 }
 
-// Transient feed line for a death with no crediting enemy player. Broadcast to all,
-// tailored per recipient (POV + team-relative victim colour); the source category is
-// resolved once. The addon owns the label text and icon for each category.
+// A death with no crediting enemy player. The addon owns the label and icon per category.
 void BattlegroundMOBA::BroadcastNonPlayerDeath(Player* victim, Unit* killer)
 {
     if (!victim)
@@ -2004,7 +1841,7 @@ void BattlegroundMOBA::BroadcastNonPlayerDeath(Player* victim, Unit* killer)
 
     TeamId victimTeam = victim->GetBgTeamId();
     std::string victimName = victim->GetName();
-    uint32 victimClass = victim->getClass(); // uint32: fmt renders uint8 as a character
+    uint32 victimClass = victim->getClass();
     uint32 cat = ClassifyKiller(killer);
 
     for (auto const& itr : GetPlayers())
@@ -2021,15 +1858,9 @@ void BattlegroundMOBA::BroadcastNonPlayerDeath(Player* victim, Unit* killer)
     }
 }
 
-// Emit a boss event to every player, tailored per recipient. `team` is the side
-// the event belongs to, and is TEAM_NEUTRAL for both spawn events -- a boss
-// appearing is nobody's news, which is why the side field has a third value that
-// K:/O:/X: never needed. `arg` is the lead time in seconds on "spawning soon"
-// and 0 everywhere else, the same always-present rule N: uses.
-//
-// The name comes from creature_template rather than a live creature: the warning
-// fires while every member is dead, so there is nothing left to ask. Member 0 is
-// the boss by convention -- a tiered camp is a single mob today.
+// `team` is TEAM_NEUTRAL for both spawn events -- a boss appearing is nobody's news. The
+// name comes from creature_template, not a live creature: the warning fires while every
+// member is dead. Member 0 is the boss by convention.
 void BattlegroundMOBA::BroadcastBossEvent(MobaCampState const& camp, uint32 event, TeamId team, uint32 arg)
 {
     std::string name;
@@ -2051,19 +1882,11 @@ void BattlegroundMOBA::BroadcastBossEvent(MobaCampState const& camp, uint32 even
     }
 }
 
-// Emit a structure event to every player, tailored per recipient: which side owns
-// the structure, plus enough shape (kind/tier/lane) for the addon to name it. The
-// addon owns all wording. `actor` is nullptr when a creep finished the structure
-// (npc_moba_tower passes no lastHitter), and the payload's trailing field is then
-// EMPTY -- the Lua pattern uses [^,]* for it precisely so that still matches.
-//
-// This cannot fold into BroadcastKillFeed or BroadcastNonPlayerDeath: both take a
-// Player* victim and a structure has none. BroadcastBossEvent exists separately
-// for the same reason.
+// `actor` is nullptr when a creep finished the structure, and the payload's trailing
+// field is then EMPTY -- the Lua pattern uses [^,]* precisely so that still matches.
 void BattlegroundMOBA::BroadcastStructureEvent(MobaTowerState const& tower, uint32 event, Player* actor)
 {
     std::string actorName = actor ? actor->GetName() : "";
-    // uint32 (not uint8) on purpose: fmt renders uint8 as a character.
     uint32 kind = tower.kind;
     uint32 tier = tower.tier;
     uint32 lane = tower.lane;
@@ -2074,8 +1897,8 @@ void BattlegroundMOBA::BroadcastStructureEvent(MobaTowerState const& tower, uint
         if (!recipient)
             continue;
 
-        // tower.team is the OWNER, never the destroyer: a structure falling is bad
-        // news for its own side, whoever landed the blow.
+        // tower.team is the OWNER, never the destroyer: a structure falling is bad news
+        // for its own side, whoever landed the blow.
         uint32 ownerSide = (tower.team == recipient->GetBgTeamId()) ? 0u : 1u;
 
         SendHudMessage(recipient, Acore::StringFormat("O:{},{},{},{},{},{}",
@@ -2083,11 +1906,8 @@ void BattlegroundMOBA::BroadcastStructureEvent(MobaTowerState const& tower, uint
     }
 }
 
-// Emit a kill-streak line to every player, tailored per recipient. `subject` is
-// the player it is about, and is nullptr for an ace -- which belongs to a team,
-// not a person. The payload's name field is then EMPTY, so the Lua pattern reads
-// it with [^,]* for exactly the reason O:'s trailing actor does. `team` is the
-// side the line is GOOD news for, which for an ace is the team left standing.
+// `subject` is nullptr for an ace, which belongs to a team, not a person; the name field
+// is then EMPTY. `team` is the side the line is GOOD news for.
 void BattlegroundMOBA::BroadcastStreak(Player* subject, TeamId team, uint32 type, uint32 count)
 {
     std::string name = subject ? subject->GetName() : "";
@@ -2106,28 +1926,16 @@ void BattlegroundMOBA::BroadcastStreak(Player* subject, TeamId team, uint32 type
     }
 }
 
-// Emit a match-flow notice to every player. The server picks WHICH notice and the
-// addon owns every word, as with O: and X:. This is the one feed line that needs
-// no per-recipient tailoring -- the minion notices say the same thing to both
-// teams -- so it goes out as a single broadcast. `arg` carries any number the
-// wording needs; the addon decides whether its line uses one.
 void BattlegroundMOBA::BroadcastNotice(uint32 code, uint32 arg)
 {
     BroadcastHudMessage(Acore::StringFormat("N:{},{}", code, arg));
 }
 
-// The one notice that is NOT the same for everyone: each player is told whether
-// THEY won, never which faction did. TEAM_NEUTRAL is a real outcome here --
-// Battleground::GetPrematureWinner returns it when neither side still fields
-// enough players -- and there is no honest victory or defeat line for it, so it
-// takes the one line that is the same for everyone.
-//
-// That branch is UNREACHABLE wherever battleground_template.MinPlayersPerTeam is
-// 1, and EotS's is 1 deliberately -- a MOBA keeps playing 4v5. "Neither team
-// meets a min of 1" means zero players total, and Battleground::Update returns on
-// an empty BG before the status switch. Kept as a guard, not dead code: a mode
-// whose template carries a real minimum reaches it, and without it that match ends
-// on a frozen bar that never says why.
+// TEAM_NEUTRAL is a real outcome -- Battleground::GetPrematureWinner returns it when
+// neither side still fields enough players -- and there is no honest victory or defeat
+// line for it. Unreachable while MinPlayersPerTeam is 1 (EotS's is, deliberately), but
+// kept: a mode with a real minimum reaches it, and without it that match ends on a
+// frozen bar that never says why.
 void BattlegroundMOBA::BroadcastMatchResult(TeamId winnerTeamId)
 {
     if (winnerTeamId != TEAM_ALLIANCE && winnerTeamId != TEAM_HORDE)
@@ -2152,8 +1960,7 @@ uint32 BattlegroundMOBA::GetRecallCastTimeMs(Player* player)
     if (!player)
         return 0;
 
-    // The dynamic_cast doubles as the "is this a MOBA BG" test. Returning 0 tells
-    // Spell::prepare to keep the spell's default cast time.
+    // The dynamic_cast doubles as the "is this a MOBA BG" test.
     BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground());
     if (!moba)
         return 0;
@@ -2162,10 +1969,8 @@ uint32 BattlegroundMOBA::GetRecallCastTimeMs(Player* player)
     if (!cfg)
         return 0;
 
-    // PLACEHOLDER empowered-recall trigger: until a real mechanic exists, a player
-    // carrying BG_MOBA_RECALL_EMPOWER_AURA gets the reduced cast time. Replace this
-    // HasAura check with the real condition when it lands. (Empowered falls back to
-    // normal if it isn't configured, i.e. recallEmpoweredCastMs == 0.)
+    // PLACEHOLDER trigger: until a real mechanic exists, carrying the aura buys the
+    // reduced cast time. Falls back to normal when recallEmpoweredCastMs is 0.
     if (cfg->recallEmpoweredCastMs && player->HasAura(BG_MOBA_RECALL_EMPOWER_AURA))
         return cfg->recallEmpoweredCastMs;
 

@@ -69,6 +69,8 @@ VALUES
 -- (Battleground::_CheckSafePositions), which teleports players back to spawn
 -- every 9s -- wrong for a base you are meant to walk around in. The dome holds
 -- players in; the radius lives in mod_moba_base.FountainRadius.
-UPDATE battleground_template SET AllianceStartLoc = 1103, AllianceStartO = 3.0222116, HordeStartLoc = 1104, HordeStartO = 0.32122585, StartMaxDist = 0 WHERE ID = 7;
+-- MinPlayersPerTeam is 1 ON PURPOSE: Battleground::GetPrematureWinner forfeits a
+-- team that drops below it, and a MOBA keeps playing 4v5. Stock EotS ships 8.
+UPDATE battleground_template SET AllianceStartLoc = 1103, AllianceStartO = 3.0222116, HordeStartLoc = 1104, HordeStartO = 0.32122585, StartMaxDist = 0, MinPlayersPerTeam = 1 WHERE ID = 7;
 UPDATE game_graveyard SET x = 2387.529, y = 1587.426, z = 1174.763 WHERE ID = 1103;
 UPDATE game_graveyard SET x = 1942.9327, y = 1547.6229, z = 1176.458 WHERE ID = 1104;

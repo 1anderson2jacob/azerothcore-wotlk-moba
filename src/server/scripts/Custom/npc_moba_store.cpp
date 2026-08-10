@@ -1,20 +1,3 @@
-/*
- * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 #include "Chat.h"
 #include "Creature.h"
 #include "Item.h"
@@ -49,26 +32,23 @@ namespace
         return out.empty() ? "free" : out;
     }
 
-    // What a purchase attempt did, so the caller decides how to report it: gossip
-    // prints to chat, the addon sends ERR:. message is empty on success.
+    // message is empty on success; the caller decides how to report it.
     struct PurchaseResult
     {
         bool ok = false;
         std::string message;
     };
 
-    // The single source of truth for "can this player equip or consume this".
-    // Both the purchase refusal and the addon's greying read it, so the two can
-    // never disagree. Returns nullptr when usable, else the reason to show.
+    // Both the purchase refusal and the addon's greying read this, so the two can never
+    // disagree. nullptr when usable, else the reason to show.
     char const* ItemUnusableReason(Player* player, ItemTemplate const* proto)
     {
         // Covers class, race, faction, required skill/spell and level.
         if (player->CanUseItem(proto) != EQUIP_ERR_OK)
             return "You cannot use that.";
 
-        // Armour and weapon proficiency live only in the Item* overload of
-        // CanUseItem, which needs an item that does not exist yet. The template
-        // exposes the same skill, so check it directly.
+        // Proficiency lives only in the Item* overload of CanUseItem, which needs an
+        // item that does not exist yet. The template exposes the same skill.
         if (uint32 skill = proto->GetSkill())
             if (!player->GetSkillValue(skill))
                 return "You lack the proficiency for that.";
@@ -76,14 +56,12 @@ namespace
         return nullptr;
     }
 
-    // Lua bag/slot -> engine bag/slot. Lua numbers bags 0 = backpack and 1-4 =
-    // the equipped bags, with 1-based slots. The engine keeps the backpack's
-    // contents in the pseudo-bag INVENTORY_SLOT_BAG_0 at
-    // INVENTORY_SLOT_ITEM_START..END, and an equipped bag's contents at 0-based
-    // indices under the inventory slot that bag occupies.
+    // Lua numbers bags 0 = backpack, 1-4 = equipped, with 1-based slots. The engine keeps
+    // the backpack in pseudo-bag INVENTORY_SLOT_BAG_0 at INVENTORY_SLOT_ITEM_START..END,
+    // and an equipped bag's contents at 0-based indices under its inventory slot.
     //
-    // Equipped gear is unreachable BY CONSTRUCTION: bag 0 maps to slot 23 upward,
-    // so nothing the client can say names EQUIPMENT_SLOT_* (0-18). Unequip to sell.
+    // Equipped gear is unreachable BY CONSTRUCTION: bag 0 maps to slot 23 upward, so
+    // nothing the client can say names EQUIPMENT_SLOT_* (0-18). Unequip to sell.
     bool ResolveBagSlot(uint32 luaBag, uint32 luaSlot, uint8& bag, uint8& slot)
     {
         if (!luaSlot)
@@ -107,9 +85,8 @@ namespace
         return true;
     }
 
-    // What one unit of an entry sells for: the shop's price if the shop sold it,
-    // else a drop's configured price. False for anything neither priced, which is
-    // the whole gate on what can be sold.
+    // The shop's price if the shop sold it, else a drop's. False for anything neither
+    // priced, which is the whole gate on what can be sold.
     bool ResolveSellValue(uint32 map, uint32 itemEntry, uint32& out)
     {
         if (sMobaStoreDataStore->GetSellValue(map, itemEntry, out))
@@ -118,11 +95,9 @@ namespace
         return sMobaDropDataStore->GetItemSellValue(itemEntry, out);
     }
 
-    // The front-end-agnostic purchase core: validates, charges, and grants.
-    // Takes map/tab explicitly rather than the npc: one shopkeeper serves every
-    // tab, so the tab bought from is picked in the panel, not by where you stand.
-    // The battleground comes in rather than being resolved here because it is the
-    // wallet -- purchases are paid out of the match, never out of real money.
+    // Validates, charges, grants. Takes map/tab explicitly rather than the npc: one
+    // shopkeeper serves every tab, so the tab is picked in the panel. The battleground
+    // is the wallet -- purchases are paid out of the match, never out of real money.
     PurchaseResult TryPurchase(Player* player, BattlegroundMOBA* moba, uint32 map,
                                uint32 tabId, MobaStoreNode const& node)
     {
@@ -140,17 +115,14 @@ namespace
             return { false, Acore::StringFormat("You cannot afford that ({} needed).",
                                                 FormatMoney(node.costCopper)) };
 
-        // All-or-nothing. A bundle is unique, non-stacking equipment, so it
-        // needs one free slot per piece; per-item CanStoreNewItem cannot see
-        // the slots the earlier pieces of the same bundle will consume.
+        // All-or-nothing: a bundle needs one free slot per piece, and per-item
+        // CanStoreNewItem cannot see the slots its earlier pieces will consume.
         if (player->GetFreeInventorySpace() < grants->size())
             return { false, Acore::StringFormat("You need {} free bag slots for that.", grants->size()) };
 
-        // Every per-item refusal must be caught BEFORE the money leaves. Nothing in
-        // the catalog is maxcount-limited today, so the storage check is a no-op
-        // safety net -- but the usability checks are not: armour proficiency is
-        // cumulative upward (plate implies mail, leather, cloth), so the check that
-        // matters is refusing a mage the plate set, never the reverse.
+        // Every per-item refusal must be caught BEFORE the money leaves. Armour
+        // proficiency is cumulative upward (plate implies mail, leather, cloth), so the
+        // check that matters is refusing a mage the plate set, never the reverse.
         for (MobaStoreGrant const& grant : *grants)
         {
             ItemTemplate const* proto = sObjectMgr->GetItemTemplate(grant.itemEntry);
@@ -173,9 +145,8 @@ namespace
             }
         }
 
-        // Belt and braces: the check above already cleared the price, and the world
-        // is single-threaded between the two. It is the atomic form regardless, so
-        // the money can never leave without the caller learning it did.
+        // The check above already cleared the price, but this is the atomic form: the
+        // money can never leave without the caller learning it did.
         if (node.costCopper && !moba->SpendMatchGold(player, node.costCopper))
             return { false, "You cannot afford that." };
 
@@ -185,10 +156,9 @@ namespace
             InventoryResult msg = player->CanStoreNewItem(NULL_BAG, NULL_SLOT, dest, grant.itemEntry, grant.count);
             if (msg != EQUIP_ERR_OK)
             {
-                // The pass above cleared this item against an empty-handed
-                // player, so a refusal here means earlier pieces of this same
-                // bundle took the room. The money is already gone, so it must
-                // not fail silently.
+                // The pass above cleared this against an empty-handed player, so a
+                // refusal here means earlier pieces of this bundle took the room -- and
+                // the money is already gone.
                 LOG_ERROR("scripts.moba", "npc_moba_store: item {} refused ({}) after pre-validation "
                           "on node {} (map {}, tab {}).",
                           grant.itemEntry, uint32(msg), node.nodeId, map, tabId);
@@ -196,22 +166,19 @@ namespace
                 continue;
             }
 
-            // Suffix ids are stored positive but must be handed to the engine
-            // negated -- see Item::GenerateItemRandomPropertyId's RandomSuffix
-            // branch, which returns -int32(id).
+            // Stored positive, handed to the engine negated -- see
+            // Item::GenerateItemRandomPropertyId's RandomSuffix branch.
             int32 randomPropertyId = grant.suffixId ? -static_cast<int32>(grant.suffixId) : 0;
 
             if (Item* item = player->StoreNewItem(dest, grant.itemEntry, true, randomPropertyId))
             {
-                // Bind at grant rather than at equip: the client only prompts
-                // "this will bind to you" for an unbound bind-on-equip item, and
-                // soulbound shop gear also cannot be traded to a teammate. Once
-                // custom_items is on, the copies carry BIND_WHEN_PICKED_UP and
-                // this becomes redundant.
+                // Bind at grant, not at equip: it suppresses the client's "this will
+                // bind to you" prompt and stops gear being traded to a teammate.
+                // Redundant once custom_items ships with BIND_WHEN_PICKED_UP.
                 item->SetBinding(true);
 
-                // Nothing else tracks these -- the battleground destroys exactly
-                // these item GUIDs when the player leaves.
+                // Nothing else tracks these; the battleground destroys exactly these
+                // GUIDs on exit.
                 moba->RecordGrantedItem(player, item, grant.count);
 
                 player->SendNewItem(item, grant.count, true, false);
@@ -249,10 +216,9 @@ namespace
             moba->SendShopMessage(player, "SF:" + batch);
     }
 
-    // Usability is per-player but constant for the match -- class, race and skills
-    // cannot change -- so it is pushed once at HELLO rather than on every open.
-    // Only the UNUSABLE entries go over the wire: the addon treats absent data as
-    // usable, and the server revalidates every purchase regardless.
+    // Constant for the match -- class, race and skills cannot change -- so it is pushed
+    // once at HELLO. Only UNUSABLE entries go over the wire: the addon treats absent data
+    // as usable, and the server revalidates every purchase anyway.
     void SendUnusableEntries(Player* player, BattlegroundMOBA* moba, uint32 map)
     {
         std::set<uint32> entries;
@@ -312,26 +278,20 @@ public:
         BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground());
         if (!moba || !moba->HasShopAddon(player))
         {
-            // The panel is the only shop front end -- there is deliberately no
-            // gossip fallback to keep in sync.
+            // The panel is the only shop front end; there is no gossip fallback.
             ChatHandler(player->GetSession()).PSendSysMessage(
                 "The MobaHUD addon is required to use the shop. Install it, then /reload.");
             return true;
         }
 
-        // Everything the panel needs to DRAW arrived at HELLO. Walking up to the
-        // shopkeeper only raises it; the minimap button sends nothing at all.
+        // Everything the panel needs to DRAW arrived at HELLO; this only raises it.
         moba->SendShopMessage(player, "OPEN");
         return true;
     }
 };
 
-// Client->server half of the shop protocol. Lives here rather than in moba_hud.cpp
-// so TryPurchase stays in the anonymous namespace above.
-//
-// INVARIANT: return false ONLY for MobaShop. ScriptMgr's boolean-hook macro stops
-// at the first script returning false, so consuming another prefix here would
-// starve the HUD's hook.
+// Client->server half of the shop protocol. Lives here rather than in moba_hud.cpp so
+// TryPurchase stays in the anonymous namespace above.
 class moba_shop_playerscript : public PlayerScript
 {
 public:
@@ -354,9 +314,8 @@ public:
             {
                 moba->SetShopAddonReady(player);
 
-                // Every shop row is keyed on the battleground's map id, which is
-                // the map the player is standing on -- there is no NPC to ask, and
-                // with the minimap button there may never be one.
+                // Every shop row is keyed on the map the player is standing on: with
+                // the minimap button there may be no NPC to ask.
                 sMobaStoreDataStore->LoadIfNeeded();
 
                 uint32 map = player->GetMapId();
@@ -371,21 +330,22 @@ public:
                 HandleSell(player, moba, payload.substr(5));
         }
 
-        return false; // consume: never broadcast shop traffic to battleground chat
+        // Consume, so shop traffic never reaches battleground chat. Returning false for
+        // any OTHER prefix would starve its owner: the boolean-hook macro stops at the
+        // first script that returns false.
+        return false;
     }
 
 private:
-    // "BUY:<tabId>,<nodeId>". Nothing here trusts the client beyond those two
-    // numbers -- the shopkeeper is resolved from where the player is standing, so
-    // a node can never be bought from across the map.
+    // "BUY:<tabId>,<nodeId>". Nothing here trusts the client beyond those two numbers;
+    // the map and the range gate both come from where the player is standing.
     static void HandleBuy(Player* player, BattlegroundMOBA* moba, std::string const& args)
     {
         std::string::size_type comma = args.find(',');
         if (comma == std::string::npos)
             return;
 
-        // Parse defensively: this is client-supplied text, so a malformed pair is
-        // dropped rather than coerced to 0.
+        // Client-supplied text: a malformed pair is dropped, never coerced to 0.
         Optional<uint32> tabId  = Acore::StringTo<uint32>(args.substr(0, comma));
         Optional<uint32> nodeId = Acore::StringTo<uint32>(args.substr(comma + 1));
         if (!tabId || !nodeId)
@@ -393,9 +353,8 @@ private:
 
         if (!moba->IsInShopRange(player))
         {
-            // Not CLOSE: the panel is the player's now, opened from their minimap.
-            // Shutting it under them for standing in the wrong place is hostile --
-            // the status line says why and the panel stays up.
+            // Not CLOSE: the panel is the player's, opened from their minimap. The
+            // status line says why and the panel stays up.
             moba->SendShopMessage(player, "ERR:Return to your base to buy.");
             return;
         }
@@ -404,9 +363,8 @@ private:
 
         uint32 map = player->GetMapId();
 
-        // One shopkeeper sells every tab, so the tab is client-chosen and cannot be
-        // inferred from the NPC. Range gates it, and the node must exist for the
-        // requested tab.
+        // One shopkeeper sells every tab, so the tab is client-chosen. Range gates it,
+        // and the node must exist for the requested tab.
         MobaStoreNode const* node = sMobaStoreDataStore->GetNode(map, *tabId, *nodeId);
         if (!node || !node->isPurchase)
         {
@@ -420,11 +378,9 @@ private:
             : "ERR:" + result.message);
     }
 
-    // "SELL:<luaBag>,<luaSlot>,<itemEntry>". The bag/slot names WHICH item; the
-    // entry is a checksum. The client learned that slot from hooking its own last
-    // bag pickup, and the cursor may have moved on since -- so a mismatch is
-    // refused outright rather than resolved, and a desynced client can never sell
-    // something other than what the player dragged.
+    // "SELL:<luaBag>,<luaSlot>,<itemEntry>". Bag/slot names WHICH item; the entry is a
+    // checksum. A mismatch is refused rather than resolved, so a desynced client can
+    // never sell something other than what the player dragged.
     static void HandleSell(Player* player, BattlegroundMOBA* moba, std::string const& args)
     {
         std::string::size_type first = args.find(',');
@@ -487,9 +443,8 @@ private:
             return;
         }
 
-        // Sell only what the match gave. The rest of the stack is the player's
-        // own, merged in by StoreNewItem or StoreLootItem, and is not ours to
-        // take. DestroyItemCount ZEROES its count argument, so price it first.
+        // Sell only what the match gave; the rest of the stack is the player's own.
+        // DestroyItemCount ZEROES its count argument, so price it first.
         uint32 sellCount = std::min(item->GetCount(), owed);
         uint32 payout    = unitPrice * sellCount;
 
@@ -503,29 +458,18 @@ private:
     }
 };
 
-// Everything the match hands a player is match-only, not just shop purchases.
-// Creep and neutral item drops ride the NATIVE loot system
-// (creature_loot_template), so they never pass through TryPurchase and
-// GrantDeathDrops never sees them -- recording them here is what lets
-// RemovePlayer strip them on exit, and what makes them sellable.
-//
-// It lives in this file rather than its own because npc_moba_store already owns
-// the "what did this match hand the player" bookkeeping; split it out if the
-// item lifecycle grows past this one hook.
-//
-// The recall Hearthstone is deliberately NOT caught: AddPlayer hands it over
-// with AddItem, not loot, so it never reaches this hook -- which is what keeps
-// it out of the sellable set.
+// Creep and neutral item drops ride the NATIVE loot system, so they never pass through
+// TryPurchase and GrantDeathDrops never sees them. Recording them here is what lets
+// RemovePlayer strip them on exit, and what makes them sellable. The recall Hearthstone
+// escapes it by construction: AddPlayer hands that over with AddItem, not loot.
 class moba_loot_playerscript : public PlayerScript
 {
 public:
     moba_loot_playerscript() : PlayerScript("moba_loot_playerscript", { PLAYERHOOK_ON_LOOT_ITEM }) { }
 
-    // `item` is what the loot actually landed in, which for a stackable is the
-    // MERGED stack -- so a player who brought their own copy of a dropped item
-    // has that whole stack recorded, and loses it on exit. Same root cause as
-    // BattlegroundMOBA::_grantedItems keying on GUID: stock entries are
-    // ambiguous until custom_items ships.
+    // For a stackable, `item` is the MERGED stack -- so a player who brought their own
+    // copy of a dropped item has the whole stack recorded, and loses it on exit. Stock
+    // entries stay ambiguous until custom_items ships.
     void OnPlayerLootItem(Player* player, Item* item, uint32 count, ObjectGuid /*lootguid*/) override
     {
         if (BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground()))

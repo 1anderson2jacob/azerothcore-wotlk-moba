@@ -26,20 +26,16 @@ struct MobaNeutralCamp
 {
     uint32 campId = 0;
     uint32 map = 0;
-    // 0 = ordinary camp, announced by nothing. Nonzero marks a boss: the kill
-    // feed reports its spawn and death, and the addon picks wording off the tier.
-    uint8 tier = 0;
+    uint8 tier = 0;           // 0 = ordinary camp; nonzero marks a boss the feed reports
     uint32 initialSpawnMs = 0;
     uint32 respawnMs = 0;
     uint32 spawnWarnMs = 0;   // "spawning soon" lead; 0 = no warning
     std::vector<MobaNeutralMember> members;
 };
 
-// Loads data/sql/custom/mod_moba_neutrals.sql's three tables once, shared by
-// BattlegroundMOBA (camps + members, to spawn/respawn) and npc_moba_neutral
-// (its own entry's behavior row, cheaply). Deliberately separate from
-// MobaCreepDataStore: "is this a lane creep?" checks -- the heal/buff spell
-// gate above all -- must never match hostile neutrals.
+// Loads mod_moba_neutrals.sql's three tables once per process. Deliberately separate
+// from MobaCreepDataStore: "is this a lane creep?" checks -- the heal/buff spell gate
+// above all -- must never match hostile neutrals.
 class MobaNeutralDataStore
 {
 public:

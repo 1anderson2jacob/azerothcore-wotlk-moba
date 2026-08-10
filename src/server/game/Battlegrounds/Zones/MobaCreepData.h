@@ -28,9 +28,8 @@ struct MobaCreepConfig
     uint32 despawnMs = 60000;
 };
 
-// Loads data/sql/custom/mod_moba_creeps.sql's `mod_moba_creep_data` table once,
-// shared by BattlegroundMOBA (needs the full row set to spawn waves) and
-// npc_moba_creep::Reset() (needs its own row, cheaply).
+// Loads `mod_moba_creep_data` once per process. Two accessors for the same reason as
+// MobaTowerDataStore: full row set for the battleground, one row for a creep AI.
 class MobaCreepDataStore
 {
 public:

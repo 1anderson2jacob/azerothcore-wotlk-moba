@@ -11,12 +11,9 @@
 #include "Map.h"
 #include "ObjectAccessor.h"
 
-// Hard-CC mask for the tower aggro-override trigger: the existing
-// IMMUNE_TO_MOVEMENT_IMPAIRMENT_AND_LOSS_CONTROL_MASK includes mere slows
-// (SNARE, DAZE), which don't count as "hard" CC for this purpose, and excludes
-// SILENCE, which we do want to count (loss of ability to act on a
-// tower-defended ally is the spirit of the rule). Judgment call -- revisit
-// here if the trigger feels too loose/tight in practice.
+// The stock IMMUNE_TO_MOVEMENT_IMPAIRMENT_AND_LOSS_CONTROL_MASK includes mere slows
+// (SNARE, DAZE) and excludes SILENCE, so neither end suits this trigger. A judgment
+// call -- retune here if it feels loose or tight in play.
 constexpr uint64 MOBA_HARD_CC_MECHANIC_MASK =
     (IMMUNE_TO_MOVEMENT_IMPAIRMENT_AND_LOSS_CONTROL_MASK
         & ~((1ULL << MECHANIC_SNARE) | (1ULL << MECHANIC_DAZE)))
@@ -24,9 +21,7 @@ constexpr uint64 MOBA_HARD_CC_MECHANIC_MASK =
 
 namespace
 {
-    // Shared by OnDamage/OnAuraApply: attacker hurt/CC'd victim (an allied
-    // player, from the tower's perspective) -- check whether any of victim's
-    // team's towers should switch onto attacker.
+    // Should any of the victim's team's towers switch onto the attacker?
     void CheckTowerAggroOverride(Player* attacker, Player* victim)
     {
         if (!attacker->IsHostileTo(victim))

@@ -9,18 +9,14 @@ enum MobaDropType : uint8
 {
     MOBA_DROP_BUFF = 0,
     MOBA_DROP_GOLD = 1,
-    // The item itself comes from creature_loot_template, never from here: a
-    // type-2 row exists ONLY to price the drop for the shop's sell panel, and
-    // is filtered out before _byEntry.
+    // The item comes from creature_loot_template; a type-2 row exists ONLY to price the
+    // drop for the shop's sell panel, and is filtered out before _byEntry.
     MOBA_DROP_ITEM = 2,
-    // Paid to the killer's whole TEAM, flat per player, with no corpse -- the
-    // objective payout a boss camp wants. Deliberately a drop TYPE rather than a
-    // per-creature "boss" flag, so one creature can carry both this and a plain
-    // gold row: a team share for everyone, corpse gold for the last hitter.
+    // Flat per player, no corpse. A drop TYPE rather than a per-creature "boss" flag so
+    // one creature can carry both this and a plain gold row.
     MOBA_DROP_TEAM_GOLD = 3,
-    // Same team-wide delivery, as an aura, to LIVING players only -- dying
-    // before the boss falls costs you the buff, and nothing re-grants it on
-    // respawn (League's Baron rule).
+    // Same delivery as an aura, to LIVING players only -- nothing re-grants it on
+    // respawn.
     MOBA_DROP_TEAM_BUFF = 4,
 };
 
@@ -33,11 +29,9 @@ struct MobaDropInfo
     float chance = 100.0f;   // percent, rolled per kill
 };
 
-// Loads mod_moba_creep_drops + mod_moba_neutral_drops once per process,
-// consumed by BattlegroundMOBA::GrantDeathDrops. Only buff/gold rows live
-// here -- "item" drops are native creature_loot_template rows the engine
-// rolls itself. One store for both minion kinds: by the time a drop is
-// granted, which AI died no longer matters.
+// Loads mod_moba_creep_drops + mod_moba_neutral_drops once per process. Only buff/gold
+// rows live here; "item" drops are native creature_loot_template rows. One store for
+// both minion kinds: by the time a drop is granted, which AI died no longer matters.
 class MobaDropDataStore
 {
 public:
@@ -45,8 +39,8 @@ public:
 
     void LoadIfNeeded();
     std::vector<MobaDropInfo> const* GetDrops(uint32 entry) const;
-    // What ONE UNIT of a looted item sells back for. False = nothing in the
-    // match drops it at a price, so npc_moba_store refuses the sale.
+    // What ONE UNIT sells back for. False = nothing drops it at a price, so the sale is
+    // refused.
     bool GetItemSellValue(uint32 itemEntry, uint32& out) const;
 
 private:
@@ -54,8 +48,7 @@ private:
 
     bool _loaded = false;
     std::unordered_map<uint32, std::vector<MobaDropInfo>> _byEntry;
-    // Flattened across both tables: sell price is a property of the ITEM, not of
-    // whichever creature happened to drop it.
+    // Flattened across both tables: sell price is a property of the ITEM.
     std::unordered_map<uint32, uint32> _sellByItem;
 };
 

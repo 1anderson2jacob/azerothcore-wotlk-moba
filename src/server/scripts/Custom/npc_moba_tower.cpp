@@ -31,8 +31,7 @@ struct npc_moba_tower : public ScriptedAI
         me->SetCombatMovement(false); // stops core's MoveBackwardsChecks/MoveCircleChecks from repositioning a "stationary" NPC
         scheduler.CancelAll();
 
-        // Inhibitors and cores gate progression and die, but never shoot. Only
-        // towers run the attack tick.
+        // Inhibitors and cores gate progression and die, but never shoot.
         if (_cfg->kind != MOBA_STRUCTURE_TOWER)
             return;
 
@@ -47,10 +46,8 @@ struct npc_moba_tower : public ScriptedAI
         scheduler.Update(diff);
     }
 
-    // Called externally (see MobaTowerAggroOverride) when an enemy player damages
-    // or hard-CCs an allied player within this tower's range. One-shot: only
-    // fires the creep -> player switch, never re-triggers between offenders
-    // (see .github/MOBA_GUIDE.md for the full targeting rule).
+    // One-shot: fires the creep -> player switch once, and never re-triggers between
+    // offenders. Full targeting rule: .github/MOBA_GUIDE.md.
     void TryAggroOverride(Player* offender)
     {
         if (_isAggroLocked || !_cfg)
@@ -63,11 +60,9 @@ struct npc_moba_tower : public ScriptedAI
         _isAggroLocked = true;
     }
 
-    // The ONE place that sees a structure's true killing blow, which is why all
-    // tower credit resolves here rather than in BattlegroundMOBA::HandleKillUnit --
-    // Unit::Kill overwrites that hook's killer with the loot recipient (first
-    // tapper) before calling it. A creep-finished structure still pays its team;
-    // only the last-hit bonus needs a player, and passing nullptr is what skips it.
+    // The one place that sees a structure's true killing blow -- see HandleKillUnit for
+    // why the engine hook cannot. A creep-finished structure still pays its team; only
+    // the last-hit bonus needs a player, and passing nullptr is what skips it.
     void JustDied(Unit* killer) override
     {
         BattlegroundMap* bgMap = me->GetMap()->ToBattlegroundMap();
@@ -78,8 +73,7 @@ struct npc_moba_tower : public ScriptedAI
         if (!moba)
             return;
 
-        // Pets and charmed units resolve to their owner, so a warlock's felguard
-        // landing the blow still pays the warlock.
+        // Pets and charmed units resolve to their owner.
         if (Player* player = killer ? killer->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr)
         {
             moba->OnTowerDestroyed(me, player->GetBgTeamId(), player);
@@ -94,8 +88,7 @@ struct npc_moba_tower : public ScriptedAI
 private:
     void Tick(TaskContext context)
     {
-        // Guarded/inert towers don't fight back until their guard tower falls
-        // (OnTowerDestroyed clears the flag when that happens).
+        // Guarded towers don't fight back until their guard falls (OnTowerDestroyed).
         if (me->HasUnitFlag(UNIT_FLAG_NON_ATTACKABLE))
         {
             context.Repeat(std::chrono::milliseconds(_cfg->intervalMs));
@@ -158,8 +151,7 @@ private:
         return nearest;
     }
 
-    // "Creep" = any hostile non-player unit in range, excluding other towers
-    // (so towers never target each other once many are on the same map).
+    // Any hostile non-player unit in range, excluding other towers.
     Unit* SelectNearestEnemyCreature(float range) const
     {
         std::list<Creature*> creatures;

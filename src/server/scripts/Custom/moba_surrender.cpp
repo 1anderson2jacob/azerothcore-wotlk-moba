@@ -1,20 +1,3 @@
-/*
- * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 #include "BattlegroundMOBA.h"
 #include "Chat.h"
 #include "CommandScript.h"
@@ -24,11 +7,8 @@
 
 using namespace Acore::ChatCommands;
 
-// The trigger for a surrender vote, and nothing else. Every rule -- is a match
-// running, is the time gate open, is the team still on cooldown, how many votes it
-// takes -- lives on BattlegroundMOBA::HandleSurrenderRequest, which also words
-// everything the TEAM is told. All this file owns is parsing yes/no and the
-// refusals personal to whoever typed the command.
+// Every rule, and everything the TEAM is told, lives on HandleSurrenderRequest. This
+// file owns parsing yes/no and the refusals personal to whoever typed the command.
 class moba_surrender_commandscript : public CommandScript
 {
 public:
@@ -52,7 +32,7 @@ public:
             return false;
 
         // A bare ".surrender" is a yes: starting a vote and agreeing to one are the
-        // same intent, and it is what a player types under pressure.
+        // same intent.
         bool agree = true;
         if (answer)
         {
@@ -83,8 +63,8 @@ public:
             case MOBA_SURRENDER_VOTE_STARTED:
             case MOBA_SURRENDER_VOTE_COUNTED:
             case MOBA_SURRENDER_VOTE_FAILED:
-                // The battleground already told the whole team. Repeating it here
-                // would double every line for the one player who typed the command.
+                // The battleground already told the whole team; repeating it here would
+                // double every line for the player who typed the command.
                 return true;
             case MOBA_SURRENDER_TOO_EARLY:
                 handler->SendErrorMessage("Your team cannot surrender yet -- {}:{:02} remaining.",

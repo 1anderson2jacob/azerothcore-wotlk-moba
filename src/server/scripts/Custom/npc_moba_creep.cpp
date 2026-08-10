@@ -11,11 +11,10 @@
 #include "SpellInfo.h"
 #include "WaypointMgr.h"
 
-// Max 2D distance a creep may be dragged from its lane before it force-evades
-// and resumes. The engine's own 30yd leash is deliberately SKIPPED while combat
-// stays "fresh" (Creature::CanCreatureAttack: damage, melee proximity, and
-// unreachable targets each refresh a ~17s window -- authentic WoW kiting), so
-// without this hard cap a player at run speed can drag a wave across the map.
+// Max 2D distance a creep may be dragged from its lane before it force-evades. The
+// engine's own 30yd leash is SKIPPED while combat stays "fresh" (Creature::CanCreatureAttack
+// refreshes a ~17s window on damage, melee proximity, or an unreachable target), so
+// without this cap a player at run speed can drag a wave across the map.
 float constexpr MOBA_CREEP_LANE_CORRIDOR = 40.0f;
 
 struct npc_moba_creep : public ScriptedAI
@@ -33,15 +32,14 @@ struct npc_moba_creep : public ScriptedAI
 
         _lanePath = sWaypointMgr->GetPath(_cfg->pathId);
 
-        // Post-match: stay frozen where FreezeAllCreeps() left us. Reset()
-        // re-fires on evade, and the re-arm below would restart the lane.
+        // Stay frozen where FreezeAllCreeps() left us; the re-arm below would restart
+        // the lane.
         if (MatchEnded())
             return;
 
-        // Arm the lane on first spawn only -- Reset() re-fires on evade, and the
-        // slot-type check keeps that from rewinding us to node 1. false =
-        // non-repeating: a creep that reaches the lane's end holds and fights
-        // there, never turns around and walks back.
+        // First spawn only: Reset() re-fires on evade, and the slot-type check keeps
+        // that from rewinding us to node 1. Non-repeating, so a creep that reaches the
+        // lane's end holds and fights there rather than walking back.
         if (me->GetMotionMaster()->GetMotionSlotType(MOTION_SLOT_IDLE) != WAYPOINT_MOTION_TYPE)
             me->GetMotionMaster()->MoveWaypoint(_cfg->pathId, false);
 
@@ -93,12 +91,10 @@ struct npc_moba_creep : public ScriptedAI
             ScriptedAI::AttackStart(victim);
     }
 
-    // Lane-corridor rule measured against the lane path, NOT home position: the
-    // waypoint generator stamps home to the creature's current position every
-    // moving tick (WaypointMovementGenerator::DoUpdate), so a home-based corridor
-    // followed the creep wherever a player dragged it. Players are the only
-    // targets gated -- creeps/towers are lane-bound already, and gating them by
-    // this rule blocked a tower push once (rejected at 41yd from a mid-drag home).
+    // Measured against the lane path, NOT home: the waypoint generator stamps home to
+    // the creature's current position every moving tick, so a home-based corridor
+    // followed the creep wherever a player dragged it. Players only -- creeps and towers
+    // are lane-bound already, and gating them by this rule once blocked a tower push.
     bool CanAIAttack(Unit const* victim) const override
     {
         if (!victim->GetCharmerOrOwnerPlayerOrPlayerItself())
@@ -107,8 +103,7 @@ struct npc_moba_creep : public ScriptedAI
         return DistanceFromLane2d(victim->GetPositionX(), victim->GetPositionY()) <= MOBA_CREEP_LANE_CORRIDOR;
     }
 
-    // Node Ids are the DB point numbers, preserved in the truncated resume
-    // paths, so this stays comparable across resumes.
+    // Node Ids are DB point numbers, preserved in the truncated resume paths.
     void WaypointReached(uint32 nodeId, uint32 /*pathId*/) override
     {
         if (nodeId > _highestReachedNodeId)
@@ -131,12 +126,10 @@ struct npc_moba_creep : public ScriptedAI
             return;
         }
 
-        // Inlined CreatureAI::_EnterEvadeMode minus its RemoveEvadeAuras() call:
-        // creeps evade at the end of EVERY skirmish, and RemoveEvadeAuras strips
-        // all player-cast buffs from an unowned creature -- minion buffs should
-        // run their full duration instead. Also skipped: the zone-script /
-        // formation / summoner evade notifications (creeps have none of the
-        // three). Mirror CreatureAI.cpp's _EnterEvadeMode when merging upstream.
+        // Inlined CreatureAI::_EnterEvadeMode minus RemoveEvadeAuras: creeps evade at
+        // the end of EVERY skirmish, and it would strip player-cast buffs that should
+        // run their full duration. Zone-script/formation/summoner notifications are also
+        // skipped (creeps have none). Re-mirror CreatureAI.cpp when merging upstream.
         if (me->IsInEvadeMode())
             return;
 
@@ -146,8 +139,8 @@ struct npc_moba_creep : public ScriptedAI
             return;
         }
 
-        // Recursion guard, as in _EnterEvadeMode: CombatStop below purges combat
-        // refs, which re-enters EnterEvadeMode; IsInEvadeMode() above catches it.
+        // Recursion guard: CombatStop below purges combat refs, re-entering
+        // EnterEvadeMode; the IsInEvadeMode() check above catches it.
         me->AddUnitState(UNIT_STATE_EVADE);
 
         me->ClearComboPointHolders();
@@ -158,41 +151,29 @@ struct npc_moba_creep : public ScriptedAI
         me->ClearLastLeashExtensionTimePtr();
         me->SetCannotReachTarget();
 
-        // MANDATORY: clears the AI's _isEngaged latch. Without it the creep is
-        // permanently "already fighting" after its first evade -- new enemies
-        // never trigger EngagementStart (JustStartedThreateningMe gates on it)
-        // and on-sight aggro is skipped, so the creep ignores every later wave.
-        // Omitting this line shipped as a real bug once.
+        // MANDATORY: clears the AI's _isEngaged latch. Without it the creep reads
+        // "already fighting" forever after its first evade -- EngagementStart never
+        // fires again and it ignores every later wave. Shipped as a real bug once.
         EngagementOver();
 
-        // LoL-style leashing: no run-back. The default evade would
-        // MoveTargetedHome() to the last-reached node and resume from there --
-        // a creep that chased 30yd forward runs all 30yd back first. Instead,
-        // resume the lane near where combat ended. UNIT_STATE_EVADE is normally
-        // cleared by the home-return generator we're skipping, so clear it here
-        // (as the engine's pet/MoveFollow evade branch does).
+        // No run-back: the default evade would MoveTargetedHome() first. UNIT_STATE_EVADE
+        // is normally cleared by the home-return generator we are skipping, so clear it
+        // here, as the engine's pet/MoveFollow branch does.
         me->ClearUnitState(UNIT_STATE_EVADE);
         ResumeLaneFromHere();
     }
 
-    // Last-hit CS: credit goes to whoever landed the killing blow, not the first
-    // tapper. HandleKillUnit's killer is the loot recipient (Unit::Kill overwrites
-    // it), so it can't award last hits -- but the killer passed here is the true
-    // killing-blow attacker; a pet/guardian credits its owner. Enemy players only:
-    // friendly-fire on creeps is impossible anyway (team hostility + spell gate),
-    // so the team guard is belt-and-suspenders, but it keeps own-team kills off
-    // the board if that ever changes. GrantDeathDrops must run even with no
-    // rewarded player: it strips the tapper-owned native loot the engine just
-    // filled (no last hit, no loot).
+    // The true killing blow, which HandleKillUnit cannot give us -- see there. Enemy
+    // players only: friendly fire on creeps is impossible today, so the team guard below
+    // is insurance against that changing.
     void JustDied(Unit* killer) override
     {
         if (!_cfg)
             return;
 
-        // An own-team kill earns nothing -- not the personal drops, and not the
-        // team-wide ones either, so the reward source is dropped alongside the
-        // player. GrantDeathDrops cannot infer this: handed the raw unit it would
-        // resolve it straight back to a team and pay that team for its own creep.
+        // An own-team kill earns nothing, so BOTH reward arguments go. GrantDeathDrops
+        // cannot infer this: handed the raw unit it would resolve it straight back to a
+        // team and pay that team for its own creep.
         Player* p = killer ? killer->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
         Unit* rewardSource = killer;
         if (p && p->GetBgTeamId() == _cfg->team)
@@ -257,9 +238,8 @@ private:
             }
         }
 
-        // ...but never behind our furthest progress: a creep kited toward its
-        // own base resumes from where it already reached, so a player can't walk
-        // a wave backwards (re-dragging by attacking still works, as in LoL).
+        // ...but never behind our furthest progress, so a player cannot walk a wave
+        // backwards. Re-dragging by attacking still works.
         for (std::size_t i = resumeIdx + 1; i < path->Nodes.size(); ++i)
             if (path->Nodes[i].Id == _highestReachedNodeId)
             {
@@ -269,18 +249,15 @@ private:
 
         WaypointNode const& resumeNode = path->Nodes[resumeIdx];
 
-        // Anchor home to the resume node ON the lane. Home is what the engine's
-        // own leash (CanCreatureAttack, 30yd) measures from, so keeping it on the
-        // lane bounds every chase to a corridor around the path; anchoring to the
-        // creep's current position instead lets a fleeing player ratchet the leash
-        // to the map edge (chase -> evade -> new home here -> re-aggro -> repeat).
-        // Shipped as a real bug once. See CanAIAttack for why home drifts.
+        // Anchor home to the resume node ON the lane: home is what the engine's leash
+        // measures from, so anchoring to the creep's current position instead lets a
+        // fleeing player ratchet it to the map edge. Shipped as a real bug once.
         me->SetHomePosition(resumeNode.X, resumeNode.Y, resumeNode.Z, me->GetOrientation());
 
-        // The engine can't start a DB waypoint path mid-route (i_currentNode is
-        // only seedable from CreatureData, which TempSummons lack), so hand the
-        // generator a truncated copy from the resume node on. Copy nodes directly
-        // -- the WaypointNode convenience constructor would reset MoveType to walk.
+        // The engine cannot start a DB waypoint path mid-route (i_currentNode is only
+        // seedable from CreatureData, which TempSummons lack), so hand the generator a
+        // truncated copy. Copy nodes directly -- WaypointNode's convenience constructor
+        // would reset MoveType to walk.
         _resumePath.Id = _cfg->pathId;
         _resumePath.Nodes.assign(path->Nodes.begin() + resumeIdx, path->Nodes.end());
 
@@ -304,11 +281,8 @@ private:
     uint32 _corridorCheckTimer = 0;
 };
 
-// Positive spells a player may cast on a lane creep: heals, HoTs, absorbs, and
-// cleanses -- effects that actually do something to a creature. Everything else
-// (stat buffs: PW:F, MotW, Kings, ...) is rejected with "Invalid target", because
-// Creature::UpdateStats is a no-op -- a stat buff applies its icon but changes
-// nothing, which reads in-game as a bug. Rejecting beats silently lying.
+// Heals, HoTs, absorbs and cleanses are allowed; stat buffs are rejected because
+// Creature::UpdateStats is a no-op, so they would apply an icon and change nothing.
 // Runs from the top of Spell::CheckCast, before mana/cooldown are consumed.
 class moba_creep_spell_gate : public AllSpellScript
 {

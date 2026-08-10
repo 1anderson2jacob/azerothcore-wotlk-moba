@@ -5,6 +5,7 @@
 
 map: 566
 battleground_template_id: 7          # EotS slot this mode hijacks
+min_players_per_team: 1              # a MOBA keeps playing 4v5 rather than forfeiting
 
 kill_credit_window_ms: 15000         # last-hit window for kill credit
 assist_window_ms: 10000              # recent-damage window that grants an assist

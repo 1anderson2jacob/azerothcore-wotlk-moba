@@ -1,20 +1,3 @@
-/*
- * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 #include "MobaStoreData.h"
 #include "DatabaseEnv.h"
 #include "QueryResult.h"
@@ -63,8 +46,8 @@ void MobaStoreDataStore::LoadIfNeeded()
 
     _nodes.reserve(menu->GetRowCount());
 
-    // (map, tabId) per row, kept parallel to _nodes: the node struct itself
-    // does not carry them, but the lookups below are keyed on them.
+    // Parallel to _nodes: the node struct does not carry these, but the lookups are
+    // keyed on them.
     std::vector<std::pair<uint32, uint32>> owners;
     owners.reserve(menu->GetRowCount());
 
@@ -81,9 +64,7 @@ void MobaStoreDataStore::LoadIfNeeded()
         owners.emplace_back(fields[0].Get<uint32>(), fields[1].Get<uint32>());
     } while (menu->NextRow());
 
-    // Build the lookup only after every node is pushed: _nodes was reserve()'d
-    // to the exact final row count, so no reallocation happens above and these
-    // pointers stay stable (same rule as MobaTowerDataStore).
+    // Built after the loop: the reserve() above is what keeps these pointers stable.
     for (std::size_t i = 0; i < _nodes.size(); ++i)
     {
         MobaStoreNode const& node = _nodes[i];

@@ -23,11 +23,9 @@ struct MobaPlayerDropInfo
     float chance = 100.0f;   // percent, rolled per kill
 };
 
-// Loads mod_moba_player_drops once per process, keyed by map (no per-mob home
-// for player-kill rewards). Consumed by BattlegroundMOBA::GrantPlayerKillDrops,
-// which grants directly to the killer -- no corpse, no native loot -- so unlike
-// MobaDropDataStore's buff/gold-only split, "item" is a rolled-and-delivered
-// type here too (AddItem).
+// Loads mod_moba_player_drops once per process, keyed by map. Rewards go straight to
+// the killer -- no corpse, no native loot -- so unlike MobaDropDataStore's buff/gold-only
+// split, "item" is a delivered type here too.
 class MobaPlayerDropDataStore
 {
 public:

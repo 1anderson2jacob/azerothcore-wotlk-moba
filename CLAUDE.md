@@ -15,21 +15,6 @@ AzerothCore is a C++ MMORPG server emulator for World of Warcraft 3.3.5a (WotLK)
 - **Do not configure or build unless explicitly asked.** Builds are slow (CMake + compile of a large C++ codebase) and rarely needed to make code changes.
 - Build, SQL, git, and documentation workflows: see Section 2 — it replaces upstream's entirely.
 
-## Repository layout
-
-- `src/common/` — networking (Asio), crypto, config, logging, shared utilities.
-- `src/server/game/` — core gameplay; compiled into worldserver.
-- `src/server/scripts/` — content scripts grouped by region (`EasternKingdoms/`, `Northrend/`, …), class (`Spells/spell_mage.cpp`, …), and domain (`Commands/`, `Pet/`, `OutdoorPvP/`, `World/`).
-- `src/server/database/` — DB abstraction and schema updater.
-- `src/server/shared/` — code shared by auth and world servers.
-- `src/server/apps/{authserver,worldserver}/` — entry points (ports 3724 and 8085).
-- `src/test/` — Google Test unit tests + mocks (configure `-DBUILD_TESTING=ON`, then `ctest`).
-- `data/sql/` — `base/` (historical schema), `updates/db_*/` (merged), `custom/` (**this fork's SQL** — Section 2).
-- `modules/` — external modules, each with its own `CMakeLists.txt`. Disable with `-DDISABLED_AC_MODULES="mod1;mod2"`.
-- `apps/` — helper scripts; `apps/codestyle/` holds the lint scripts.
-- `conf/dist/` — distributed config templates; `conf/*.conf` is gitignored.
-- `deps/` — vendored third-party dependencies.
-
 ## Code style
 
 Run the linters before claiming a change is done:
@@ -41,7 +26,6 @@ python apps/codestyle/codestyle-sql.py     # SQL (compares to origin/master)
 
 Hard rules (enforced by CI with `-Werror`; CI also runs `cppcheck`):
 
-- 4-space indent for C++ (tabs forbidden); 2-space for JSON/YAML/sh/ts/js. UTF-8, LF, max 120 cols, trailing newline.
 - Allman braces. No braces around single-line statements. `if (x)` — never `if(x)` or `if ( x )`.
 - `auto const&` (not `const auto&`); `Type const*` (not `const Type*`).
 - Use `{}` format specifiers (`fmt`-style), not `%u`/`%s`.
@@ -143,12 +127,7 @@ Per-map config bundles live in `apps/moba/maps/<mode>/`; generators in `apps/mob
 
 ## Gitignore overrides (fork)
 
-Upstream gitignores `src/server/scripts/Custom/` and `data/sql/custom/`; this fork tracks both via `.gitignore` exceptions:
-
-```gitignore
-!src/server/scripts/Custom/*
-!data/sql/custom/*
-```
+Upstream gitignores `src/server/scripts/Custom/` and `data/sql/custom/`; this fork tracks both via `.gitignore` exceptions.
 
 When adding files there, confirm `git status` actually shows them.
 
@@ -169,6 +148,8 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 -DREADLINE_LIBRARY=/opt/homebrew/opt/readline/lib/libreadline.dylib
 ```
 
+- Unit tests: configure `-DBUILD_TESTING=ON`, then `ctest`
+- Disable modules: `-DDISABLED_AC_MODULES="mod1;mod2"`
 - Servers: `./acore.sh run-worldserver` / `run-authserver` in separate terminals (the worldserver console takes GM commands directly)
 - MySQL: user `acore`, password `acore`, DBs `acore_auth` / `acore_characters` / `acore_world`
 - **Config**: committed settings live in tracked `.dist` — `modules/mod-cfbg/conf/CFBG.conf.dist` holds CFBG tuning **and** the `AllowTwoSide.Interaction.Group` core override; machine-local test knobs (`Battleground.PrepTime`, `CFBG.EvenTeams.Enabled`) live in gitignored `apps/moba/local.conf`. `apps/moba/setup.sh` builds the runtime `.conf` from both.
@@ -194,6 +175,7 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 - `creature_template` on this revision has no `scale` column (use `creature_template_model.DisplayScale`); immunities via `CreatureImmunitiesId`.
 - `AddCreature(entry, type, x, y, z, o, respawntime = 0, transport = nullptr)` — no TeamId param; faction comes from the template. **That `respawntime = 0` does not mean "never respawn"**: the setter runs only when the argument is non-zero, so the default leaves `Creature`'s own `m_respawnDelay(300)` + `m_corpseDelay(60)` in place and the creature quietly returns ~6 minutes after dying. Structures pass `DAY` to suppress it. One that came back this way was still flagged `destroyed` in `_towers` — alive and attackable, but inert to every code path that mattered, which is why it went unnoticed for so long.
 - **"Who destroyed it" and "whose enemy benefits" are different questions.** `npc_moba_tower::JustDied` hands `OnTowerDestroyed` the *killer's* team, not the owner's enemy. The two agree in a real push and diverge the moment an own-team unit lands the blow — so any flag set on destruction and cleared later (super minions) must derive **both** ends from the structure's owner, or it leaks for the rest of the match.
+- Fork-authored files carry **no GPL header** — the root `LICENSE` covers them. Upstream files we modify keep theirs; add one back only when upstreaming.
 - The original `BattlegroundEY.{h,cpp}` is untouched — reference for how spawning/worldstates worked before the strip-down.
 
 ## Documentation standards
@@ -202,16 +184,20 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 
 | Where | Holds | Never holds |
 |---|---|---|
-| Code comment | A constraint local to that code that the code can't show — engine quirks, why-not-the-obvious-thing, a trap that cost a real bug | Cross-file architecture; workflow steps |
+| Code comment | An engine behaviour or constraint visible at that line — a quirk, a trap that cost a real bug | Who calls this; what the other side of a protocol does; a rule enforced in another file |
+| `MOBA_GUIDE.md` architecture | Facts that span two or more files — wiring, deliberate contrasts between subsystems, invariants no single file can state | Anything true of one file: payload layouts, field lists, which function does what |
 | `MOBA_GUIDE.md` recipe | The steps to change one thing | Why the engine works that way |
 | `MOBA_GUIDE.md` gotcha index | One line naming the trap + where the full explanation lives | The full explanation |
 | `CLAUDE.md` | Rules, environment, and a map of where things live | Feature explanations; the roadmap |
+| `apps/moba/README.md` | The generator pipeline: what reads what, ID allocation, lockfile rules, policies spanning configs | Per-field semantics — those live in each config's own YAML header |
 | `.github/README.md` | The roadmap; the public-facing overview | Internal recipes |
 | `.github/MOBA_*_PLAN.md` | Work not yet built; the mid-feature handoff | Anything shipped |
 
 - **Every feature starts with a plan file.** Before writing code, create `.github/MOBA_<FEATURE>_PLAN.md` holding the goal, decisions already made (so they are not relitigated), what is built, what is left, and any hard-won facts discovered along the way. Keep it current as work proceeds — it is the handoff if a session ends mid-feature. **Delete it when the feature lands**; it is never committed.
 - Never explain something in two places. Link instead.
-- Comments state constraints, not narration — never "what the next line does", never "why this change is correct".
+- **The comment test: delete it — does something silently break?** If not, it goes. Not "is it true", not "is it useful" — a true, useful comment that guards nothing is precisely the kind that goes stale and then misleads. Four things always fail it: justifying a choice against a rejected alternative (the commit message holds that), naming a function's callers (the compiler holds that), restating what another file does (link instead), and a framing sentence in front of the fact.
+- Prefer a trailing annotation on the declaration over a paragraph above it — it dies with the thing it describes, so it cannot outlive it.
+- Apply the test on a **reread**, not while writing. At write time every explanation feels load-bearing; that is how the rule this one replaced got ignored for a whole feature set. Re-read a change's comments alongside running the linters, before calling it done.
 - Prefer deleting a stale line over updating it.
 - CLAUDE.md is loaded into **every** session; everything else is opt-in. Lines added here are paid for forever.
 

@@ -63,6 +63,9 @@ def validate(cfg, path):
         fail(f'{path}: "map" must be an integer map id')
     if not isinstance(cfg.get("battleground_template_id"), int):
         fail(f'{path}: "battleground_template_id" must be an integer')
+    mppt = cfg.get("min_players_per_team")
+    if not isinstance(mppt, int) or mppt < 1:
+        fail(f'{path}: "min_players_per_team" must be an integer >= 1')
     window = cfg.get("kill_credit_window_ms")
     if window is not None and (not isinstance(window, int) or window < 0):
         fail(f'{path}: "kill_credit_window_ms" must be a non-negative integer (ms; 0 = disabled)')
@@ -285,10 +288,13 @@ def emit(configs, blocks):
             "-- (Battleground::_CheckSafePositions), which teleports players back to spawn",
             "-- every 9s -- wrong for a base you are meant to walk around in. The dome holds",
             "-- players in; the radius lives in mod_moba_base.FountainRadius.",
+            "-- MinPlayersPerTeam is 1 ON PURPOSE: Battleground::GetPrematureWinner forfeits a",
+            "-- team that drops below it, and a MOBA keeps playing 4v5. Stock EotS ships 8.",
             (f"UPDATE battleground_template SET "
              f"AllianceStartLoc = {a['graveyard_id']}, AllianceStartO = {a['o']}, "
              f"HordeStartLoc = {h['graveyard_id']}, HordeStartO = {h['o']}, "
-             f"StartMaxDist = 0 "
+             f"StartMaxDist = 0, "
+             f"MinPlayersPerTeam = {cfg['min_players_per_team']} "
              f"WHERE ID = {cfg['battleground_template_id']};"),
             f"UPDATE game_graveyard SET x = {a['x']}, y = {a['y']}, z = {a['z']} WHERE ID = {a['graveyard_id']};",
             f"UPDATE game_graveyard SET x = {h['x']}, y = {h['y']}, z = {h['z']} WHERE ID = {h['graveyard_id']};",

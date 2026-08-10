@@ -122,3 +122,4 @@ local.properties
 !/data/sql/custom/*
 /apps/moba/local.conf
 .github/MOBA_*_PLAN.md
+.clangd

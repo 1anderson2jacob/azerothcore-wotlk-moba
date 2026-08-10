@@ -43,9 +43,7 @@ void MobaNeutralDataStore::LoadIfNeeded()
         _configs.push_back(cfg);
     } while (result->NextRow());
 
-    // Built only after all rows are loaded: _configs was reserve()'d to the
-    // exact final row count above, so no reallocation happens during the
-    // push_back loop and these pointers stay stable.
+    // Built after the loop: the reserve() above is what keeps these pointers stable.
     for (MobaNeutralConfig const& cfg : _configs)
         _byEntry[cfg.entry] = &cfg;
 

@@ -1,120 +1,80 @@
 # AzerothCore MOBA Battleground
 
-A fork of [AzerothCore](https://github.com/azerothcore/azerothcore-wotlk) (WotLK 3.3.5a) that replaces Eye of the Storm with a custom MOBA-style battleground — lanes, attackable towers, and a destroy-the-base win condition, played on the existing Eye of the Storm map.
+A MOBA built inside World of Warcraft 3.3.5a — lanes, creep waves, towers, a jungle, an item shop, and a destroy-the-enemy-base win condition — on a fork of [AzerothCore](https://github.com/azerothcore/azerothcore-wotlk).
+
+## What a match looks like
+
+Two teams spawn at opposite ends of the map. Every 30 seconds each side sends a wave of AI minions down the lane; they meet in the middle and fight. Landing the killing blow on a minion pays you gold, and so do jungle camps, enemy players, and objectives.
+
+You spend that gold at a shop in your own base — starting gear, consumables, rare and epic tiers — and use what you buy to push. Each side's lane is held by a tower, then an inhibitor, then the core. Taking an inhibitor sends stronger minions at the enemy until it regrows; destroying the core ends the match. A team that is clearly beaten can `.surrender` rather than play it out.
+
+The gold is a match wallet, not your character's money, and everything the match hands you is taken back when you leave. Nothing that happens in here follows your character out.
+
+**Live today:** one lane (mid), three structures a side, five jungle camps. Level 61–80, up to 15 a side.
 
 ## How it works
 
-Rather than patching client DBC files, this project **hijacks the Eye of the Storm battleground slot**: the client queues for EotS as normal, but the server runs a custom `BattlegroundMOBA` class instead of `BattlegroundEY`. No client modification is required to play.
+No client patch. The server hijacks the Eye of the Storm battleground slot — the client queues for EotS as normal and gets `BattlegroundMOBA` instead of `BattlegroundEY`. The one optional install is the **MobaHUD** addon (`client/addons/MobaHUD/`), which draws the HUD bar, kill feed and shop panel; without it the match plays, but the shop is unreachable.
 
-A separate battleground ID (with a distributable client MPQ patch) is planned once gameplay stabilizes — see the roadmap.
-
-CFBG rides the same EotS-slot hijack; the earlier GetBgTeamId audit is why the MOBA respected the BG team automatically.
+A standalone battleground ID needs a `BattlemasterList.dbc` patch and is planned alongside the custom map.
 
 ## Roadmap
 
 Shipped:
 
-- [x] Clone `BattlegroundEY` → `BattlegroundMOBA`, wire into `BattlegroundMgr` on the EotS slot
-- [x] Strip the netherstorm flag system
-- [x] Strip the capture-point scoring system
-- [x] Attackable towers (custom creatures with turret AI)
-- [x] Win condition: destroy the enemy base tower
+- [x] `BattlegroundEY` cloned to `BattlegroundMOBA`, wired onto the EotS slot
+- [x] Netherstorm flag system stripped
+- [x] Capture-point scoring stripped
+- [x] Attackable towers with turret AI
 - [x] Lane creep waves
-- [x] LoL-style individual, game-length-scaling respawn timers (replaces shared-interval graveyard resurrection)
-- [x] LoL-style recall to base (Hearthstone hijacked; no client patch)
-- [x] Per-map content bundles (map-keyed tables; a new map = a new `apps/moba/maps/<mode>/` bundle)
-- [x] On-screen HUD bar — match clock, team score, KDA, creep score (client addon; no client patch)
+- [x] Inhibitors and super minions; the core is the win condition
+- [x] Neutral jungle camps — aggro, leash, camp-link, League-style reset
+- [x] Respawn timers that scale with match length, replacing graveyard pulses
+- [x] Recall to base (Hearthstone hijacked)
 - [x] Fountain healing
-- [x] Enable cross-faction MOBA - via mod-cfbg (mixed-faction teams) + AllowTwoSide.Interaction.Group (cross-faction parties).
-- [x] Heal/shield allied minions — heals, HoTs, absorbs, and cleanses land on your own minions (cross-faction included); other buffs are rejected ("Invalid target") — stat buffs are inert on NPCs
-- [x] Last-hit kill credit — minion kills (CS) go to the player who landed the killing blow, not the first tapper; a friendly-creep last hit credits nobody
-- [x] Neutral minions — four jungle camps, hostile to both teams; camp-level aggro/leash/respawn config, whole-camp linking, League-style reset; last-hit CS and an on-death buff to the killing-blow player
-- [x] Minion on-death drops infrastructure
-- [x] Player on-death drops infrastructure — player kills grant configurable gold/buff/item to the killer via direct grant (no corpse loot); per-map `player_config.yaml`
-- [x] Kill credit window — a death within a configured window of enemy-player damage/debuff still credits that player, even when a creep/tower/environment lands the blow; deaths to non-players now score
-- [x] Contribution-based assists — damage/debuff/heal/short-buff within the assist window earns an assist via a fixed-point support chain (replaces proximity); duration-gated so combat buffs count and maintenance buffs don't
-- [x] HUD revive countdown + kill feed — center-screen respawn countdown (client-ticked, re-synced on `/reload` while dead); transient feed for player kills (per-POV text, team-relative colours, class emblems) and non-player deaths (creep/tower/neutral/environment, category label + icon)
-- [x] YAML content configs — per-map generator configs migrated from JSON to commented YAML (inline field docs); generators read via PyYAML, generated SQL byte-identical
-- [x] Inhibitors + super minions — a passive inhibitor gates each base behind the tower; taking it fields stronger "super minion" waves for the attacker until it respawns, then the base re-locks. The base (core) is now the win condition — destroy the enemy base to win.
-- [x] Gear and items infrastructure — one shopkeeper NPC per base opening a League-style shop panel drawn by the MobaHUD addon: four tabs (starting gear free with random-suffix bundles, consumables, rare, epic), icon grid with real item tooltips and suffix stats, sidebar filters with counts, and server-pushed usability greying. Per-map `store_config.yaml` generates both the SQL and the addon's `Catalog.lua`; suffix availability is derived from `item_template`, purchases are team-gated and all-or-nothing, and everything the match hands out — purchases and looted drops alike — is tracked and stripped on exit
-- [x] Sell items back — drop a bag item anywhere on the shop's catalog area to refund it; the drop zone appears only while an item is on the cursor. Price is `sell_ratio` of what it cost (per unit, so partial stacks work), or a `sell:` value on a creep/neutral item drop. Only what the match gave you can be sold, and only from inside your base
-- [x] Shop access — a draggable minimap button opens the panel from anywhere on the map, so a build can be planned on the walk back; an optional keybind (assigned in the game's Key Bindings UI) does the same, and right-clicking the shopkeeper still works. Buying and selling now gate on standing inside your base circle — the fountain's radius, so shopping and regen are one place — rather than on reaching the NPC, with Purchase greyed and the sell zone suppressed while you're outside it
-- [x] Match economy — a per-match gold wallet that funds the shop and never touches your character's real money. Fed by an opening stipend, a passive tick, last-hit gold from minions and neutrals, player kills, and objective gold from towers and inhibitors (flat to the whole team, plus a bonus to whoever lands the blow). Shown on the HUD bar beside CS. Minion gold now pays the last hitter alone rather than being split across nearby teammates, and corpses are invisible and unlootable to everyone else. Tuned per map from `base_config.yaml` and `tower_config.yaml`
-- [x] Kill feed coverage — the feed now reports structures (tower, inhibitor and core destroyed, inhibitor respawning and returned, each naming its lane), kill streaks (first blood, multi-kills, spree tiers, shutdowns with bounty gold, aces), match flow (minion warnings, victory/defeat) and boss neutrals (spawning soon, spawned, slain by team). Five ranked slots with per-tier lifetimes evict by importance rather than age, and the feed outlives the match so the result line stays readable
-- [x] Surrender vote — a team ends the match early without a core kill. `.surrender` (alias `.ff`) opens a vote once a per-map timer has elapsed and counts as a yes; `.surrender no` refuses, and a refusal that puts the threshold out of reach fails the vote immediately rather than waiting out the clock. Passing takes all-but-one of the team, floored so a duo needs both. Vote traffic is team-only — the enemy learns nothing until it passes, at which point both sides get a feed line saying why, ahead of the usual victory/defeat pair. A match that ends with no winner now says so instead of freezing the bar in silence. Premature finish stays LoL-style: a team that loses players keeps playing rather than forfeiting
+- [x] Cross-faction teams, via mod-cfbg
+- [x] Heal, shield and cleanse your own minions; stat buffs rejected as inert
+- [x] Last-hit kill credit (CS) for minions and neutrals
+- [x] Kill-credit window — a death to a creep or tower still credits a recent attacker
+- [x] Contribution-based assists — a fixed-point support chain, replacing proximity
+- [x] On-death drops for minions and neutrals
+- [x] Player kill drops — granted directly, no corpse
+- [x] Match economy — a per-match wallet fed by CS, kills, objectives and a passive tick
+- [x] Item shop — four tabs, addon panel, real tooltips, server-pushed usability greying
+- [x] Sell items back — only what the match gave you, only from your base
+- [x] Shop access — minimap button, keybind, and a base-circle gate on trading
+- [x] HUD bar — clock, team score, KDA, creep score, gold
+- [x] Revive countdown
+- [x] Kill feed — kills, structures, streaks, bosses, match flow
+- [x] Surrender vote — `.surrender` / `.ff`, all-but-one, team-only until it passes
+- [x] Per-map content bundles; YAML configs generate the SQL
 
 Next, in order:
 
-- [ ] Custom map/terrain — move onto the Twisted Treeline map (WMO route, ADT fallback; see `MOBA_MAP_WMO_PLAN.md`)
-- [ ] Standalone battleground ID via `BattlemasterList.dbc` patch (client MPQ distributed to players) — bundles with the custom-map work
-- [ ] Client-patch bundle - recall tooltip / animation, fountain heal visuals, custom battle sounds, music
-- [ ] Lane mob and neutral mob gold pass
-- [ ] Player kill rewards and bounties — gold values, bounty scaling, and assist-gold split on top of the shipped kill/assist attribution
+- [ ] Custom map — move onto Twisted Treeline (see `MOBA_MAP_WMO_PLAN.md`)
+- [ ] Standalone battleground ID via a `BattlemasterList.dbc` patch — bundles with the map work
+- [ ] Client-patch bundle — recall tooltip and animation, fountain visuals, sounds, music
+- [ ] Lane and neutral mob gold pass
+- [ ] Player kill rewards and bounties — values, scaling, assist-gold split
 - [ ] Itemization pass
-- [ ] Boss steal line — announce when the killing blow on a boss goes to the team that did less damage; needs per-camp damage attribution, and only becomes meaningful once a contested execute (a smite-like ability) exists
-- [ ] Character creation scripts / level up automation - have the ability to create characters at a given level that have everything trained / learned, including armor proficiencies, weapon skill, class quest abilities, give bags, etc
+- [ ] Boss steal line — needs per-camp damage attribution and a contested execute
+- [ ] Character creation and level-up automation for test characters
 
 ## Housekeeping
 
-Code/doc chores — cleanups, audits, convention passes — that don't change gameplay. Not the feature roadmap above; not CLAUDE.md's "Deferred / known-untidy", which tracks live traps an editor must know while changing code.
+Code and doc chores that don't change gameplay. Not the roadmap above, and not CLAUDE.md's "Deferred / known-untidy", which tracks live traps an editor must know while changing code.
 
-- [x] Docs / code-comment pass — cut duplication and per-session context cost
+- [x] Docs and code-comment pass — cut duplication and per-session context cost
 - [x] `GetBgTeamId` vs `GetTeamId` audit across `BattlegroundMOBA`
-- [x] Split `MobaHUD.lua` into one file per UI — `Bar` / `Feed` / `Shop` over a shared `Core` namespace, orchestrated by `MobaHUD.lua`; an error in one UI no longer takes the others down
+- [x] Split `MobaHUD.lua` into one file per UI over a shared `Core` namespace
 - [ ] Remove all creep types being set to beast
-- [ ] `BG_MOBA_Score` enum holds only the Flurry achievement ID — decide whether EotS achievements should fire at all in this mode
-- [ ] Remove leftover `m_BuffChange = true` from the `BattlegroundMOBA` constructor (buffs were removed; harmless)
+- [ ] `BG_MOBA_Score` holds only the Flurry achievement ID — decide whether EotS achievements should fire at all
+- [ ] Remove leftover `m_BuffChange = true` from the `BattlegroundMOBA` constructor
 
-## Key changed files
+## Building and running
 
-| File | Change |
-|---|---|
-| `src/server/game/Battlegrounds/Zones/BattlegroundMOBA.{h,cpp}` | New battleground class (cloned from EotS, being reshaped) |
-| `src/server/game/Battlegrounds/BattlegroundMgr.cpp` | `BATTLEGROUND_EY` factory entries point to `BattlegroundMOBA` |
-| `src/server/game/Movement/MotionMaster.{h,cpp}` | Added public `MoveWaypoint(WaypointPath&, bool)` overload (mid-route path resume for lane creeps) |
-| `client/addons/MobaHUD/` | Client addon, one file per UI over a shared `Core.lua` namespace: HUD bar (KDA, CS, clock), revive countdown, kill/death feed, and the item-shop panel — fed by server `LANG_ADDON` messages |
-| `src/server/scripts/Custom/moba_hud.cpp` | Answers the addon's "ready" ping with current HUD state (group-chat `OnPlayerCanUseChat` hook) |
-
-## Building (macOS, Apple Silicon)
-
-Standard AzerothCore build, with two extra CMake hints because Homebrew's OpenSSL and GNU readline are keg-only on macOS (the system provides libedit, which lacks symbols the worldserver console needs):
-
-```bash
-brew install openssl@3 readline mysql cmake boost
-
-mkdir -p var/build/obj && cd var/build/obj
-cmake ../../../ \
-  -DCMAKE_INSTALL_PREFIX=$(pwd)/../../../env/dist \
-  -DOPENSSL_ROOT_DIR=/opt/homebrew/opt/openssl@3 \
-  -DREADLINE_INCLUDE_DIR=/opt/homebrew/opt/readline/include \
-  -DREADLINE_LIBRARY=/opt/homebrew/opt/readline/lib/libreadline.dylib
-make -j$(sysctl -n hw.ncpu)
-make install
-```
-Then, from the repo root, run `./apps/moba/setup.sh` — it generates the runtime `worldserver.conf` and module confs from their tracked `.dist` templates and layers on machine-local overrides from `apps/moba/local.conf`. Databases self-populate on the first worldserver boot (base schema, updates, then the fork's custom SQL under `data/sql/custom/db_world/`).
-
-If using the acore.sh dashboard instead, the same flags can go in `conf/config.sh` as `CCUSTOMOPTIONS`.
-
-For other platforms, follow the standard [AzerothCore installation guide](https://www.azerothcore.org/wiki/installation) — nothing in this fork changes the build process itself.
-
-## Testing the battleground locally
-
-1. Build + install, then run `./apps/moba/setup.sh` (see Building above)
-2. Start `authserver` and `worldserver`, log in with a GM account
-3. In-game: `.debug bg` (must be re-run after every worldserver restart), then queue for Eye of the Storm — `.debug bg` forces the per-team minimum to 1, so a solo/small queue pops
-4. Level requirement is 61+; use `.character level 80` on a test character
-
-For solo (1-client) testing, add `CFBG.EvenTeams.Enabled` = 0 to `apps/moba/local.conf` and re-run `setup.sh` — a lone player is otherwise held as an uneven team. Cross-faction only shows itself with two characters (CFBG distributes multiple players across teams).
-
-## Syncing with upstream AzerothCore
-
-```bash
-git fetch upstream
-git rebase upstream/master   # or merge, per preference
-```
-
-`upstream` should point at `https://github.com/azerothcore/azerothcore-wotlk`.
+Standard AzerothCore — see the [installation guide](https://www.azerothcore.org/wiki/installation). Nothing in this fork changes the build. Fork-specific build flags, test setup and config live in `CLAUDE.md`; how to change any of the content is in [`MOBA_GUIDE.md`](MOBA_GUIDE.md).
 
 ## License
 
-GNU AGPL v3, inherited from AzerothCore. See [LICENSE](LICENSE).
+GNU GPL v2, inherited from AzerothCore. See [LICENSE](../LICENSE).

@@ -16,8 +16,9 @@ those and emit one combined SQL file per content type into
 > constraint between generators. Each script stays runnable alone.
 
 **Workflows live in `.github/MOBA_GUIDE.md`** — walking a lane, adding a creep,
-moving a tower. This file is the field-level reference those recipes point at:
-what each config key means, and the lockfile rules.
+moving a tower. **Per-field semantics live in each config's own YAML header**, next to
+the values they describe. This file holds what no single config can say: the pipeline,
+the policies spanning configs, and the ID rules.
 
 | Generator | Reads | Writes |
 |---|---|---|
@@ -25,7 +26,7 @@ what each config key means, and the lockfile rules.
 | `gen_neutral_camps.py` | `maps/<mode>/neutral_config.yaml` + source dumps in `sources/` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior/drops tables, native `creature_loot_template` rows |
 | `gen_creep_paths.py` | `maps/<mode>/lane_config.yaml` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data` |
 | `gen_tower_data.py` | `maps/<mode>/tower_config.yaml` | `mod_moba_towers.sql` — `creature_template`, models, `mod_moba_tower_data` |
-| `gen_base.py` | `maps/<mode>/base_config.yaml` | `mod_moba_base.sql` — `mod_moba_base`, the spawn-dome `gameobject_template` (+ `_addon`), plus the `game_graveyard` / `battleground_template` spawn wiring |
+| `gen_base.py` | `maps/<mode>/base_config.yaml` | `mod_moba_base.sql` — `mod_moba_base`, the spawn-dome `gameobject_template` (+ `_addon`), plus the `game_graveyard` / `battleground_template` wiring (spawn locations and `MinPlayersPerTeam`) |
 | `gen_store.py` | `maps/<mode>/store_config.yaml` + `data/sql/base/db_world/item_template.sql` | `mod_moba_store.sql` — shopkeeper `creature_template`, models and `creature` spawn rows, plus `mod_moba_store_npc`/`_menu`/`_grant`/`_sell` (and `_itemstage` when `custom_items` is on). **Also writes `client/addons/MobaHUD/Catalog.lua`** — the only generator emitting outside `data/sql/` |
 | `gen_player_drops.py` | `maps/<mode>/player_config.yaml` | `mod_moba_player_drops.sql` — the `Map`-keyed `mod_moba_player_drops` table, granted directly to the killer (no native loot) |
 | `id_alloc.py` | `id_blocks.json` + every `*.lock.json` and hand-assigned config field | nothing — it is the ID registry the others allocate through; `--audit` prints and checks the whole picture |
@@ -36,69 +37,16 @@ map's content. ID blocks are the one genuinely shared thing, and they live in
 `id_blocks.json` (see below). `gen_tower_data.py` owns the tower creatures
 outright: there is no hand-written defs file.
 
-## `lane_config.yaml` — human-owned, edit freely
+## Config field reference
 
-- `max_spacing` — max yards between generated nodes. **Keep at ~5.** Sparser
-  nodes break creep re-aggro: the engine's leash checks anchor to
-  waypoint-generator positions, and sparse nodes leave those anchors far from the
-  creature (see the guide's gotcha index).
-- `slots` — the default formation, one entry per creep path per team.
-  - `lateral_offset` — yards sideways from the centerline; **positive = the
-    walking creep's own left**. The value mirrors automatically for the other team
-    (they walk the other way), so one number describes both directions.
-  - `longitudinal_offset` — yards along travel; positive = ahead. Creeps spawn at
-    their path's first node, so this also staggers the formation at spawn.
-- `lanes` — one per lane: `name`, `points` (walked centerline as `[x, y, z]`
-  triples, in walk order), and optionally its own `slots` overriding the default
-  formation for that lane only.
+Each config documents its own fields, as an opening legend (`creep_config.yaml`,
+`neutral_config.yaml`, `lane_config.yaml`, `tower_config.yaml`, `store_config.yaml`) or as
+per-field comments (`base_config.yaml`). That is deliberately the home rather than this
+file: documentation read while editing the values stays honest, and documentation read a
+directory away does not.
 
-Direction naming: `forward` = the direction the points were walked (the team
-spawning at the first point uses it); `reverse` is generated for the other team.
-Only walk each lane once.
-
-## `creep_config.yaml` — human-owned
-
-All creeps in a file inherit its top-level `map` and spawn only on that map.
-
-`units` define what a creep **is**: name, team, role, source dump, display,
-level, modifiers, equipment, drops, and the caster fields (`attack_range` /
-`attack_interval_ms` / `attack_spell_id`). `creeps` rows **place** one — a `key`,
-the `unit` to use, and a `lane`/`slot` that already exists in the lane lockfile.
-Team 0 walks the slot's `forward` path, team 1 `reverse`.
-
-A row may override any field its unit sets. Overrides are wholesale per field,
-never merged: a row restating `drops` replaces the list rather than adding to it,
-and `drops: []` means none. A row may also omit `unit` and spell out every field
-itself. Units may not set `key`, `lane`, or `slot` — those place a creep, and two
-creeps resolving to the same team's lane/slot would share one waypoint path and
-spawn on top of each other (the generator rejects that).
-
-**One row = one unit per wave.** Wave size is the config's business, not the
-C++'s: add a row and a slot to field more of something. Roles differ only in when
-they spawn — melee and casters every wave, siege every third, super while the
-enemy inhibitor is down.
-
-Optional on either a unit or a row: `rank` (overrides the source's; siege ships
-`1` = elite), `creature_type` (enum `CreatureType`), and `speed_walk` /
-`speed_run` (multipliers on the source's).
-
-## `neutral_config.yaml` — human-owned
-
-Camps own placement, `respawn_ms`, and `aggro_range` / `leash_range`; mobs own
-stats, display, and `drops`. The ranges are denormalized per creature
-entry at generation time (proximity aggro is `creature_template.detection_range`
-— one value per entry), so a mob key placed in camps that disagree on ranges
-fails the run: give each camp its own keys. Mobs placed in no camp are skipped.
-
-Mobs use the same `units` mechanism as creeps: `units` define what a mob **is**,
-a `mobs` row names one with `unit:` and may override any field it sets, wholesale
-per field. A unit may not set `key` — placement lives on the camp's members, out
-of a unit's reach, so `key` is the only field that names one individual. `rank`
-and `creature_type` are optional on a unit or a mob and override the source's,
-same as on creeps — the jungle sources are Humanoid, so the units set
-`creature_type: 1` to keep camps Beasts.
-
-Entry lockfile rules are identical to the creep lockfile above.
+Two policies span those configs and so live here instead: the full-copy rule below, and
+the `drops` schema after it.
 
 ### The full-copy + override policy
 
@@ -123,19 +71,32 @@ Any creep or mob block may carry a `drops` list. Each entry is one reward with
 an optional `chance` coefficient in (0, 1], default 1.0, rolled independently
 per kill:
 
-- `{type: buff, spell: id, duration_ms: 0}` — aura granted directly
-  to the killing-blow player; `duration_ms` 0 = the spell's own duration.
-- `{type: gold, copper: n}` — coins in the corpse loot window.
-- `{type: item, item: id, count: n}` — native loot. The same item id
-  twice on one mob fails the run (`creature_loot_template` keys on
-  (Entry, Item)) — raise `count` instead.
+Personal — to the killing-blow player alone:
 
-buff/gold rows land in `mod_moba_*_drops` and are rolled in C++ at the killing
-blow; item rows land in native `creature_loot_template` (the one shared native
-table the generators touch — deleted by entry, never dropped). Loot-bearing
-mobs also get `lootid = entry`, zeroed `mingold`/`maxgold`, and the
-`NO_PLAYER_DAMAGE_REQ` `flags_extra` bit; rationale in the generator's
-docstring and drops section.
+- `{type: buff, spell: id, duration_ms: 0}` — aura granted directly; `duration_ms` 0 =
+  the spell's own duration.
+- `{type: gold, copper: n}` — coins in the corpse loot window, so the last hitter walks
+  up and collects them.
+- `{type: item, item: id, count: n, sell: copper}` — native loot. `sell` is what one unit
+  refunds at the shop, and without it the item cannot be sold back at all. The same item
+  id twice on one mob fails the run (`creature_loot_template` keys on (Entry, Item)) —
+  raise `count` instead.
+
+Team-wide — to the killer's whole team, flat per player, with no corpse. The objective
+payout a boss camp wants:
+
+- `{type: team_gold, copper: n}` — paid to every player on that team.
+- `{type: team_buff, spell: id, duration_ms: 0}` — the same delivery as an aura, and it
+  reaches **living players only**; nothing re-grants it on respawn.
+
+A boss may carry a team row *and* a plain `gold` row: the team gets its flat share and
+the last hitter still finds corpse gold.
+
+Everything except `item` lands in `mod_moba_*_drops` and is rolled in C++ at the killing
+blow. `item` rows land in native `creature_loot_template` (the one shared native table
+the generators touch — deleted by entry, never dropped), plus a pricing row when they
+carry `sell`. Loot-bearing mobs also get `lootid = entry`, zeroed `mingold`/`maxgold`,
+and the `NO_PLAYER_DAMAGE_REQ` `flags_extra` bit; rationale in the generator's docstring.
 
 Player kill drops (`player_config.yaml`) reuse this exact schema but skip native
 loot entirely — `item` is a rolled `AddItem` grant too, landing in
@@ -196,7 +157,6 @@ orphans every reference already in the DB. Don't.
 ## Reusing `gen_creep_paths.py` elsewhere
 
 Copy an existing `lane_config.yaml` into a new map bundle as
-`maps/<mode>/lane_config.yaml`
-replace the lanes with real ones. Output path and scanned-SQL dirs are generator
-constants now, not config fields. The lockfile is created next to the config on
-first run.
+`maps/<mode>/lane_config.yaml`, then replace the lanes with real ones. Output paths and
+scanned-SQL directories are generator constants, not config fields. The lockfile is
+created next to the config on first run.

@@ -1,20 +1,3 @@
-/*
- * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 #ifndef MOBA_TOWER_DATA_H
 #define MOBA_TOWER_DATA_H
 
@@ -23,12 +6,8 @@
 #include <unordered_map>
 #include <vector>
 
-// A structure's role in the MOBA push. Towers attack; inhibitors and cores are
-// passive (npc_moba_tower skips the attack tick for them). What differs is what
-// happens on death -- see BattlegroundMOBA::OnTowerDestroyed:
-//   TOWER     -- just unlocks whatever it guarded.
-//   INHIBITOR -- unlocks + grants the enemy super minions + respawns itself.
-//   CORE      -- the base; its destruction ends the match.
+// Towers attack; inhibitors and cores are passive (npc_moba_tower skips the attack tick
+// for them). What differs is what happens on death -- see OnTowerDestroyed.
 enum MobaStructureKind : uint8
 {
     MOBA_STRUCTURE_TOWER     = 0,
@@ -36,11 +15,9 @@ enum MobaStructureKind : uint8
     MOBA_STRUCTURE_CORE      = 2,
 };
 
-// Which lane a structure sits on. Kill-feed wording only -- nothing in the push
-// logic reads it. NONE is what a core carries: a base belongs to no lane, and
-// the HUD renders no lane word for 0, so that needs no special casing.
-// Mirrored by LANE_IDS in apps/moba/gen_tower_data.py and LANE_NAMES in
-// client/addons/MobaHUD/Feed.lua -- all three must agree.
+// Kill-feed wording only -- nothing in the push logic reads it. Mirrored by LANE_IDS in
+// apps/moba/gen_tower_data.py and LANE_NAMES in client/addons/MobaHUD/Feed.lua; all
+// three must agree.
 enum MobaLane : uint8
 {
     MOBA_LANE_NONE = 0,
@@ -70,9 +47,8 @@ struct MobaTowerConfig
     uint32 lastHitGoldCopper = 0;   // paid to the killing-blow player only; 0 = none
 };
 
-// Loads data/sql/custom/mod_moba_towers.sql's `mod_moba_tower_data` table once,
-// shared by BattlegroundMOBA::SetupBattleground() (needs the full row set to
-// spawn towers) and npc_moba_tower::Reset() (needs its own row, cheaply).
+// Loads `mod_moba_tower_data` once per process. Two accessors because the battleground
+// needs the full row set and a tower AI needs only its own row.
 class MobaTowerDataStore
 {
 public:

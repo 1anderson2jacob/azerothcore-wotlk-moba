@@ -1,32 +1,12 @@
-/*
- * This file is part of the AzerothCore Project. See AUTHORS file for Copyright information
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program. If not, see <http://www.gnu.org/licenses/>.
- */
-
 #include "BattlegroundMOBA.h"
 #include "Player.h"
 #include "ScriptMgr.h"
 #include "SpellAuras.h"
 #include "SpellInfo.h"
 
-// Kill-credit tracking. A player who damages or debuffs an enemy and then
-// disengages still gets the kill if that enemy dies (to anything) within the
-// configured window -- the LoL "you were recently in combat with them" rule.
-// All policy lives in BattlegroundMOBA; these are the global observation
-// points the BG can't see on its own. GetCharmerOrOwnerPlayerOrPlayerItself
-// filters PvE for free: a creep's hit resolves to no player and records nothing.
+// The global observation points the battleground cannot see on its own; all policy
+// lives in BattlegroundMOBA. GetCharmerOrOwnerPlayerOrPlayerItself filters PvE for
+// free: a creep's hit resolves to no player and records nothing.
 class moba_kill_credit_unitscript : public UnitScript
 {
 public:
@@ -40,8 +20,6 @@ public:
 
     void OnHeal(Unit* healer, Unit* victim, uint32& /*gain*/) override
     {
-        // Healing an ally is an assist-chain link. Overheal still fires OnHeal, so
-        // topping someone off pre-engage counts -- matching LoL.
         Player* allyPlr = victim ? victim->ToPlayer() : nullptr;
         Player* healerPlr = healer ? healer->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
         if (!allyPlr || !healerPlr)
@@ -56,8 +34,8 @@ public:
         if (!caster)
             return;
 
-        // Negative aura on an enemy = a debuff (kill credit + direct assist).
-        // Positive aura on an ally = a buff/shield (assist-chain link, if short).
+        // Negative on an enemy is a debuff (kill credit); positive on an ally is a
+        // buff/shield (assist-chain link, if short).
         if (aura->GetSpellInfo()->IsPositive())
             RecordBuff(caster, unit, aura->GetMaxDuration());
         else
@@ -74,8 +52,6 @@ public:
     }
 
 private:
-    // Enemy attacker (or its owner) damaged/debuffed a player victim -> kill-credit
-    // + direct-assist tracking. GetCharmerOrOwnerPlayerOrPlayerItself filters PvE.
     static void RecordDamage(Unit* attacker, Unit* victim)
     {
         Player* victimPlr = victim ? victim->ToPlayer() : nullptr;
@@ -86,8 +62,7 @@ private:
             moba->RecordPlayerDamage(victimPlr, attackerPlr);
     }
 
-    // Teammate buffer applied a positive aura to a player ally -> assist-chain link.
-    // The BG applies the same-team + duration-threshold policy.
+    // The BG applies the same-team and duration-threshold policy.
     static void RecordBuff(Unit* caster, Unit* target, int32 auraMaxDurationMs)
     {
         Player* targetPlr = target ? target->ToPlayer() : nullptr;

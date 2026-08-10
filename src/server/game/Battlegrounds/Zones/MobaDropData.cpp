@@ -17,10 +17,8 @@ void MobaDropDataStore::LoadIfNeeded()
 
     _loaded = true;
 
-    // Two tables with one schema so each generated SQL file stays fully
-    // self-contained; they merge here. Unlike the other Moba* stores, an
-    // empty result is NOT an error -- a map may simply define no drops --
-    // and a genuinely missing table already screams in the DB layer's log.
+    // Two tables with one schema, so each generated SQL file stays self-contained. An
+    // empty result is NOT an error -- a map may define no drops.
     uint32 count = 0;
     auto load = [&](char const* sql)
     {
@@ -35,8 +33,7 @@ void MobaDropDataStore::LoadIfNeeded()
             uint32 entry      = fields[0].Get<uint32>();
             MobaDropType type = MobaDropType(fields[1].Get<uint8>());
 
-            // Type 2 grants nothing at the killing blow, so it must not enter
-            // _byEntry -- GrantDeathDrops' loop stays about things it delivers.
+            // Grants nothing at the killing blow, so GrantDeathDrops must never see it.
             if (type == MOBA_DROP_ITEM)
             {
                 uint32 itemEntry = fields[6].Get<uint32>();

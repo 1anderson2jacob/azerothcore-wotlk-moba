@@ -38,9 +38,15 @@ time (a caster spell "not updating" that was actually a stale server).
 Then in-game: `.debug bg` (**required after every restart**, or the solo queue
 won't pop), queue for EotS, confirm.
 
-**Ad-hoc `UPDATE`s** on `mod_moba_*` are fine for live experimentation, but fold
-the final values back into `apps/moba/maps/<mode>/*.yaml` — the generated SQL is
-the source of truth and the next apply reverts anything not recorded there.
+**Ad-hoc `UPDATE`s** are fine for live experimentation, but fold the values back into
+`apps/moba/maps/<mode>/*.yaml`. Two different risks, and the second is the nasty one:
+
+- `mod_moba_*` tables are dropped and recreated every boot, so an unrecorded change is
+  reverted and you find out quickly.
+- Core tables (`battleground_template`, `creature_template`, `game_graveyard`) are only
+  ever touched by targeted `UPDATE`s, so an unrecorded change persists on your machine
+  forever and diverges silently from the repo. It will never fail for you, and will
+  always be wrong on a fresh database. `MinPlayersPerTeam` lived this way for a while.
 
 ---
 
@@ -48,90 +54,65 @@ the source of truth and the next apply reverts anything not recorded there.
 
 ### Towers
 
-`BattlegroundMOBA` holds a `std::vector<MobaTowerState>` registry (team, tier,
-guard dependency, destroyed flag), built in `SetupBattleground()` from
-`mod_moba_tower_data`. The slot count is runtime-sized from the row count —
-no per-tower enum.
+`BattlegroundMOBA` holds a `std::vector<MobaTowerState>` registry built in
+`SetupBattleground()` from `mod_moba_tower_data`. The slot count is runtime-sized from
+the row count, so there is no per-tower enum.
 
-- **Structure kinds** (`Kind` in `mod_moba_tower_data`): `tower` attacks;
-  `inhibitor` and `core` are passive (the AI skips its tick). On death,
-  `OnTowerDestroyed` always unlocks whatever the structure guarded and bumps the
-  worldstate counter, then branches on kind: a **core** (the base) ends the
-  battleground — that's the win condition; an **inhibitor** fields super minions
-  for the killer's team and schedules its own respawn (`RespawnMs`), which
-  re-locks the base and stops the super minions. Two callers: `HandleKillUnit`
-  (player kills) and `npc_moba_tower::JustDied` (creep kills).
-- **Guard/tier**: a structure with `GuardedByEntry` spawns unattackable and
-  unselectable until its guard dies (an attacking tower also skips its tick while
-  inert). `GuardedByEntry` is a single FK — linear chains only (tower → inhibitor
-  → base), no multi-guard AND-gating.
-- **Targeting** (`npc_moba_tower.cpp`), deliberately *unlike* creeps:
-  `REACT_PASSIVE` plus fully manual targeting, immune to taunt and kiting.
-  Nearest hostile non-player in range, else nearest hostile player; never another
-  tower. Separately, `moba_tower_aggro.cpp` — a global `UnitScript`, the only one
-  in this codebase — switches a tower onto an enemy player who damages or
-  hard-CCs an ally in range. That override is a creep→player transition only: the
-  lock never transfers between offenders, and releases when the target leaves
-  range, dies, or becomes untargetable.
+- **Structure kinds** (`Kind` in `mod_moba_tower_data`): `tower` attacks; `inhibitor` and
+  `core` are passive. What each does on death is `OnTowerDestroyed`, whose only caller is
+  `npc_moba_tower::JustDied` — the engine's own kill hook cannot serve, see the gotcha
+  index. Destroying a core ends the battleground; that is the win condition.
+- **Guard/tier**: a structure with `GuardedByEntry` spawns unattackable and unselectable
+  until its guard dies. It is a single FK, so chains are linear (tower → inhibitor →
+  base) with no multi-guard AND-gating.
+- **Targeting is deliberately *unlike* creeps**: `REACT_PASSIVE` plus fully manual
+  targeting, immune to taunt and kiting. Separately `moba_tower_aggro.cpp` — the only
+  global `UnitScript` in this codebase — switches a tower onto an enemy player who
+  damages or hard-CCs an ally in range.
 
 ### Lane creeps
 
-Waves spawn every 30s from `_bgEvents` (`EVENT_MOBA_SPAWN_WAVE`), both teams at
-once, siege on every 3rd. Creeps are `TempSummon`s tracked in `_spawnedCreeps`,
-not the persistent `BgCreatures` registry — see the comment on `SpawnCreep` for
-the two engine traps there.
+Waves spawn every 30s from `_bgEvents`, both teams at once, siege on every 3rd. Creeps
+are `TempSummon`s tracked in `_spawnedCreeps`, not the persistent `BgCreatures` registry.
 
-- **Targeting**, deliberately *unlike* towers: real `REACT_AGGRESSIVE`
-  threat/combat, so the engine's `ThreatManager` handles re-targeting on
-  death/CC/new attacker with no custom code. Casters override `AttackStart` to
-  hold at cast range instead of closing to melee.
-- **Formation** comes from a dedicated waypoint path per slot, not spawn offsets
-  on a shared path: `WaypointMovementGenerator` always targets node 1 of whatever
-  path it's given, regardless of where the creature actually spawned, so two
-  units sharing a path walk to the same node and collide. Each slot's path has
-  its own node 1 at that slot's spawn point.
-- **Leashing** (LoL-style, no run-back): a creep only attacks players within
-  `MOBA_CREEP_LANE_CORRIDOR` of its own lane, resumes the lane from where combat
-  ended, never regresses past its furthest node, keeps damage between fights
-  (`RegenHealth = 0`), and stands and fights at the lane's end. The engine's own
-  leash and home position are both unusable here — the corridor constant and
-  `ResumeLaneFromHere` in `npc_moba_creep.cpp` explain why. Mid-route resume uses
-  a fork-added `MotionMaster::MoveWaypoint(WaypointPath&, bool)` overload.
-  - **Assist rules**: players can heal/HoT/shield/cleanse their own minions but not
-  buff them, and minion buffs survive evade. Three mechanisms, each with its own
-  why-comment: `UNIT_FLAG_PLAYER_CONTROLLED` on the template (client-side
-  helpful-target gate, `gen_creep_roster.py`), the `moba_creep_spell_gate`
-  allow-list, and the inlined evade that skips `RemoveEvadeAuras`
-  (`npc_moba_creep.cpp`).
-- **End of match**: `FreezeAllCreeps()` stops the living ones; the AI separately
-  suppresses `Reset()`/evade afterward via `MatchEnded()`, or an evade would
-  re-arm the lane path.
-- **Creature stats** are full copies of a real source creature with a small
-  override list, enforced by `gen_creep_roster.py` — see `apps/moba/README.md`.
+- **Targeting is deliberately *unlike* towers**: real `REACT_AGGRESSIVE` threat, so the
+  engine's `ThreatManager` handles re-targeting on death, CC and new attackers with no
+  custom code. Casters override `AttackStart` to hold at cast range.
+- **Formation is one waypoint path per slot**, not spawn offsets on a shared path:
+  `WaypointMovementGenerator` always walks to node 1 of whatever path it is given,
+  wherever the creature actually spawned, so two units sharing a path collide. Slots are
+  declared in `lane_config.yaml` and their paths generated from it.
+- **Leashing is LoL-style, with no run-back** — a creep stays within a corridor of its
+  own lane, resumes from where combat ended, never regresses past its furthest node, and
+  stands and fights at the lane's end. Neither the engine's leash nor its home position
+  can express that; `npc_moba_creep.cpp` explains why, and mid-route resume needs the
+  fork-added `MotionMaster::MoveWaypoint(WaypointPath&, bool)` overload.
+- **Assist rules span three files**: `UNIT_FLAG_PLAYER_CONTROLLED` on the template
+  (`gen_creep_roster.py`) is what makes a creep a valid helpful-spell target at all, the
+  `moba_creep_spell_gate` allow-list decides which spells land, and the inlined evade in
+  `npc_moba_creep.cpp` is what lets minion buffs outlive a skirmish.
+- **End of match**: `FreezeAllCreeps()` stops the living ones, and the AI separately
+  suppresses `Reset()`/evade via `MatchEnded()`, or an evade would re-arm the lane.
+- **Creature stats** are full copies of a real source creature with a small override
+  list, enforced by `gen_creep_roster.py` — see `apps/moba/README.md`.
 
 ### Neutral camps (jungle)
 
-Camps hostile to both teams (faction 14), spawned by `BattlegroundMOBA` on a
-per-camp initial delay after doors, whole-camp respawn once the last member
-dies. Members are `TempSummon`s with `CORPSE_TIMED_DESPAWN` — the despawn type
-whose countdown only runs on a corpse, so a living camp never despawns. Camp
-state is `_camps` (`MobaCampState`); spawns/respawns are `_bgEvents` events
-(`EVENT_MOBA_SPAWN_CAMP_FIRST + camp index`).
+Camps hostile to both teams (faction 14), spawned by `BattlegroundMOBA` on a per-camp
+initial delay after doors, whole-camp respawn once the last member dies. Camp state is
+`_camps`; spawns and respawns are `_bgEvents` events.
 
-- **Aggro** is camp-configured: `aggro_range` 0 = pull-on-hit
-  (`REACT_DEFENSIVE`); >0 = proximity pull via
-  `creature_template.detection_range`, which is the exact radius at equal
-  levels. Camp-link (hit one, all attack) rides `DamageTaken`, not
-  `JustEngagedWith` — a one-shot kills before engagement ever starts.
-- **Leashing**, deliberately *unlike* creeps: stock evade (run home + full
-  heal) *is* the League camp reset, and home never drifts because no waypoint
-  generator runs. `leash_range` hard-caps the chase from the camp anchor
-  because the engine's leash is freshness-bypassed (see gotcha index).
-- **Kill rewards**: CS and on-death drops go to the killing-blow player in
-  `npc_moba_neutral::JustDied` via `GrantDeathDrops` — see "On-death drops".
-- **End of match**: frozen by `FreezeAllCreeps()`; `PullCampMates` and the
-  `JustDied` rewards are status-guarded so a frozen camp can't be re-activated
-  or farmed.
+- **Aggro is camp-configured** in `neutral_config.yaml`: `aggro_range` 0 means
+  pull-on-hit, above 0 rides the engine's proximity aggro via
+  `creature_template.detection_range`.
+- **Leashing is deliberately *unlike* creeps**: stock evade — run home, full heal — *is*
+  the League camp reset, and home never drifts here because no waypoint generator runs.
+  `leash_range` hard-caps the chase because the engine's own leash is freshness-bypassed
+  (gotcha index).
+- **Kill rewards** go through the same `GrantDeathDrops` choke point as lane creeps — see
+  "On-death drops" — but with no team guard, since either team may take any camp.
+- **End of match**: frozen by `FreezeAllCreeps()`, and the camp's own entry points are
+  status-guarded so a frozen camp cannot be re-activated or farmed.
 
 ### On-death drops
 
@@ -142,95 +123,73 @@ frozen post-match minions can't be farmed). Configured per mob as a `drops`
 list in `creep_config.yaml` / `neutral_config.yaml`; fields and types in
 `apps/moba/README.md`.
 
-- **Presentation is native WoW loot** (sparkle, right-click, loot window, gold
-  auto-split among nearby teammates, enemies see nothing), but the rules are
-  ours: `buff` grants the aura instantly; `gold` is injected into the corpse's
-  loot by `GrantDeathDrops` so it can carry a chance (template
-  `mingold`/`maxgold` can't); `item` rides native `creature_loot_template`
-  rows the engine rolls itself.
-- **The engine's loot rules fight last-hit attribution** in two places, both
-  deliberately defeated: loot rights follow the first *tapper's* group —
-  `GrantDeathDrops` re-points them at the killer's team, or strips the corpse
-  when no player landed the blow (no last hit, no loot; its comments cover the
-  GROUP_LOOT round-robin trap) — and reward eligibility normally requires half
-  the mob's health in player damage, so the generators stamp
-  `CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ` on loot-bearing mobs (comment in
-  `gen_creep_roster.py`).
+- **Presentation is native WoW loot** — sparkle, right-click, loot window — but the
+  rules are ours: `buff` grants instantly, `gold` is injected into the corpse so it can
+  carry a chance (template `mingold`/`maxgold` cannot), and `item` rides native
+  `creature_loot_template` rows the engine rolls itself.
+- **The engine's loot rules fight last-hit attribution** in two places, defeated in two
+  different files: loot rights follow the first *tapper's* group, which `GrantDeathDrops`
+  re-points or strips; and reward eligibility normally demands half the mob's health in
+  player damage, so the generators stamp `CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ` on
+  loot-bearing mobs (`gen_creep_roster.py`). Enforcement of "only the killing blow may
+  loot" is a third file again — `moba_loot_rights.cpp`.
 
 ### Player kill drops
 
-Player kills reward the killer directly — no corpse, no native loot, unlike the
-minion `GrantDeathDrops` above. `BattlegroundMOBA::GrantPlayerKillDrops` grants
-`buff`/`gold`/`item` straight to the credited killer (`AddAura` / `ModifyMoney` /
-`AddItem`): a player has no creature entry to hang loot on, and a lootable player
-corpse has only one `lootRecipient`, which couldn't extend to assists or bounties.
-Configured per-map (no per-mob home) in `player_config.yaml` — same `drops` schema
-as the minion configs (fields in `apps/moba/README.md`), but every type is a
-rolled-and-delivered grant.
+Player kills reward the killer directly — no corpse, no native loot, unlike the minion
+path above — because a player has no creature entry to hang loot on, and a lootable
+corpse has only one `lootRecipient`, which could never extend to assists or bounties.
+Configured per-map in `player_config.yaml`, sharing the minion `drops` schema (fields in
+`apps/moba/README.md`) but with every type rolled and delivered rather than looted.
 
 ### Kill credit and assists
 
-One choke point: `HandlePlayerDeath`, called from the `moba_kill_credit`
-UnitScript's `OnUnitDeath` (which fires for *every* death — creep, tower, fall, or
-player — unlike `HandleKillPlayer`, a deliberate no-op; see gotcha index). It owns
-the death tally too, so deaths to non-players finally score.
+All policy lives on `BattlegroundMOBA`; `moba_kill_credit.cpp` supplies the global
+observation points the battleground cannot see on its own, and its `OnUnitDeath` fires
+for *every* death — creep, tower, fall or player — which is why the death tally lives
+there rather than in the engine's kill hooks (gotcha index).
 
-- **Kill credit window.** A player who damaged or debuffed an enemy (`OnDamage` /
-  negative `OnAuraApply`, tracked in `_recentAttackers`) still gets the kill if that
-  enemy dies to anything within `kill_credit_window_ms` and no crediting player
-  landed the blow. A real enemy killing blow always wins over the fallback.
-- **Contribution assists**, replacing proximity. At death the credited killer plus
-  everyone who damaged/debuffed the victim within `assist_window_ms` are the direct
-  participants; then anyone who healed (`OnHeal`) or applied a *short* buff/shield to
-  a participant is added, expanded to a fixed point — the "up to N hops" support
-  chain, bounded by team size. Attribution only; assist gold is deferred to the
-  bounty pass.
-- **The buff duration gate** (`assist_buff_max_duration_ms`) separates a combat
-  cooldown (Power Infusion, Bloodlust, Power Word: Shield — count) from a maintenance
-  buff (Fortitude, Blessing of Wisdom — don't). Healing has no gate; overheal counts.
+- **Kill credit window.** A player who damaged or debuffed an enemy still gets the kill
+  if that enemy dies to anything within the window and no crediting player landed the
+  blow. A real enemy killing blow always beats the fallback.
+- **Contribution assists**, replacing proximity: direct damage and debuffs, then anyone
+  who healed or short-buffed a participant, expanded to a fixed point. Attribution only —
+  assist gold is deferred to the bounty pass.
+- **A duration gate** separates a combat cooldown (Power Infusion, Power Word: Shield —
+  count) from a maintenance buff (Fortitude, Blessing of Wisdom — don't). Healing has no
+  gate; overheal counts.
 
-Windows and the gate are per-map config (`base_config.yaml` → `mod_moba_base`).
+All three windows are per-map config (`base_config.yaml` → `mod_moba_base`).
 
 ### Respawn
 
 LoL-style individual respawn, replacing the stock shared-pulse graveyard
 resurrection. No core engine edits.
 
-- Timer starts on **Release Spirit**, not death: `moba_respawn.cpp`
-  (`OnPlayerReleasedGhost`) → `StartRespawnTimer`. Never clicking Release just
-  leaves you dead — WoW behavior, intended.
-- Wait = `min(RespawnCapMs, RespawnBaseMs + RespawnPerMinMs × match-minutes)`,
-  measured from doors-open (`_matchElapsedMs` only accrues while
-  `STATUS_IN_PROGRESS`, so prep is excluded). Countdown and revive run in
-  `PostUpdateImpl`; revive teleports to `GetTeamStartPosition`, so a ghost that
-  wandered still lands at base.
-- **No spirit healers**: the spirit guides were removed so the stock revive queue
-  never populates and `_ProcessResurrect` can't race our timer. `game_graveyard`
-  1103/1104 are kept — they're the start-loc that spawn-in, release-repop
-  (`GetClosestGraveyard`), and respawn all share.
+- **The timer starts on Release Spirit, not death.** `moba_respawn.cpp` hands the death
+  to `StartRespawnTimer`; never clicking Release just leaves you dead, which is stock WoW
+  behaviour and intended. A prep-phase death cannot release at all — gotcha index.
+- **The wait scales with match time**, measured from doors-open, and is tuned per map in
+  `base_config.yaml`.
+- **No spirit healers**: the spirit guides were removed so the stock revive queue never
+  populates and `_ProcessResurrect` cannot race our timer. `game_graveyard` 1103/1104 are
+  kept — they are the one start-loc that spawn-in, release-repop and respawn all share.
 
 ### Recall and fountain
 
 Both are anchored to the team's base and configured from `base_config.yaml`.
 
-- **Recall hijacks Hearthstone** (item 6948 / spell 8690). `moba_recall.cpp`
-  prevents the home-bind teleport, sends the player to `GetTeamStartPosition`,
-  and clears the cooldown so it repeats; outside the BG it's an ordinary
-  Hearthstone. Being a real cast, movement and damage interrupt come free from
-  the spell engine. Cast time is overridden per-map by a small `Spell::prepare`
-  hook calling `GetRecallCastTimeMs`, and the client cast bar follows via
-  `SMSG_SPELL_START`. The empowered tier is gated on placeholder aura 1243
-  pending a real mechanic. `AddPlayer` grants a Hearthstone and clears its
-  cooldown on entry.
-- **Fountain**: `UpdateFountainHealing` (from `PostUpdateImpl`) restores a
-  percentage of max health and mana per tick to players inside their own spawn
-  dome, in or out of combat; enemies get nothing. The zone is
-  `mod_moba_base.FountainRadius` — the same number that sizes the dome
-  gameobject, so the heal zone and the barrier you can see are one thing.
-- **Cosmetic limit**: the Hearthstone's on-use tooltip still reads "Returns you
-  to \<bind\>" — client-rendered from the spell's bind, not changeable
-  server-side. Resolves when recall becomes its own spell in the client-patch
-  phase.
+- **Recall hijacks Hearthstone** (item 6948 / spell 8690). `moba_recall.cpp` redirects
+  the teleport; outside the BG it stays an ordinary Hearthstone. Being a real cast,
+  movement and damage interrupt come free from the spell engine. The cast time is the
+  one place this reaches into core code — a small `Spell::prepare` hook calling
+  `GetRecallCastTimeMs`, so the client cast bar follows automatically.
+- **The fountain heals inside the spawn dome**, in or out of combat, enemies excepted.
+  Its radius is `mod_moba_base.FountainRadius` — the same number that sizes the dome
+  gameobject and gates the shop, so the barrier you can see, the heal zone and the
+  trading zone are one thing by construction.
+- **Cosmetic limit**: the Hearthstone tooltip still reads "Returns you to \<bind\>",
+  client-rendered and not changeable server-side. Resolves in the client-patch phase.
 
 ### Surrender
 
@@ -238,31 +197,20 @@ A team ends the match by vote. `EndBattleground(TeamId)` stays the only exit —
 passed vote is that call with the other team, so the victory/defeat pair comes
 free and no new result path exists.
 
-- **One entry point.** `.surrender` (alias `.ff`, `moba_surrender.cpp`) starts a
-  vote when none is open and casts a yes when one is; `.surrender no` refuses.
-  Every rule — match running, time gate, cooldown, threshold — lives on
-  `BattlegroundMOBA::HandleSurrenderRequest`, so the command owns nothing but
-  argument parsing and the refusals personal to whoever typed it. An addon button
-  would call the same method and need no rules of its own.
-- **Threshold is all-but-one, floored**: `(teamSize <= 2) ? teamSize : teamSize - 1`,
-  with the initiator counting as a yes. That is League's 4-of-5 at full size, but a
-  duo needs both — at a plain `size - 1` a two-player team would surrender on one
-  player's say-so, which is what the vote exists to prevent. A lone player meets it
-  unaided, so a solo test resolves instantly and announces nothing.
-- **Failure is early, not only on the deadline.** A vote closes the moment the
-  threshold is out of reach — one refusal on a team of two leaves the remaining
-  player unable to get there — and earns that team a cooldown. Silence for the full
-  `vote_duration_ms` fails it the same way. `UpdateSurrenderVotes` (from
-  `PostUpdateImpl`, below the `STATUS_IN_PROGRESS` guard) re-evaluates every tick
-  rather than only on a ballot, because a player leaving shrinks the team and the
-  threshold with it.
-- **Vote traffic is system chat, not the kill feed.** The feed's wording lives
-  entirely in the addon and `N:<code>,<arg>` carries one number — it cannot say
-  "2 of 4" or name the initiator. `AnnounceToTeam` sends to the voting team only;
-  the enemy learns nothing until the vote passes, at which point both sides get the
-  usual per-recipient notice pair (`N:6`/`N:7`) ahead of victory/defeat.
-- **Ballots from players who have left do not count** — the roster a vote is
-  measured against is the one standing now, not the one that started it.
+- **One entry point.** `.surrender` (alias `.ff`) starts a vote when none is open and
+  casts a yes when one is. Every rule — match running, time gate, cooldown, threshold —
+  lives on `HandleSurrenderRequest`, so `moba_surrender.cpp` owns nothing but argument
+  parsing and the refusals personal to whoever typed it. An addon button would call the
+  same method and need no rules of its own.
+- **The threshold is all-but-one, floored**, and deliberately not config: a duo needs
+  both, because at a plain `size - 1` a two-player team surrenders on one say-so, which
+  is the unilateral behaviour the vote exists to remove.
+- **Failure is early**, not only on the deadline — a vote closes the moment the threshold
+  is out of reach and earns that team a cooldown.
+- **Vote traffic is system chat, not the kill feed**, because the feed's wording lives
+  entirely in the addon and its notice payload carries one number: it cannot say "2 of 4"
+  or name the initiator. The enemy learns nothing until the vote passes, at which point
+  both sides get the usual notice pair ahead of victory/defeat.
 
 ### Item shop
 
@@ -272,66 +220,44 @@ filters. Generated per map from `store_config.yaml` → `gen_store.py` →
 `mod_moba_store.sql` **and** `client/addons/MobaHUD/Catalog.lua`.
 `npc_moba_store.cpp` validates, charges, and grants.
 
-- **The addon is required; there is no gossip fallback.** The NPC keeps
-  `npcflag = 1` (`UNIT_NPC_FLAG_GOSSIP`) only because that is what makes it
-  right-clickable and fires `OnGossipHello` — no menu is ever sent. A player
-  without the addon gets a chat message. Maintaining two front ends forever was
-  judged worse than requiring the addon.
+- **The addon is required; there is no gossip fallback.** The NPC keeps its gossip flag
+  only because that is what makes it right-clickable — no menu is ever sent. Maintaining
+  two front ends forever was judged worse than requiring the addon.
 - **The catalog ships with the addon, not over the wire.** Browsing is entirely
-  client-side. The server still resolves every purchase from a node id, so a
-  stale `Catalog.lua` can only earn a refusal, never a wrong grant — but it *can*
-  show a wrong price, which is why regenerating means recopying the addon.
-- **`TabId` is a tab, not an NPC.** One shopkeeper serves all four tabs, so the
-  tab bought from is client-chosen; range and team gate the purchase, and the node
-  must exist for the requested tab. `mod_moba_store_npc` carries only
-  (entry, map, team).
-- **Team lives in `mod_moba_store_npc`, not in faction.** Shopkeepers are faction
-  35 (friendly to all) and immune; CFBG puts players of either faction on either
-  BG team, so faction cannot express team. The script refuses a mismatched
-  `GetBgTeamId`.
-- **Usability is the server's verdict, pushed once at `HELLO`.** `NU:` batches
-  name the entries the player cannot use; the addon greys those cards and disables
-  Purchase. It comes from the same `ItemUnusableReason` that issues the refusal,
-  so greying and refusal cannot drift. Affordability is separate and purely
-  client-side (`GetMoney()`) — which is why a card can be white-labelled with a
-  red price.
-- **Two kinds of leaf, one grant table.** A `pieces` group hangs one leaf per
-  random suffix and grants a whole bundle under it; an `items` group hangs one
-  leaf per fixed named item with no suffix. Which suffixes a base may legally roll
-  is derived from `item_template.RandomSuffix` joined to
-  `item_enchantment_template` and never hand-listed, so cloth's caster-only
-  suffixes and the wand's absence from physical bundles fall out of the data.
-- **Charged last, all-or-nothing.** Bag space is checked for the whole bundle,
-  then every item is pre-validated, and only then does money leave — see the
-  gotcha index.
-- **Everything granted is tracked and stripped — by GUID *plus* a per-entry count,
-  as a workaround.** Items are soulbound at grant and recorded in
-  `BattlegroundMOBA::_grantedItems` / `_grantedCounts`, so every exit path destroys
-  what the match handed out. The pair is only necessary because `custom_items` is
-  off and grants use stock entries, which are ambiguous — and the claim can outlive
-  the item, so a world-obtained copy of the same entry is not always safe
-  (known-untidy in `CLAUDE.md`). Cloning the catalog *and* drop items retires the
-  bookkeeping; `custom_items` alone does not, because looted drops keep stock entries.
-- **Sell is drag-and-drop, and only for what the match gave you.** Dropping a bag
-  item anywhere on the shop's content region refunds `sell_ratio` of what it cost;
-  looted drops refund the `sell` on their drop config. The drop zone is an overlay
-  that exists only while an item rides the cursor, and deliberately spares the tab
-  strip and footer — while it is up, every click it covers sells. 3.3.5 gives Lua no
+  client-side, and the server still resolves every purchase from a node id, so a stale
+  `Catalog.lua` can only earn a refusal, never a wrong grant. It *can* show a wrong
+  price, which is why regenerating means recopying the addon.
+- **A tab is not an NPC.** One shopkeeper serves all four, so the tab is client-chosen;
+  range and team gate the purchase.
+- **Team lives in `mod_moba_store_npc`, not in faction.** CFBG puts players of either
+  faction on either BG team, so faction cannot express team membership — the same reason
+  the kill feed sends team-relative sides rather than factions.
+- **Usability is the server's verdict, pushed once at `HELLO`**, and comes from the same
+  check that issues the refusal, so greying and refusal cannot drift. Affordability is
+  separate and purely client-side, which is why a card can be white-labelled with a red
+  price.
+- **Which suffixes a base may legally roll is derived**, not hand-listed — from
+  `item_template.RandomSuffix` joined to `item_enchantment_template` — so cloth's
+  caster-only suffixes and the wand's absence from physical bundles fall out of the data.
+- **Charged last, all-or-nothing** — bag space for the whole bundle, then every item
+  pre-validated, and only then does money leave. Gotcha index.
+- **Everything granted is tracked and stripped**, by GUID *plus* a per-entry count. The
+  pair is a workaround for `custom_items` being off: grants use stock entries, which are
+  ambiguous. Cloning the catalog *and* drop items retires the bookkeeping entirely;
+  `custom_items` alone does not, because looted drops keep stock entries. Known-untidy in
+  `CLAUDE.md`.
+- **Sell is drag-and-drop, and only for what the match gave you.** 3.3.5 gives Lua no
   item GUIDs and `GetCursorInfo` no source slot, so the addon hooks
-  `PickupContainerItem` to remember where the cursor item came from and sends
-  `SELL:<bag>,<slot>,<entry>`; the entry is a checksum the server refuses on
-  mismatch rather than resolving, so a stale pickup can only earn a refusal. The
-  slot mapping cannot name equipment slots, so equipped gear must be unequipped
-  first.
-- **Shopkeepers spawn from the `creature` table**, not `AddCreature` — they are
-  static props, and this avoids adding `BgCreatures` enum slots (an ordering trap
-  that has caused two boot bugs). It is also why this generator alone clears a
-  reserved entry window; see the gotcha index.
-- **`custom_items` is off.** The generator can clone every sold item under our own
-  entry (`+900000`) to own `SellPrice` and `Bonding`; the machinery is written and
-  gated, but the client renders an entry absent from its `Item.dbc` as a "?" icon
-  with zero suffix stats. Server-side both paths work — it flips on with the
-  client patch.
+  `PickupContainerItem` to remember where the cursor item came from and sends bag, slot
+  and entry; the entry is a checksum the server refuses on mismatch rather than
+  resolving. The mapping cannot name equipment slots, so gear must be unequipped first.
+- **Shopkeepers spawn from the `creature` table**, not `AddCreature` — they are static
+  props, and this avoids adding `BgCreatures` enum slots, an ordering trap that has cost
+  two boot bugs.
+- **`custom_items` is off.** The generator can clone every sold item under our own entry
+  to own `SellPrice` and `Bonding`; the machinery is written and gated, but the client
+  renders an entry absent from its `Item.dbc` as a "?" icon. It flips on with the client
+  patch.
 
 ### HUD bar
 
@@ -347,34 +273,27 @@ draws nothing: it owns the payload dispatch, the event frame and `/mobahud`.
 Anything shared between modules must be published on the `ns` table in
 `Core.lua` (Lua locals do not cross file boundaries).
 
-- **Payloads**: `T:<seconds>` starts/syncs the clock (the addon counts up locally
-  between messages), `S:<ally>,<enemy>,<k>,<d>,<a>,<cs>` updates the scoreboard,
-  `R:<seconds>` starts the revive countdown (client ticks down; `R:0` hides it),
-  `K:…` a player-kill feed line, `D:…` a non-player death feed line, `E` hides the
-  bar. `S:`/`K:`/`D:` are built **per recipient** (`BuildScoreboardBody`,
-  `BroadcastKillFeed`, `BroadcastNonPlayerDeath`) so team side and POV are
-  server-resolved; the addon owns only presentation (text, colours, icons). Full
-  field layouts live in the header comment of `MobaHUD.lua`.
-- **Numbers**: team kills from `_teamPlayerKills` (`HandleKillPlayer`); K/D from
-  the stock `SCORE_KILLING_BLOWS`/`SCORE_DEATHS` fields; A derived free as
-  `HonorableKills − KillingBlows`, since WoW already credits an honorable kill to
-  every teammate near the victim; CS from `BattlegroundMOBAScore::CreepKills`
-  (`HandleKillUnit`, lane creeps only — towers aren't in the creep store, so they
-  naturally don't count).
-- **When it sends**: doors-open, on every player kill (`K:` + scoreboard), to the
-  killer on a creep last-hit, on a non-player death (`D:`), a per-player `R:` on
-  Release Spirit, every 10s (`MOBA_HUD_RESYNC_MS`) as a resync, and `E` on match
-  end and early leave. Transient feed lines (`K:`/`D:`) are never re-sent; the
-  countdown `R:` is re-sent by `SendHudStateTo`, so it survives a `/reload` while dead.
-- **The ready ping**: pushing state from `AddPlayer` does **not** work — the
-  packet leaves while the client is still loading and is lost. The addon pings
-  once on `PLAYER_ENTERING_WORLD` and `moba_hud.cpp` answers with
-  `SendHudStateTo`, covering prep-join, mid-match join, and `/reload` with no
-  polling. Inbound addon messages have no dedicated script hook, so it rides
-  `PlayerScript::OnPlayerCanUseChat(..., Group*)` (battleground chat routes
-  through it) and returns `false` to consume the ping. Keep the "should the HUD
-  show?" decision on the **server** — it knows it's a `BattlegroundMOBA` on any
-  map; the addon would have to hard-code zone names.
+- **Payloads** are documented once, in the header comment of `MobaHUD.lua` — the file
+  that parses them. Everything carrying a side or a subject is built **per recipient**,
+  so team-relative colour and POV are server-resolved and the addon owns only
+  presentation (text, colours, icons).
+- **Numbers**: team kills from `_teamPlayerKills` (`HandlePlayerDeath`); K/D from the
+  stock `SCORE_KILLING_BLOWS`/`SCORE_DEATHS` fields; A derived free as
+  `HonorableKills − KillingBlows`; CS from `BattlegroundMOBAScore::CreepKills`, credited
+  by `CreditCreepKill` from both minion AIs, so jungle camps count as well as lane
+  creeps. Gold is the match wallet, never the character's money.
+- **When it sends**: doors-open, every feed-worthy event (kills, structures, streaks,
+  bosses, match flow), a per-player `R:` on Release Spirit, every 10s
+  (`MOBA_HUD_RESYNC_MS`) as a resync, and `E` on match end and early leave. Transient
+  feed lines are never re-sent; `R:` is, by `SendHudStateTo`, so it survives a
+  `/reload` while dead.
+- **The ready ping**: pushing state from `AddPlayer` does **not** work — the packet
+  leaves while the client is still loading and is lost. The addon pings once on
+  `PLAYER_ENTERING_WORLD` and `moba_hud.cpp` answers, covering prep-join, mid-match join
+  and `/reload` with no polling. Inbound addon messages have no dedicated script hook, so
+  it rides the group-chat hook, which battleground chat routes through. Keep the "should
+  the HUD show?" decision on the **server** — it knows it is a `BattlegroundMOBA` on any
+  map, whereas the addon would have to hard-code zone names.
 
 ---
 
@@ -384,47 +303,34 @@ Anything shared between modules must be published on the `ns` table in
 `maps/<mode>/tower_config.yaml`; `python3 apps/moba/gen_tower_data.py`; deploy.
 
 **Add a structure (tower, inhibitor, or base)** — add a block to the map's
-`tower_config.yaml` `towers` list; `gen_tower_data.py` generates the creature
-(`creature_template` + `creature_template_model`) and the placement row together,
-so there's no separate SQL to touch. Fields: `key` (a stable name — the entry is
-assigned for you into `tower_config.lock.json`), `team`, `kind`
-(`tower`/`inhibitor`/`core`), `tier`, `guarded_by`, `name`,
-`display_id`, `display_scale`, `health_modifier`, `.gps` coords, and the
-`attack_*` fields (inert for passive kinds). For an inhibitor also set
-`respawn_ms` and make sure the map has a `role: super` creep in
-`creep_config.yaml` — otherwise taking the inhibitor fields no super minions (the
-BG warns at boot). Run `gen_tower_data.py`; deploy. No C++ changes — the registry
-and slot count are data-driven.
+`tower_config.yaml` `towers` list, run `gen_tower_data.py`, deploy. The generator emits
+the creature rows and the placement row together, so there is no separate SQL, and no
+C++ changes are needed — the registry is data-driven. Field reference:
+`apps/moba/README.md`. For an inhibitor also set `respawn_ms` and give the map a
+`role: super` creep in `creep_config.yaml`, or taking it fields no super minions (the
+BG warns at boot).
 
 **Add a tier/guard dependency** — set `guarded_by` to the KEY of the structure
-that must die first; omit it entirely for "always vulnerable". The guarded tower
-die first. The guarded tower spawns inert and `OnTowerDestroyed` unlocks it
-automatically. Verify it can't be targeted initially, then becomes attackable and
-fires once its guard dies.
+that must die first; omit it entirely for "always vulnerable". The guarded structure
+spawns inert and is unlocked automatically. Verify it cannot be targeted initially,
+then becomes attackable and fires once its guard dies.
 
 **Change attack range or tick rate** — `attack_range` / `attack_interval_ms` in
 `tower_config.yaml`; `gen_tower_data.py`; deploy.
 
-**Change the projectile/spell** — `attack_spell_id` in `tower_config.yaml`.
-Tower damage isn't an independent stat; it's entirely whatever the spell deals.
-To retune damage without changing the look, use a different rank of the same
-spell family, or change `attack_interval_ms`. The current default (9053, a
-"Shoot" clone) deals real damage with no weapon dead zone, but its missile
-doesn't render on these prop-style display models (likely no bone attachment
-point). Towers cast `triggered = true` — deliberately instant and free, matching
-a turret.
+**Change the projectile/spell** — `attack_spell_id` in `tower_config.yaml`. Tower damage
+is not a separate stat; it is whatever the spell deals, so retune with a different rank
+of the same family or with `attack_interval_ms`. The default 9053 renders no missile on
+these prop-style models.
 
 **Change structure model, scale, or health** — `display_id` / `display_scale` /
 `health_modifier` for that structure in `tower_config.yaml`; `gen_tower_data.py`;
 deploy. `health_modifier` is a multiplier on level-based base health, not an
 absolute value.
 
-**Change what counts as hard CC for aggro override** — edit
-`MOBA_HARD_CC_MECHANIC_MASK` at the top of `moba_tower_aggro.cpp`. Currently the
-engine's `IMMUNE_TO_MOVEMENT_IMPAIRMENT_AND_LOSS_CONTROL_MASK` minus
-`MECHANIC_SNARE`/`MECHANIC_DAZE` (slows aren't hard CC), plus `MECHANIC_SILENCE`
-(not in the base mask, but loss of ability to act is the spirit of the rule).
-A judgment call — revisit if the trigger feels loose or tight in play.
+**Change what counts as hard CC for aggro override** — `MOBA_HARD_CC_MECHANIC_MASK` at
+the top of `moba_tower_aggro.cpp`; its comment records why the mask is neither the
+engine's nor a fresh one. C++ change.
 
 ## Recipes: creeps
 
@@ -432,7 +338,7 @@ A judgment call — revisit if the trigger feels loose or tight in play.
 curves and over bumps; node Z is interpolated linearly). Save the console
 scrollback, then `python3 apps/moba/gen_creep_paths.py --extract scrollback.txt`
 prints the points array. Paste it into that lane's `points` in
-`lmaps/<mode>/lane_config.yaml`. **Order matters** — the team on the `forward` path IDs
+`maps/<mode>/lane_config.yaml`. **Order matters** — the team on the `forward` path IDs
 (currently Alliance) spawns at the FIRST point; reverse the array if you walked
 the other way. Run `gen_creep_paths.py`; deploy. Path IDs come from the lockfile,
 so re-walking an existing lane needs no `mod_moba_creep_data` changes. Full field
@@ -444,7 +350,7 @@ and lockfile reference: `apps/moba/README.md`.
 swing unarmed without them), then a `creeps:` row placing it: `key`, `unit`,
 `lane`, `slot`. A unit says what a creep is, the row says where it walks, so
 `lane`/`slot` inside a unit is rejected. New slots go in
-`lmaps/<mode>/lane_config.yaml` first. Run `apps/moba/gen_all.sh`; deploy. Full
+`maps/<mode>/lane_config.yaml` first. Run `apps/moba/gen_all.sh`; deploy. Full
 field reference: `apps/moba/README.md`.
 
 **Field more of a creep** — one `creeps:` row is one unit per wave. Add a row
@@ -471,15 +377,14 @@ Run `gen_creep_roster.py`; deploy.
 more of a creep".
 
 **Change the lane-corridor width** — `MOBA_CREEP_LANE_CORRIDOR` at the top of
-`npc_moba_creep.cpp` (yards from the lane; the self-evade check adds +15
-headroom, and the rule gates player targets only). C++ change.
+`npc_moba_creep.cpp`; its comment covers what the number gates and what it does not.
+C++ change.
 
-**Make a creep's attack instant/free vs. a real cast** — the `triggered` argument
-of `DoCastVictim(_cfg->spellId, triggered)` in `npc_moba_creep.cpp`'s
-`CastAtVictim`. `true` bypasses cast time, mana, and GCD *regardless of the
-spell's own data* — right for towers, wrong for casters (we shipped that bug:
-Fireball looked instant and free until it was changed to `false`). Applies to all
-casters; not per-entry. C++ change.
+**Make a creep's attack instant/free vs. a real cast** — the `triggered` argument of
+`DoCastVictim` in `npc_moba_creep.cpp`'s `CastAtVictim`. `true` bypasses cast time, mana
+and GCD *regardless of the spell's own data* — right for a turret, wrong for a caster.
+We shipped that bug: Fireball was instant and free until it became `false`. Applies to
+all casters, not per-entry. C++ change.
 
 **Change which spells players can cast on allied minions** — the allow-list
 `switch` in `moba_creep_spell_gate::OnSpellCheckCast` (`npc_moba_creep.cpp`);
@@ -500,8 +405,8 @@ camps with different ranges fails the generator — use distinct keys.
 
 **Add or change an on-death drop** — edit the mob's `drops` list in
 `maps/<mode>/creep_config.yaml` or `neutral_config.yaml` (types and fields:
-`apps/moba/README.md`). Run that config's generator; deploy — full restart,
-drops load once per process. Buffs normally only on a camp's large.
+`apps/moba/README.md`). Run that config's generator; deploy — full restart, since drops
+load once per process. By convention only a camp's `_large` mob carries a buff.
 
 **Add a mob type** — a block in `mobs`, like adding a creep; a new source dump
 only if the existing baseline doesn't fit (all current camp mobs share the
@@ -512,14 +417,12 @@ creep melee source — identity is name + `display_id` + `display_scale`).
 All four live in one per-map bundle: `maps/<mode>/base_config.yaml` →
 `gen_base.py` → `mod_moba_base.sql`.
 
-**Move the spawn / respawn / graveyard point** — `game_graveyard` 1103/1104 drive
-three things at once: initial teleport-in (via `battleground_template` start-loc),
-release-repop, and respawn. `.gps` at the new ground-level spot, edit that team's
-`x`/`y`/`z`/`o` in the `spawn` block, run `gen_base.py`, deploy. The generator
-writes both the graveyard coords and the template's `StartLoc`/`StartO` — no hand
-`UPDATE`s. (The `WorldSafeLocs.dbc` gotcha below still applies.) Confirm both
-teleport-in and a post-death respawn. The spawn dome and the fountain heal zone are
-centered on this point at runtime, so both follow automatically — nothing else to move.
+**Move the spawn / respawn / graveyard point** — `.gps` at the new ground-level spot,
+edit that team's `x`/`y`/`z`/`o` in the `spawn` block, run `gen_base.py`, deploy. One
+point drives teleport-in, release-repop and respawn, and the dome and heal zone are
+centred on it at runtime, so nothing else has to move. The generator writes both the
+graveyard coords and the template's start-loc, so no hand `UPDATE`s. Confirm teleport-in
+*and* a post-death respawn. (The `WorldSafeLocs.dbc` trap still applies.)
 
 **Change respawn timings** — `respawn` block (`base_ms` / `per_min_ms` /
 `cap_ms`). Test an early death against one a few minutes in to see the scaling.
@@ -537,12 +440,10 @@ would confound the test.
 `hp_pct` / `mana_pct` percent of max per tick; mana users only). Test with
 `.damage 5000` in base, then walk out of the bubble and confirm it stops.
 
-**Change the base bubble radius** — `spawn.radius`. One number drives both halves
-of the bubble: the dome gameobjects' scale and `mod_moba_base.FountainRadius` (see
-`DOME_MODEL_HALF_EXTENT` in `gen_base.py` for the conversion). It is deliberately
-*not* written to `battleground_template.StartMaxDist` — see the gotcha index.
-Regenerate and restart, then confirm the dome visibly changed size *and* that
-healing reaches its new edge. Scale is uniform, so a wider dome is also a taller one.
+**Change the base bubble radius** — `spawn.radius`, which drives the dome's scale, the
+heal zone and the shop range together (`DOME_MODEL_HALF_EXTENT` in `gen_base.py` does the
+conversion). Regenerate and restart, then confirm the dome visibly changed size *and*
+that healing reaches its new edge. Scale is uniform, so a wider dome is also taller.
 
 **Change surrender timings** — `surrender` block. `min_match_ms` is the earliest a
 vote may start, measured from doors open (the clock on the HUD bar, not from
@@ -634,186 +535,94 @@ and lock persist per character (`MobaHUDDB`); `/mobahud reset` recenters.
 
 ## Gotcha index
 
-Traps whose full explanation lives in code — read the named comment before
-touching that area:
+One line per trap, pointing at the code comment that holds the explanation. About to
+touch one of these areas? Read the named comment first.
 
-- **Don't anchor logic to a waypoint-walker's home position** — home is stamped
-  to the creature's current position every moving tick. → `npc_moba_creep.cpp`,
-  `CanAIAttack` and `ResumeLaneFromHere`.
-- **The engine's 30 yd leash is skipped while combat stays "fresh"** — which is
-  why creeps enforce their own corridor. → `MOBA_CREEP_LANE_CORRIDOR` comment.
-- **Evade undoes "stop this creature" logic** — `EnterEvadeMode` synchronously
-  calls `MoveTargetedHome()` then `Reset()`, so a freeze doesn't survive a later
-  evade unless the AI knows to stay down. Reuse the `MatchEnded()` pattern for any
-  future "stop everything". → `npc_moba_creep.cpp`, `Reset` / `EnterEvadeMode`.
-- **`TempSummon` spawning has two traps** (the missing `TempSummonType` param and
-  the wrong despawn type). → `SpawnCreep` in `BattlegroundMOBA.cpp`.
-- **`BgCreatures.resize()` must precede the first `AddCreature`** — it asserts the
-  slot exists. → `SetupBattleground()`.
-- **`DoCastVictim(id, true)` bypasses cast time, mana, and GCD** regardless of the
-  spell's data. → "Make a creep's attack instant/free" above.
-- **Helpful spells aimed at a plain friendly NPC never reach the server** — the
-  client silently self-casts instead; `UNIT_FLAG_PLAYER_CONTROLLED` is what marks
-  a unit as a valid helpful-spell target. → `gen_creep_roster.py`,
-  `CREEP_UNIT_FLAG_PLAYER_CONTROLLED` comment.
-- **Stat buffs do nothing on creatures** (`Creature::UpdateStats` is a no-op).
-  → `npc_moba_creep.cpp`, `moba_creep_spell_gate` comment.
-- **Mechanical-type creatures are hard-immune to direct heals.**
-  → `creep_config.yaml`, `creature_type` legend.
-- **`battleground_template.StartMaxDist` must stay 0** — any non-zero value arms the
-  core's prep-phase leash, which teleports players back to spawn every 9s. Shipped as
-  a real bug: it read as a random position/orientation reset ~8s after loading in.
-  → `MobaBaseConfig` comment in `MobaBaseData.h`.
-- **A `gameobject_template` copy needs its `gameobject_template_addon` row too** —
-  faction and flags are read from nowhere else, so a copy without one spawns
-  faction 0 / flags 0: client-selectable, and clicking a DOOR opens it. Players could
-  lift their own spawn dome (shipped as a real bug). → `DOME_ADDON_FLAGS` in `gen_base.py`.
-- **A zero rotation quaternion is legal and means "derive from orientation"** —
-  `SetWorldRotation` falls back to a Z-axis rotation from the orientation, so
-  hand-computed `sin(o/2)`/`cos(o/2)` literals are redundant. → `SetupBattleground()`,
-  spawn-dome comment.
-- **An inlined evade must end with `EngagementOver()`** — omit it and the
-  creature stays "engaged" forever and ignores every later enemy.
-  → `npc_moba_creep.cpp`, `EnterEvadeMode`.
-- **Camp-link must ride `DamageTaken`, not `JustEngagedWith`** — a one-shot
-  kills before engagement starts and the pull never fires (shipped as a real
-  bug). → `npc_moba_neutral.cpp`, `DamageTaken` comment.
-- **`CORPSE_TIMED_DESPAWN`'s countdown only runs on a corpse** — the trap for
-  lane creeps is load-bearing for camps. → `SpawnCamp` in `BattlegroundMOBA.cpp`.
-- **`HandleKillPlayer` is intentionally empty** — the engine only calls it on a
-  player/pet killing blow, but MOBA deaths are as often finished by a creep, tower,
-  or environment, so all crediting + death tallying lives in `HandlePlayerDeath` via
-  `OnUnitDeath`. → `BattlegroundMOBA.cpp`, `HandleKillPlayer` / `HandlePlayerDeath`.
-- **Money must leave only after every item is pre-validated** — a
-  `CanStoreNewItem` inside the grant loop is too late: a unique item the player
-  already owns is refused there and the gold is already gone. The bundle path also
-  needs its own free-slot check, because per-item validation can't see the slots
-  the bundle's earlier pieces will take. → `npc_moba_store.cpp`, `TryPurchase`.
-- **Armour proficiency is cumulative upward** — plate implies mail, leather and
-  cloth, so a warrior can wear anything and the check that matters is refusing a
-  *mage* the plate set, never the reverse. Getting this backwards sends you
-  hunting a bug that isn't there. → `npc_moba_store.cpp`, `TryPurchase`.
-- **Faction-locked items are refused against the player's NATIVE race, not their
-  BG team.** `Player::CanUseItem` tests `ITEM_FLAG2_FACTION_HORDE/ALLIANCE`
-  against `GetTeamId(true)`, so under CFBG one player can buy an item their own
-  teammate cannot — unfairness *within* a side, invisible unless looked for. Six
-  Alliance-only items shipped in the rare tier before this was caught. → the
-  faction guard in `gen_store.py`'s `build()`.
-- **A generator that owns `creature` rows must clear a reserved entry WINDOW**,
-  not merely the entries it is about to insert. Deleting only what you insert can
-  add and modify but never remove, so an NPC dropped from a config stays spawned
-  forever. Only the store generator needs this — the others own templates only,
-  and an orphaned template is inert; an orphaned spawn is a live scripted NPC.
-  → `SHOP_ENTRY_MIN` in `gen_store.py`.
-- **Copy whole rows through a staging table, not a hand-listed column set** — an
-  upstream column change breaks the enumeration, and `item_template` has already
-  lost one. → `emit_item_copies` in `gen_store.py`.
-- **The 3.3.5 client relocates its player object on a map change rather than
-  recreating it** — field changes made in the tick a player leaves never reach it,
-  so stripped gear stays rendered until relog. `ForceValuesUpdateAtIndex` does not
-  help; it only marks fields dirty. → `RemovePlayer` in `BattlegroundMOBA.cpp`.
-  - **A Texture whose path does not resolve draws nothing at all** — no error, no
-  placeholder square, so wrong art is indistinguishable from a region you forgot
-  to show or size, and candidates have to be tried in the running client one at a
-  time. Only verified paths belong in committed code.
-  → `headerBand` in `Shop.lua`.
-- **`toplevel="true"` raises only the frame that was clicked** — the bag a player
-  picked an item from ends up above a shop overlay while every other open bag stays
-  below it, so no frame level both clears the panel's own children and loses to all
-  the bags at once. A full-panel drop target has to stand its mouse input down over
-  bags rather than try to out-level them. → `sellZone`'s `OnUpdate` in `Shop.lua`.
-- **Lane waypoints are emitted `move_type = RUN`**, so `speed_run` governs lane
-  pacing and `speed_walk` is inert — source creatures whose `speed_run` differs
-  drift out of formation. → `creep_config.yaml`, `speed_run` legend.
-- **Splitting a stack CLONES it under a new GUID** (`Player::SplitItem` →
-  `Item::CloneItem`), and looting MERGES into a stack the player already held. So
-  an item GUID names a stack but not whose items are inside it, and a granted
-  stack can end up under a GUID the match never recorded. Tracking match-granted
-  items needs a GUID set *and* a per-entry count — neither alone is right.
-  → `_grantedItems` / `_grantedCounts` in `BattlegroundMOBA.h`.
-- **Sell prices are per unit, as `item_template.SellPrice` is** — writing a whole
-  node's price onto each item it grants is a money printer. A 5-potion leaf
-  refunded 6250 on a 5000 purchase; a priced 9-piece bundle would have refunded
-  2.25x. → `note_sell` in `gen_store.py`.
-- **A `FontString` wider than its `SetWidth` wraps — it does not clip** — the
-  overflow becomes a second line that spills out of the parent's backdrop. Measure
-  the widest glyph at the live scale; never assume a font's digits are tabular, and
-  never hardcode 8. → `client/addons/MobaHUD/Bar.lua`, `WidestDigit`.
-- **Releasing spirit is impossible during BG prep** — `SPELL_PREPARATION` (44521)
-  carries `SPELL_AURA_PREVENT_RESURRECTION`, so `HandleRepopRequestOpcode` drops the
-  request silently while the client auto-accepts its own death popup. Anything waiting
-  on the released-ghost hook never runs, and an instanced map has neither a spirit
-  healer nor `Player::Update`'s auto-release as a fallback, so a prep death strands the
-  player — looking alive, but rooted and dead — for the whole match (shipped as a real
-  bug). → `moba_respawn.cpp`, `OnPlayerJustDied`.
-- **The no-winner line never fires at `MinPlayersPerTeam = 1`** — "neither team
-  meets a min of 1" means zero players, and `Battleground::Update` returns on an
-  empty BG before the status switch. Kept as a guard for a mode whose template
-  carries a real minimum. → `BroadcastMatchResult` comment in `BattlegroundMOBA.cpp`.
+- **Home position drifts on a waypoint walker** — restamped to the creature's current position every moving tick. → `npc_moba_creep.cpp`, `CanAIAttack` / `ResumeLaneFromHere`
+- **The engine's 30 yd leash is skipped while combat stays "fresh"** → `MOBA_CREEP_LANE_CORRIDOR`
+- **Evade undoes "stop this creature" logic** — reuse the `MatchEnded()` pattern for any future freeze. → `npc_moba_creep.cpp`, `Reset` / `EnterEvadeMode`
+- **An inlined evade must end with `EngagementOver()`** → `npc_moba_creep.cpp`, `EnterEvadeMode`
+- **`TempSummon` spawning has two traps** — the missing type param and the wrong despawn type. → `SpawnCreep`
+- **`CORPSE_TIMED_DESPAWN` only counts down on a corpse** → `SpawnCamp`
+- **`BgCreatures.resize()` must precede the first `AddCreature`** → `SetupBattleground`
+- **A zero rotation quaternion means "derive from orientation"** → `SetupBattleground`, spawn-dome comment
+- **`battleground_template.StartMaxDist` must stay 0** → `MobaBaseConfig` in `MobaBaseData.h`
+- **Camp-link must ride `DamageTaken`, not `JustEngagedWith`** → `npc_moba_neutral.cpp`
+- **`HandleKillPlayer` and `HandleKillUnit` are intentionally empty** → `BattlegroundMOBA.cpp`
+- **Releasing spirit is impossible during BG prep** → `moba_respawn.cpp`, `OnPlayerJustDied`
+- **The no-winner line is unreachable at `MinPlayersPerTeam = 1`** → `BroadcastMatchResult`
+- **`DoCastVictim(id, true)` bypasses cast time, mana and GCD** → "Make a creep's attack instant/free" above
+- **Helpful spells aimed at a plain friendly NPC never reach the server** → `CREEP_UNIT_FLAG_PLAYER_CONTROLLED` in `gen_creep_roster.py`
+- **Stat buffs do nothing on creatures** — `Creature::UpdateStats` is a no-op. → `moba_creep_spell_gate` in `npc_moba_creep.cpp`
+- **Mechanical-type creatures are hard-immune to direct heals** → `creep_config.yaml`, `creature_type` legend
+- **Lane waypoints are emitted `move_type = RUN`**, so `speed_walk` is inert. → `creep_config.yaml`, `speed_run` legend
+- **A `gameobject_template` copy needs its `gameobject_template_addon` row** → `DOME_ADDON_FLAGS` in `gen_base.py`
+- **Money must leave only after every item is pre-validated** → `npc_moba_store.cpp`, `TryPurchase`
+- **Armour proficiency is cumulative upward** — the check that matters is refusing a mage the plate set. → `TryPurchase`
+- **Faction-locked items test the player's NATIVE race, not their BG team** → the faction guard in `gen_store.py`'s `build()`
+- **Sell prices are per unit** — a whole node's price on each item it grants is a money printer. → `note_sell` in `gen_store.py`
+- **Splitting a stack clones it under a new GUID** — tracking granted items needs a GUID set *and* a per-entry count. → `_grantedItems` / `_grantedCounts` in `BattlegroundMOBA.h`
+- **Generators clear by reserved BLOCK, not by current roster** — a `DELETE` built from the roster can never name an entry the config no longer has, so a dropped mob's rows would live forever. All six generators do this. → `sql_window` in `id_alloc.py`
+- **Copy whole rows through a staging table, not a hand-listed column set** → `emit_item_copies` in `gen_store.py`
+- **The 3.3.5 client relocates its player object on a map change** — field changes made in the exit tick never arrive. → `RemovePlayer`
+- **A Texture whose path does not resolve draws nothing at all** — no error, no placeholder square. → `headerBand` in `Shop.lua`
+- **`toplevel="true"` raises only the frame that was clicked** → `sellZone`'s `OnUpdate` in `Shop.lua`
+- **A `FontString` wider than its `SetWidth` wraps rather than clipping** → `Bar.lua`, `WidestDigit`
 
-Traps with no single code home:
+## Traps with no code home
+
+No single line of code to hang these on, so this section is their home rather than an
+index to somewhere else.
 
 - **A chase does not end just because the target became invalid.**
-  `Creature::SelectVictim` can return null *without* evading or stopping the
-  attack (e.g. while anything still holds the creature on its threat list),
-  leaving a chase running on a stale victim. Never assume "target unattackable ⇒
-  evade fires" — this shaped the tower's lock-until-invalid design.
+  `Creature::SelectVictim` can return null *without* evading or stopping the attack
+  (e.g. while anything still holds the creature on its threat list), leaving a chase
+  running on a stale victim. Never assume "target unattackable ⇒ evade fires" — this
+  shaped the tower's lock-until-invalid design.
 - **`LOG_INFO` in a custom log category is silently dropped.** `Logger.root` in
-  worldserver.conf is ERROR-level; only categories with an explicit
-  `Logger.<name>` line pass INFO. Add e.g.
-  `Logger.bg.battleground=4,Console Server` when adding debug logging — nothing
-  appears otherwise. Cost a build cycle to discover.
-- **`OnTowerDestroyed` only fires from its two source hooks** — `HandleKillUnit`
-  needs a player-attributed killer, `JustDied` needs a registered creep killer. A
-  tower killed by anything else (environmental damage, a future non-creep source)
-  wouldn't trigger the win condition. Not a real scenario today; flagged if damage
-  sources expand.
-- **`WorldSafeLocs.dbc`** still backs `AllianceStartLoc`/`HordeStartLoc` — the
-  generator writes the `game_graveyard` row, but the DBC id must exist.
+  worldserver.conf is ERROR-level; only categories with an explicit `Logger.<name>` line
+  pass INFO. Add e.g. `Logger.bg.battleground=4,Console Server` when adding debug
+  logging — nothing appears otherwise. Cost a build cycle to discover.
+- **`OnTowerDestroyed` only fires from its two source hooks.** A tower killed by anything
+  else — environmental damage, a future non-creep source — wouldn't trigger the win
+  condition. Not a real scenario today; flagged if damage sources expand.
+- **`WorldSafeLocs.dbc`** still backs `AllianceStartLoc`/`HordeStartLoc` — the generator
+  writes the `game_graveyard` row, but the DBC id must already exist.
 - **Adding a column to a generated SQL table is a two-part trap.** The C++ store's
-  `SELECT` names the new column, so a *stale* generated `.sql` (which recreates the
-  old schema on boot) fails the whole query — silently zeroing every field that store
-  feeds (a missing `mod_moba_base` column takes down respawn/recall/fountain, not
-  just the new one). Re-run the generator. And the new column shifts the
-  trailing-comma: the previously-last DDL line needs a comma, the new last line must
-  not. Cost two boots.
-- **`AllowableClass` / `AllowableRace` encode "unrestricted" two ways** — `-1`
-  *and* the all-bits-set mask (`262143` / `2147483647`). Filtering on `-1` alone
-  silently drops legitimate items, and produced one confident, wrong "no such item
-  exists" conclusion during the shop's item pass.
-- **Consumables can be profession-gated** via `item_template.RequiredSkill` —
-  bandages need First Aid, bombs Engineering, Crazy Alchemist's Potion Alchemy. A
-  character without the skill simply cannot use what it bought.
-- **`data/sql/base/` is the *historical* schema** — the live schema is base +
-  `updates/`. `creature.id1` was renamed `id`; `item_template` lost `StatsCount`.
-  When hand-writing generated SQL, trust the `SELECT` in `ObjectMgr.cpp` — it must
-  match the live schema or the server wouldn't boot. Cost one failed apply.
-- **The 3.3.5 client caches creature and item data in `Cache/WDB` and never
-  re-asks.** A creature's name, subname and model are one cached record, so
-  renaming or remodelling an entry you have already clicked keeps showing the OLD
-  values until the client's `Cache/` folder is deleted — this looked like "the SQL
-  didn't apply" twice. Items behave the same: until an entry is cached
-  `GetItemInfo` returns nil and `SetHyperlink` renders a lone red "Retrieving item
-  information" line, whose colour is **indistinguishable from a failed
-  requirement** — so anything scanning a tooltip for red reads it as "cannot use",
-  and caching that verdict poisons the item for the session. Never cache a
-  conclusion drawn from client data that may not have arrived; better, ask the
-  server (which is why shop usability is pushed as `NU:` rather than scanned).
-- **A rename can *add* occurrences** — the same field is `snake_case` in yaml and
-  Python, `camelCase` in C++ and `PascalCase` in SQL, so a case-insensitive
-  find/replace also rewrites unrelated SCREAMING_CASE constants. Renaming
-  `respawn_warn_ms` silently turned `MOBA_INHIB_RESPAWN_WARN_MS` into
-  `MOBA_INHIB_spawn_warn_ms`, which still compiled and still linked. Confirming
-  the old token is gone proves nothing — count the new one too, and a *rise*
-  means something was over-matched.
-- **A stale `creature_template` looks like a client-side bug** — a creature whose
-  drops, timers and position are all correct can still show the wrong name,
-  because those come from tables that reloaded and the name comes from one that
-  did not. The client `Cache/` folder is the obvious suspect and the wrong one;
-  the fix is regenerating the SQL *and* restarting the worldserver. The
-  shopkeeper `Cache/` note above is the genuine client-side case — this is its
-  inverse, and they present identically.
-
+  `SELECT` names the new column, so a *stale* generated `.sql` (which recreates the old
+  schema on boot) fails the whole query — silently zeroing every field that store feeds.
+  A missing `mod_moba_base` column takes down respawn, recall and fountain, not just the
+  new one. Re-run the generator. And the new column shifts the trailing comma: the
+  previously-last DDL line needs one, the new last line must not. Cost two boots.
+- **`AllowableClass` / `AllowableRace` encode "unrestricted" two ways** — `-1` *and* the
+  all-bits-set mask (`262143` / `2147483647`). Filtering on `-1` alone silently drops
+  legitimate items, and produced one confident, wrong "no such item exists" conclusion.
+- **Consumables can be profession-gated** via `item_template.RequiredSkill` — bandages
+  need First Aid, bombs Engineering, Crazy Alchemist's Potion Alchemy. A character
+  without the skill simply cannot use what it bought.
+- **`data/sql/base/` is the *historical* schema** — the live schema is base + `updates/`.
+  `creature.id1` was renamed `id`; `item_template` lost `StatsCount`. When hand-writing
+  SQL, trust the `SELECT` in `ObjectMgr.cpp`: it must match the live schema or the server
+  wouldn't boot. Cost one failed apply.
+- **Stale server data and stale client cache present identically**, and the obvious
+  suspect is usually the wrong one. The 3.3.5 client caches creature and item records in
+  `Cache/WDB` and never re-asks, so renaming or remodelling an entry you have already
+  clicked keeps showing the OLD values until `Cache/` is deleted. But a creature whose
+  drops, timers and position are all correct and whose *name* is wrong is the inverse:
+  those come from tables that reloaded and the name from one that did not, so the fix is
+  regenerating the SQL *and* restarting the worldserver. Both looked like "the SQL didn't
+  apply". Items add a third face: until an entry is cached, `GetItemInfo` returns nil and
+  `SetHyperlink` renders a lone red "Retrieving item information" line whose colour is
+  **indistinguishable from a failed requirement** — so anything scanning a tooltip for red
+  reads it as "cannot use", and caching that verdict poisons the item for the session.
+  Never cache a conclusion drawn from client data that may not have arrived; better, ask
+  the server (which is why shop usability is pushed as `NU:`).
+- **A rename can *add* occurrences** — the same field is `snake_case` in yaml and Python,
+  `camelCase` in C++ and `PascalCase` in SQL, so a case-insensitive find/replace also
+  rewrites unrelated SCREAMING_CASE constants. Renaming `respawn_warn_ms` silently turned
+  `MOBA_INHIB_RESPAWN_WARN_MS` into `MOBA_INHIB_spawn_warn_ms`, which still compiled and
+  still linked. Confirming the old token is gone proves nothing — count the new one too,
+  and a *rise* means something was over-matched.
 
 ## Reference: values that live in code
 
