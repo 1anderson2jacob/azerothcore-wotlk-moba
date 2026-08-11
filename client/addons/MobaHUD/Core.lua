@@ -14,6 +14,9 @@ ns.C_DIM   = "|cff999999"
 ns.C_KILL  = "|cff33ff99"  -- "you slew" flavour (green)
 ns.C_DEATH = "|cffff3333"  -- "you died" flavour (red)
 ns.C_END   = "|r"
+-- Shared because the boss's kill-feed lines and its gold float must not drift apart.
+-- A swappable placeholder, like every other icon in the addon.
+ns.ICON_BOSS = "INV_Misc_Head_Dragon_01"
 
 -- The match wallet in copper, as last pushed by the server's S: payload. It lives
 -- here rather than in Bar.lua because the shop header and its affordability
@@ -47,17 +50,39 @@ local COIN_GOLD   = "Interface\\MoneyFrame\\UI-GoldIcon"
 local COIN_SILVER = "Interface\\MoneyFrame\\UI-SilverIcon"
 local COIN_COPPER = "Interface\\MoneyFrame\\UI-CopperIcon"
 
-function ns.MoneyFormatter(size, yOffset)
+local function Coins(size, yOffset)
     local function coin(path)
         return string.format("|T%s:%d:%d:0:%d|t", path, size, size, yOffset)
     end
-    local g, s, c = coin(COIN_GOLD), coin(COIN_SILVER), coin(COIN_COPPER)
+    return coin(COIN_GOLD), coin(COIN_SILVER), coin(COIN_COPPER)
+end
+
+function ns.MoneyFormatter(size, yOffset)
+    local g, s, c = Coins(size, yOffset)
 
     return function(copper)
         copper = tonumber(copper) or 0
         return math.floor(copper / 10000) .. g .. " "
             .. math.floor((copper % 10000) / 100) .. s .. " "
             .. (copper % 100) .. c
+    end
+end
+
+-- Same coin metrics for an amount read ONCE -- a gold float, not a watched total. It
+-- drops the empty denominations the comment above rules out for the wallet: nothing
+-- here is re-read a second later against a different shape.
+function ns.MoneyFormatterCompact(size, yOffset)
+    local g, s, c = Coins(size, yOffset)
+
+    return function(copper)
+        copper = tonumber(copper) or 0
+        local parts = {}
+        if copper >= 10000 then table.insert(parts, math.floor(copper / 10000) .. g) end
+        if math.floor((copper % 10000) / 100) > 0 then
+            table.insert(parts, math.floor((copper % 10000) / 100) .. s)
+        end
+        if copper % 100 > 0 or #parts == 0 then table.insert(parts, (copper % 100) .. c) end
+        return table.concat(parts, " ")
     end
 end
 

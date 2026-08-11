@@ -123,6 +123,15 @@ enum BG_MOBA_BossSide         // "B:" side field
     MOBA_BOSS_SIDE_NOBODY = 2   // a spawn belongs to no team
 };
 
+enum BG_MOBA_GoldSource       // "G:" source field; also gates whether one is sent
+{
+    MOBA_GOLD_SILENT    = 0,   // wallet moves, nothing floats
+    MOBA_GOLD_CORPSE    = 1,   // world float off the corpse
+    MOBA_GOLD_KILL      = 2,   // the rest float off the bar's gold column
+    MOBA_GOLD_STRUCTURE = 3,
+    MOBA_GOLD_OBJECTIVE = 4
+};
+
 struct MobaTowerState
 {
     ObjectGuid guid;
@@ -250,7 +259,8 @@ public:
     // Match wallet in copper -- deliberately NOT Player money, so no path that skips
     // a cleanup can touch real character wealth.
     uint32 GetMatchGold(Player* player) const;
-    void AddMatchGold(Player* player, uint32 copper);
+    void AddMatchGold(Player* player, uint32 copper, BG_MOBA_GoldSource source,
+                      std::string const& name = "");   // `name` reaches the client only for MOBA_GOLD_CORPSE
     bool SpendMatchGold(Player* player, uint32 copper);   // false = short, nothing spent
 
     void PullCampMates(Creature* member, Unit* attacker);
@@ -291,7 +301,7 @@ private:
     void UpdateFountainHealing(uint32 diff);
     void UpdatePassiveGold(uint32 diff);
     // Flat per player, NOT a split pot: team size never dilutes an objective.
-    void AwardTeamGold(TeamId team, uint32 copper);
+    void AwardTeamGold(TeamId team, uint32 copper, BG_MOBA_GoldSource source);
     // The IsAlive() gate is the DESIGN rule, not belt-and-braces: Unit::AddAura drops
     // dead targets but exempts any spell carrying SPELL_ATTR2_ALLOW_DEAD_TARGET.
     void AwardTeamBuff(TeamId team, uint32 spell, uint32 durationMs);

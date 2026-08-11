@@ -374,7 +374,7 @@ void BattlegroundMOBA::AddPlayer(Player* player)
     // absent wallet entry is the "never been paid" test.
     if (MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId()))
         if (cfg->startingGold && _wallets.find(player->GetGUID()) == _wallets.end())
-            AddMatchGold(player, cfg->startingGold);
+            AddMatchGold(player, cfg->startingGold, MOBA_GOLD_SILENT); // a float here would be sent while the client is still loading
 }
 
 void BattlegroundMOBA::RecordGrantedItem(Player* player, Item* item, uint32 count)
@@ -432,13 +432,17 @@ uint32 BattlegroundMOBA::GetMatchGold(Player* player) const
     return itr != _wallets.end() ? itr->second : 0;
 }
 
-void BattlegroundMOBA::AddMatchGold(Player* player, uint32 copper)
+void BattlegroundMOBA::AddMatchGold(Player* player, uint32 copper, BG_MOBA_GoldSource source,
+                                    std::string const& name)
 {
     if (!player || !copper)
         return;
 
     _wallets[player->GetGUID()] += copper;
     SendScoreboard(player);   // the bar column and the shop header read the same payload
+
+    if (source != MOBA_GOLD_SILENT)
+        SendHudMessage(player, Acore::StringFormat("G:{},{},{}", copper, uint32(source), name));
 }
 
 bool BattlegroundMOBA::SpendMatchGold(Player* player, uint32 copper)
@@ -458,7 +462,7 @@ bool BattlegroundMOBA::SpendMatchGold(Player* player, uint32 copper)
     return true;
 }
 
-void BattlegroundMOBA::AwardTeamGold(TeamId team, uint32 copper)
+void BattlegroundMOBA::AwardTeamGold(TeamId team, uint32 copper, BG_MOBA_GoldSource source)
 {
     if (!copper)
         return;
@@ -466,7 +470,7 @@ void BattlegroundMOBA::AwardTeamGold(TeamId team, uint32 copper)
     for (auto const& itr : GetPlayers())
         if (Player* player = itr.second)
             if (player->GetBgTeamId() == team)
-                AddMatchGold(player, copper);
+                AddMatchGold(player, copper, source);
 }
 
 void BattlegroundMOBA::AwardTeamBuff(TeamId team, uint32 spell, uint32 durationMs)
@@ -871,7 +875,7 @@ void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer, Unit* k
             else if (drop.type == MOBA_DROP_TEAM_GOLD)
             {
                 if (rewardTeam != TEAM_NEUTRAL)
-                    AwardTeamGold(rewardTeam, drop.copper);
+                    AwardTeamGold(rewardTeam, drop.copper, MOBA_GOLD_OBJECTIVE);
             }
             else if (drop.type == MOBA_DROP_TEAM_BUFF)
             {
@@ -909,7 +913,7 @@ void BattlegroundMOBA::GrantPlayerKillDrops(Player* killer)
                     }
                 break;
             case MOBA_PLAYER_DROP_GOLD:
-                AddMatchGold(killer, drop.copper);
+                AddMatchGold(killer, drop.copper, MOBA_GOLD_KILL);
                 break;
             case MOBA_PLAYER_DROP_ITEM:
                 killer->AddItem(drop.item, drop.count);
@@ -1118,7 +1122,7 @@ void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
             _firstBlood = true;
             flag = MOBA_KILL_FLAG_FIRST_BLOOD;
             if (cfg)
-                AddMatchGold(creditKiller, cfg->firstBloodGold);
+                AddMatchGold(creditKiller, cfg->firstBloodGold, MOBA_GOLD_KILL);
         }
         else if (cfg && cfg->spreeMin && victimSpree >= cfg->spreeMin)
         {
@@ -1127,7 +1131,7 @@ void BattlegroundMOBA::HandlePlayerDeath(Player* victim, Unit* killer)
             uint32 bounty = cfg->shutdownPerStreak * victimSpree;
             if (cfg->shutdownCapGold && bounty > cfg->shutdownCapGold)
                 bounty = cfg->shutdownCapGold;
-            AddMatchGold(creditKiller, bounty);   // guards 0 itself
+            AddMatchGold(creditKiller, bounty, MOBA_GOLD_KILL); // guards 0 itself
         }
 
         BroadcastKillFeed(creditKiller, victim, flag);
@@ -1235,9 +1239,9 @@ void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Pl
     // Behind the `destroyed` guard so nothing can double-pay, and unconditional on team
     // so a creep-finished structure still rewards the push. A re-killed inhibitor pays
     // AGAIN on purpose: taking the same objective twice is worth the same twice.
-    AwardTeamGold(winnerTeamId, itr->teamGoldCopper);
+    AwardTeamGold(winnerTeamId, itr->teamGoldCopper, MOBA_GOLD_STRUCTURE);
     if (lastHitter)
-        AddMatchGold(lastHitter, itr->lastHitGoldCopper);
+        AddMatchGold(lastHitter, itr->lastHitGoldCopper, MOBA_GOLD_STRUCTURE);
 
     // Unlock any structures this one was guarding.
     for (MobaTowerState& other : _towers)
@@ -1656,7 +1660,7 @@ void BattlegroundMOBA::UpdatePassiveGold(uint32 diff)
 
     for (auto const& itr : GetPlayers())
         if (Player* player = itr.second)
-            AddMatchGold(player, cfg->passiveCopper * ticks);
+            AddMatchGold(player, cfg->passiveCopper * ticks, MOBA_GOLD_SILENT);
 }
 
 // LANG_ADDON is what marks this as addon traffic client-side; the chat-type byte is

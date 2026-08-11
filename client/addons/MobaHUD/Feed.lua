@@ -131,8 +131,7 @@ local BOSS_SPAWNED  = 2
 local BOSS_SIDE_OURS  = 0
 local BOSS_SIDE_ENEMY = 1
 
--- Icon is a swappable placeholder, as with DEATH_SOURCE.
-local BOSS_ICON = "INV_Misc_Head_Dragon_01"
+local BOSS_ICON = ns.ICON_BOSS
 
 -- ---- revive countdown ----------------------------------------------------
 -- Big center-screen number while dead. Seeded once by "R:<sec>"; the client

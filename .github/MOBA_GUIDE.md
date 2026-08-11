@@ -267,11 +267,11 @@ patch, no DBC/MPQ. The server feeds it `LANG_ADDON` chat messages (prefix
 splits the message on a TAB into `(prefix, payload)`.
 
 The addon is one file per UI over a shared namespace: `Bar.lua` (this bar),
-`Feed.lua` (revive countdown, kill feed), and `Shop.lua` (the item-shop panel,
-under its own `MobaShop` prefix — see Item shop). `MobaHUD.lua` loads last and
-draws nothing: it owns the payload dispatch, the event frame and `/mobahud`.
-Anything shared between modules must be published on the `ns` table in
-`Core.lua` (Lua locals do not cross file boundaries).
+`Feed.lua` (revive countdown, kill feed), `Gold.lua` (the floating gold numbers)
+and `Shop.lua` (the item-shop panel, under its own `MobaShop` prefix — see Item
+shop). `MobaHUD.lua` loads last and draws nothing: it owns the payload dispatch,
+the event frame and `/mobahud`. Anything shared between modules must be published
+on the `ns` table in `Core.lua` (Lua locals do not cross file boundaries).
 
 - **Payloads** are documented once, in the header comment of `MobaHUD.lua` — the file
   that parses them. Everything carrying a side or a subject is built **per recipient**,
@@ -282,6 +282,12 @@ Anything shared between modules must be published on the `ns` table in
   `HonorableKills − KillingBlows`; CS from `BattlegroundMOBAScore::CreepKills`, credited
   by `CreditCreepKill` from both minion AIs, so jungle camps count as well as lane
   creeps. Gold is the match wallet, never the character's money.
+- **Gold floats split two ways** on the server's `BG_MOBA_GoldSource`: corpse loot draws
+  bare above your own character, every other source draws at the bar's gold column via
+  `ns.Bar.GoldAnchor` with a per-source icon. `MOBA_GOLD_SILENT` sends no payload at all
+  — passive income, starting gold and sell payouts move the wallet with no float, because
+  a number that pops every five seconds all match trains the eye to ignore the ones that
+  matter.
 - **When it sends**: doors-open, every feed-worthy event (kills, structures, streaks,
   bosses, match flow), a per-player `R:` on Release Spirit, every 10s
   (`MOBA_HUD_RESYNC_MS`) as a resync, and `E` on match end and early leave. Transient
@@ -568,6 +574,7 @@ touch one of these areas? Read the named comment first.
 - **A Texture whose path does not resolve draws nothing at all** — no error, no placeholder square. → `headerBand` in `Shop.lua`
 - **`toplevel="true"` raises only the frame that was clicked** → `sellZone`'s `OnUpdate` in `Shop.lua`
 - **A `FontString` wider than its `SetWidth` wraps rather than clipping** → `Bar.lua`, `WidestDigit`
+- **A 3.3.5 addon will have difficulties projecting a world position onto the screen** — corpse gold floats above your own character, not the corpse. → `PlayerPoint` in `Gold.lua`
 
 ## Traps with no code home
 

@@ -46,6 +46,7 @@ Shipped:
 - [x] HUD bar — clock, team score, KDA, creep score, gold
 - [x] Revive countdown
 - [x] Kill feed — kills, structures, streaks, bosses, match flow
+- [x] Gold floats — every earned coin announces itself; passive income and shop payouts stay silent
 - [x] Surrender vote — `.surrender` / `.ff`, all-but-one, team-only until it passes
 - [x] Per-map content bundles; YAML configs generate the SQL
 

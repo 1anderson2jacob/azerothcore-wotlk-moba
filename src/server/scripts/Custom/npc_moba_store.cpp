@@ -452,7 +452,7 @@ private:
         player->DestroyItemCount(item, sellCount, true);
 
         if (payout)
-            moba->AddMatchGold(player, payout);
+            moba->AddMatchGold(player, payout, MOBA_GOLD_SILENT);
 
         moba->SendShopMessage(player, Acore::StringFormat("SOLD:{}", payout));
     }

@@ -60,7 +60,7 @@ public:
         if (lootGuid.IsCreatureOrVehicle())
             if (Creature* corpse = player->GetMap()->GetCreature(lootGuid))
                 if (corpse->GetLootRecipientGUID() == player->GetGUID())
-                    moba->AddMatchGold(player, loot->gold);
+                    moba->AddMatchGold(player, loot->gold, MOBA_GOLD_CORPSE, corpse->GetName());
 
         loot->gold = 0;
     }

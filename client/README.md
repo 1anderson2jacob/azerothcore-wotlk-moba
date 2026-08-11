@@ -7,8 +7,8 @@ will land here too.
 ## addons/MobaHUD
 
 Everything the MOBA battleground draws on screen: the scoreboard bar (team score, KDA,
-creep score, gold, match clock), the centre-screen revive countdown, the kill feed, and
-the item-shop panel with its minimap button.
+creep score, gold, match clock), the centre-screen revive countdown, the kill feed, the
+floating gold numbers, and the item-shop panel with its minimap button.
 
 **Install** — copy `addons/MobaHUD` into your client's `Interface/AddOns/`, so you end up
 with `Interface/AddOns/MobaHUD/MobaHUD.toc`. Enable it at the character screen (AddOns

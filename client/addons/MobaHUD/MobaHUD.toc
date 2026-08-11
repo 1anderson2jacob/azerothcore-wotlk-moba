@@ -11,4 +11,5 @@ Catalog.lua
 Shop.lua
 Bar.lua
 Feed.lua
+Gold.lua
 MobaHUD.lua

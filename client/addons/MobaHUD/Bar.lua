@@ -332,6 +332,14 @@ ns.Bar = {
     FormatTime       = FormatTime,
     RelayoutForScale = RelayoutForScale,
 
+    -- Screen-space centre of the gold column, plus the bar's half-height so a caller can
+    -- clear the backdrop. Usable as a UIParent offset only because the bar is an
+    -- unscaled child of UIParent.
+    GoldAnchor       = function()
+        local x, y = goldNum:GetCenter()
+        return x, y, frame:GetHeight() / 2
+    end,
+
     -- ns.InitDB has already created MobaHUDDB.bar; this only fills the gaps.
     InitSavedVars = function()
         for k, v in pairs(DEFAULTS) do

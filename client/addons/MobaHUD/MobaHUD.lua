@@ -56,6 +56,16 @@
 --                                        warning's lead time in seconds); 0 unused
 --                                      Only 3/4 and 6/7 are per recipient -- everyone
 --                                      is told whether THEY won, never which faction did
+--   G:<copper>,<source>,<name>        transient gold float (per recipient):
+--                                        source 1 = corpse loot (floats above your own
+--                                                character), 2 = player kill,
+--                                                3 = structure, 4 = objective -- those
+--                                                three float off the bar's gold column
+--                                        name = the creature that dropped it, EMPTY for
+--                                        every source but 1
+--                                      A grant the server marks silent sends nothing at
+--                                      all: passive income, starting gold and sell
+--                                      payouts move the wallet without a float
 --   E                                  match over -- freeze the bar; it hides when
 --                                      you leave the instance, not on this
 
@@ -155,6 +165,8 @@ local function HandlePayload(payload)
     if boss then ns.Feed.Boss(boss); return end
     local notice = string.match(payload, "^N:(.+)$")
     if notice then ns.Feed.Notice(notice); return end
+    local gold = string.match(payload, "^G:(.+)$")
+    if gold then ns.Gold.Grant(gold); return end
 end
 
 local function Dispatch(prefix, payload)
@@ -214,7 +226,8 @@ end)
 SLASH_MOBAHUD1 = "/mobahud"
 SLASH_MOBAHUD2 = "/mhud"
 SlashCmdList["MOBAHUD"] = function(msg)
-    msg = string.lower(msg or "")
+    local raw = msg or ""
+    msg = string.lower(raw)
     if msg == "test" then
         ns.Bar.SetLocked(false)
         ns.Bar.Scoreboard("12,5,8,2,1,85,143500")
@@ -317,6 +330,21 @@ SlashCmdList["MOBAHUD"] = function(msg)
         Print("boss test: both spawn lines and all three slain forms.")
     elseif msg == "stop" then
         ns.Bar.Stop(); ns.Feed.Clear(); Print("hidden.")
+    elseif msg == "gold" or msg:match("^gold%s") then
+        -- Feeds the real G: handler, as /mhud sb does for the scoreboard. Parsed out of
+        -- `raw`, not `msg`: the trailing creature name is case-sensitive.
+        local payload = raw:match("^%s*%S+%s+(.+)$")
+        if payload then
+            ns.Gold.Grant(payload)
+            Print("gold float: " .. payload)
+        else
+            ns.Gold.Grant("4275,1,Ironforge Footman")   -- corpse loot -> world float
+            ns.Gold.Grant("30000,2,")                   -- player kill
+            ns.Gold.Grant("15000,3,")                   -- structure, team payout
+            ns.Gold.Grant("5000,3,")                    -- ...and its last-hit bonus: MERGES
+            ns.Gold.Grant("2500,4,")                    -- objective
+            Print("gold test: corpse + kill + two structure grants (one merged float) + objective.")
+        end
     elseif msg == "lock" then
         ns.Bar.SetLocked(true); Print("locked.")
     elseif msg == "unlock" then
@@ -336,7 +364,7 @@ SlashCmdList["MOBAHUD"] = function(msg)
         EndMatch()
         Print("match-end test: the base line stays up, the revive countdown clears.")
     else
-        Print("commands: test | time <m:ss> | sb <a,e,k,d,a,cs,gold> | kill | death | feed | feeddrop | struct | streak | notice | boss | end | shop | stop | lock | unlock | reset")
+        Print("commands: test | time <m:ss> | sb <a,e,k,d,a,cs,gold> | gold [copper,src,name] | kill | death | feed | feeddrop | struct | streak | notice | boss | end | shop | stop | lock | unlock | reset")
     end
 end
 
