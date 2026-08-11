@@ -123,3 +123,6 @@ local.properties
 /apps/moba/local.conf
 .github/MOBA_*_PLAN.md
 .clangd
+# fork: track the Blender blockout (overrides /var/* on line 17)
+!/var/blender/
+/var/blender/*.blend1

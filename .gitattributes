@@ -1,6 +1,21 @@
 # Auto detect text files and perform LF normalization
 * text eol=lf
 
+# fork: binary assets. Line 2's `* text eol=lf` is explicit `text`, not
+# `text=auto`, so it skips binary detection and silently strips CRLF pairs
+# from compressed files on add. `binary` unsets text and disables textual diff.
+*.blend   binary
+*.blend1  binary
+*.webp    binary
+*.png     binary
+*.blp     binary
+*.wmo     binary
+*.m2      binary
+*.dbc     binary
+*.mpq     binary
+*.wdt     binary
+*.adt     binary
+
 # Whitespace rules
 # strict (no trailing, no tabs)
 *.cpp    whitespace=trailing-space,space-before-tab,tab-in-indent,cr-at-eol
