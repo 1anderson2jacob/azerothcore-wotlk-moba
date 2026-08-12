@@ -20,6 +20,10 @@ moving a tower. **Per-field semantics live in each config's own YAML header**, n
 the values they describe. This file holds what no single config can say: the pipeline,
 the policies spanning configs, and the ID rules.
 
+**Client-side map authoring lives in `apps/moba/wmo/`** — the WMO export and
+verification toolchain for the custom-terrain route. It emits no SQL and is not
+part of `gen_all.sh`.
+
 | Generator | Reads | Writes |
 |---|---|---|
 | `gen_creep_roster.py` | `maps/<mode>/creep_config.yaml` + source dumps in `sources/` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data`, `mod_moba_creep_drops`, native `creature_loot_template` rows |
