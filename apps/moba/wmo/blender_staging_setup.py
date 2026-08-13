@@ -2,14 +2,19 @@
 # Run inside Blender 3.4 (Text Editor -> Open -> Run Script) on tt_staging_34.blend.
 # Idempotent: safe to re-run. Prints PASS/FAIL at the end. Save the .blend afterwards.
 
-import bpy, re, bmesh
+import bpy, re, bmesh, math
+from mathutils import Matrix, Vector
 
-ROOT_NAME  = "TwistedTreeline"
-DIR_PATH   = "World\\wmo\\TwistedTreeline\\"
-SET_NAME   = "Set_$DefaultGlobal"
-DOODAD_OBJ = "TT_TestDoodad_Lamppost"
-DOODAD_M2  = "World\\EXPANSION01\\DOODADS\\GHOSTLANDS\\Lampposts\\BE_Lamppost_Ghostlands01.m2"
-DOODAD_LOC = (0.0, 0.0, 0.0)
+ROOT_NAME   = "TwistedTreeline"
+DIR_PATH    = "World\\wmo\\TwistedTreeline\\"
+ROOT_WMO_ID = 9000              # MOHD.id; <= 32767 or the WMOAreaTable key aliases
+SET_NAME    = "Set_$DefaultGlobal"
+DOODAD_OBJ  = "TT_TestDoodad_Lamppost"
+DOODAD_M2   = "World\\EXPANSION01\\DOODADS\\GHOSTLANDS\\Lampposts\\BE_Lamppost_Ghostlands01.m2"
+DOODAD_LOC  = (0.0, 0.0, 0.0)   # server frame, i.e. post-rotation
+
+ORIENT_PROBE   = "TT_AltarEast_Pad"
+ORIENT_PROBE_X = 152.5          # its centre x in the 5.1 blockout; server frame wants -152.5
 
 COLLIDE = {
     "TT_Ground", "TT_Walls",
@@ -52,6 +57,26 @@ if present != SHIPPING:
                   % (sorted(SHIPPING - present), sorted(present - SHIPPING)))
     raise SystemExit("ABORT: " + errors[-1])
 
+# ---------------------------------------------------------------- 0b. server frame
+# The engine reads a global WMO back as server = (-model_x, -model_y, model_z), and
+# WBS writes Blender coordinates into MOVT verbatim -- so a 180 deg turn here makes
+# server coordinates equal the 5.1 blockout's own. Chain in apps/moba/wmo/README.md.
+def probe_x(name):
+    o  = bpy.data.objects[name]
+    xs = [(o.matrix_world @ Vector(c)).x for c in o.bound_box]
+    return (min(xs) + max(xs)) / 2.0
+
+if probe_x(ORIENT_PROBE) > 0.0:
+    R = Matrix.Rotation(math.pi, 4, 'Z')
+    for name in sorted(SHIPPING):
+        ob = bpy.data.objects[name]
+        ob.matrix_world = R @ ob.matrix_world
+    bpy.context.view_layer.update()
+    notes.append("turned the scene 180 deg about Z into the server frame")
+if abs(probe_x(ORIENT_PROBE) + ORIENT_PROBE_X) > 1.0:
+    errors.append("%s centres on x=%+.1f, server frame wants %+.1f"
+                  % (ORIENT_PROBE, probe_x(ORIENT_PROBE), -ORIENT_PROBE_X))
+
 # ---------------------------------------------------------------- 1. scene
 scene.wow_scene.type = 'WMO'
 scene.wow_scene.version = '2'                      # WotLK
@@ -70,6 +95,7 @@ if root.name not in scene.collection.children:
     errors.append("%s is not a direct child of the Scene Collection" % ROOT_NAME)
 root.wow_wmo.enabled  = True
 root.wow_wmo.dir_path = DIR_PATH
+root.wow_wmo.wmo_id   = ROOT_WMO_ID
 
 def child(parent, name):
     c = parent.children.get(name)
@@ -166,7 +192,10 @@ else:
 
 # ---------------------------------------------------------------- 8. report
 print("\n" + "=" * 72)
-print("root %r enabled=%s dir_path=%r" % (root.name, root.wow_wmo.enabled, root.wow_wmo.dir_path))
+print("root %r enabled=%s wmo_id=%d dir_path=%r"
+      % (root.name, root.wow_wmo.enabled, root.wow_wmo.wmo_id, root.wow_wmo.dir_path))
+print("orientation: %s centres on x=%+.1f (server frame wants %+.1f)"
+      % (ORIENT_PROBE, probe_x(ORIENT_PROBE), -ORIENT_PROBE_X))
 print("scene type=%s version=%s" % (scene.wow_scene.type, scene.wow_scene.version))
 print("Outdoor holds %d objects (expected 47)" % len(outdoor.objects))
 print("%s holds %d objects" % (SET_NAME, len(doodadset.objects)))

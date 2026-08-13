@@ -19,6 +19,10 @@ ARCHIVES  = ["patch-3.MPQ", "patch-2.MPQ", "patch.MPQ", "lichking.MPQ",
 F_DETAIL, F_COLLISION, F_RENDER = 0x04, 0x08, 0x20
 MOGP_UNREACHABLE, MOGP_ANTIPORTAL, MOGP_OUTDOOR, MOGP_HASCOLLISION = 0x80, 0x4000000, 0x8, 0x1
 
+ROOT_WMO_ID    = 9000              # must match blender_staging_setup.py
+ORIENT_PROBE   = "TT_AltarEast_Pad"
+ORIENT_PROBE_X = -152.5            # its centre x once the scene is in the server frame
+
 fails, warns = [], []
 def fail(m): fails.append(m); print("  FAIL  " + m)
 def warn(m): warns.append(m); print("  warn  " + m)
@@ -120,6 +124,10 @@ def main(root_path):
     print("        bbox %s .. %s" % (tuple(round(v, 1) for v in bb1), tuple(round(v, 1) for v in bb2)))
     if nGroups == 0:
         fail("MOHD declares 0 groups")
+    if rootId != ROOT_WMO_ID:
+        fail("rootWMOID is %d, expected %d -- WMOAreaTable will not resolve" % (rootId, ROOT_WMO_ID))
+    if rootId > 32767:
+        fail("rootWMOID %d exceeds int16; GetWMOAreaTableEntryByTripple narrows the key" % rootId)
 
     # -- textures -----------------------------------------------------------
     motx = got.get("MOTX", b"")
@@ -188,6 +196,7 @@ def main(root_path):
     # -- groups -------------------------------------------------------------
     stem = root_path[:-4]
     total_tris = total_coll = kept_groups = 0
+    probe_cx = None
     references = set()
     print("\n-- groups --")
     for gi in range(nGroups):
@@ -204,6 +213,9 @@ def main(root_path):
         if gver != 17:
             fail("%s MVER is %d, need 17" % (os.path.basename(gp), gver))
         gflags, = struct.unpack_from("<I", g["MOGP"], 8)
+        if names[gi] == ORIENT_PROBE:
+            gbb = struct.unpack_from("<6f", g["MOGP"], 12)
+            probe_cx = (gbb[0] + gbb[3]) / 2.0
 
         mopy = g.get("MOPY", b"")
         n_tri = len(mopy) // 2
@@ -258,6 +270,12 @@ def main(root_path):
     print("  triangles total           : %d" % total_tris)
     print("  triangles kept as COLLISION: %d" % total_coll)
     print("  doodads emitted to vmaps  : %d" % emitted)
+    if probe_cx is None:
+        warn("orientation probe %r not among the groups" % ORIENT_PROBE)
+    else:
+        print("  %-26s: x=%+.1f (want %+.1f)" % (ORIENT_PROBE, probe_cx, ORIENT_PROBE_X))
+        if abs(probe_cx - ORIENT_PROBE_X) > 1.0:
+            fail("model is not in the server frame; the map lands rotated 180 deg")
     if total_coll == 0:
         fail("ZERO collision triangles - the map would look perfect and be unwalkable")
     print("  %d fail, %d warn" % (len(fails), len(warns)))

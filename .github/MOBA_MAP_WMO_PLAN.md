@@ -2,15 +2,15 @@
 
 ## Status of this doc
 
-Steps 1 and 2 are complete. Steps 3–6 remain **unverified against tooling or
-engine source** — exact DBC columns, MPQ packing, extractor behaviour on a
-WMO-only map. Treat each as a thing to prove in its own focused session.
+Steps 1, 2 and 3 are complete. Steps 4–6 remain **unverified against tooling or
+engine source** — MPQ packing and extractor behaviour on a WMO-only map. Treat
+each as a thing to prove in its own focused session.
 
 **This file is scheduled for deletion when the map ships.** Anything here that
 is not specific to Twisted Treeline belongs in `apps/moba/wmo/README.md`, which
-survives — the procedure, the toolchain and the export traps have already
-moved. As each remaining step is proven, move its *how* there and leave only
-the decisions and results here.
+survives — the procedure, the toolchain, the export traps, the coordinate chain
+and the WDT/DBC mechanics have already moved. As each remaining step is proven,
+move its *how* there and leave only the decisions and results here.
 
 ## Context / decision
 
@@ -183,6 +183,11 @@ Check any candidate asset with `mpq_tool.py probe` before authoring with it:
 **0 bounding triangles renders and never collides, anything above 0 always
 collides.** There is no third option, which is why brush cannot be a doodad.
 
+**Dressing is also what ends the staging scene's disposability** — placements
+exist only in the 3.4 file and cannot round-trip through the OBJ. Decide how
+they are stored *before* authoring hundreds of them; see the step 3 notes in
+`apps/moba/wmo/README.md`.
+
 ## Editing the blockout — hard-won constraints
 
 Live the moment step 1 touches the scene:
@@ -246,8 +251,8 @@ needing no action.
 
 `~/tools/tt-transfer/tt_staging_34.blend`, built from
 `~/tools/tt-transfer/tt_blockout.obj` — 47 objects, 8 materials, 32,620 tris,
-bounds byte-exact. Disposable, and proven so: `blender_staging_setup.py`
-reproduces it from the OBJ (see the README).
+bounds byte-exact. Disposable *while it holds no doodads*, and proven so:
+`blender_staging_setup.py` reproduces it from the OBJ (see the README).
 
 WMO root = collection `TwistedTreeline` (`dir_path = World\wmo\TwistedTreeline\`),
 child collection `Outdoor` holds all 47. The `"Collision"` vertex group covers
@@ -306,16 +311,66 @@ triangles) exports with its path rewritten `.m2 -> .MDX` by WBS, lands in
 the `TT_Ground` group — which correspondingly gained flag `0x800`. So the
 dressing pass is unblocked on the tooling side.
 
-### Two things step 3 inherits
+## Step 3 — complete 2026-08-13
 
-- **`rootWMOID` is 0.** That is `MOHD.id`, the `WMOAreaTable` foreign key, left
-  at zero because `wow_wmo.wmo_id` was never set. The extractor writes it
-  straight into the vmap root. Choosing the area id means a re-export, so
-  decide it before doing much else.
-- **`MOHD.flags = 0x4`** (`UseLiquidTypeDBCId`). WBS sets this unconditionally
-  for WotLK when no group carries a liquid mesh. Harmless here —
-  `GetLiquidTypeId(0)` returns 0, so `liquflags` stays 0 — but it is the first
-  thing to look at if water ever appears where it shouldn't.
+### IDs, decided
+
+| What | Value | Why this one |
+|---|---|---|
+| Map id | **900** | stock Map.dbc tops out at 724. Deliberately not the fork's usual 900000 range: `DBCStorage` sizes its index table to max(id)+1, so a six-digit map id costs ~7 MB of null pointers |
+| Directory | **TwistedTreeline** | must match the WDT folder and filename; the core never reads it (`MapEntryfmt` marks field 1 `x`), the client and both extractors do |
+| rootWMOID | **9000** | stock WMOIDs top out at 5949. Must stay <= 32767: `GetWMOAreaTableEntryByTripple` narrows the key to `int16` |
+| AreaTable id | **5000** | free; AreaBit **3000**, also free — AreaBit indexes the client's exploration bitmask, so reusing a stock one marks another zone explored |
+| WMOAreaTable rows | **51200, 51201** | stock tops out at 51118 |
+| Light id | **3000** | stock tops out at 2538 |
+
+Leaving rootWMOID at 0 would have collided with stock row 47479
+(WMOID 0, NameSet 0, group 0 → AreaTableID 0).
+
+Area flags are `AREA_FLAG_OUTSIDE` (0x04000000), deliberately **not** Eye of the
+Storm's 0x4000 — that is `AREA_FLAG_OUTLAND2`, which no line of the core reads.
+
+### Results
+
+The re-export changed nothing but what it was meant to. Per-group triangle,
+collision, vertex and doodad-reference counts are identical to the pre-rotation
+export; only MOBN/MOBR moved.
+
+| | |
+|---|---|
+| groups kept by `ShouldSkip` | 47 / 47 |
+| triangles | 32,620, **16,476 kept as collision** |
+| rootWMOID | 9000 |
+| orientation | `TT_AltarEast_Pad` at x = −152.5, i.e. the server frame |
+| WDT | 32,954 bytes; MVER 18, MPHD 0x1, MAIN with no exist bits, MODF at (0,0,0) |
+| server extent | X[−245, 245] Y[−130, 130] Z[−1, 16.89] — **4 mmaps tiles** |
+| DBC rows | Map 900, AreaTable 5000, WMOAreaTable 51200/51201, Light 3000 |
+
+**`MOHD.flags = 0x4`** (`UseLiquidTypeDBCId`) is still set — WBS does this
+unconditionally for WotLK when no group carries a liquid mesh. Harmless, since
+`GetLiquidTypeId(0)` returns 0 and `liquflags` stays 0, but it is the first
+thing to look at if water ever appears where it should not.
+
+One export defect, client-side only: **`MOGI[0]` carries the root bounding box**
+instead of its own group's. The group *file* is correct and the server reads
+group files, so the only effect is that one group is never frustum-culled.
+
+### What step 4 inherits
+
+- The archive question is **unsettled**: the two extractors disagree on
+  precedence. `map_extractor` opens base patches last, so `Data/patch-4.MPQ`
+  wins there; `vmap4extractor` appends locale patches last, so
+  `Data/enUS/patch-enUS-4.MPQ` wins there. Putting the files in exactly one
+  archive means the disagreement never fires. Which one the *client* prefers for
+  `DBFilesClient` is unverified.
+- Files to pack, all under `~/tools/wbs-project/`:
+  `World/wmo/TwistedTreeline/` (48 files),
+  `World/Maps/TwistedTreeline/TwistedTreeline.wdt`,
+  `DBFilesClient/{Map,AreaTable,WMOAreaTable,Light}.dbc`. **No textures** — all 8
+  are stock assets referenced by path.
+- From source, mmaps should handle a WMO-only map: `discoverTiles` finds it via
+  the `.vmtree`, sees no tiles, and derives grid bounds from the model mesh, and
+  map 900 is in none of the junk/battleground skip lists. Unproven in practice.
 
 ## Pipeline (each step is its own session-sized chunk)
 
@@ -323,10 +378,10 @@ dressing pass is unblocked on the tooling side.
 |---|------|-----|------------------|
 | 1 | Prep scene for export: separate collision geometry, assign materials, split into WMO groups, confirm scale/axis | Claude drives, Jacob runs Blender | 1u=1yd is already correct for WoW. Groups are the culling unit **and** the collision unit — `ShouldSkip` drops any group flagged unreachable (0x80) or antiportal (0x4000000), silently |
 | 2 | ~~Export to `.wmo`~~ **done 2026-08-12** | — | see *Step 2 — complete* |
-| 3 | Build the WMO-only map: WDT with global-WMO flag; DBC rows — `Map.dbc` (new map + directory), `WorldSafeLocs.dbc` (graveyards), likely `AreaTable`/`WMOAreaTable` | Claude (as file/DBC edits) | exact columns unverified — research when we get here |
-| 4 | Pack `.wmo` + WDT + DBCs into an MPQ client patch | Jacob | client can't load the map without it. **No textures** — all 8 are stock assets referenced by path |
+| 3 | ~~WDT + DBC rows~~ **done 2026-08-13** | — | see *Step 3 — complete* |
+| 4 | Pack `.wmo` + WDT + DBCs into an MPQ client patch | Jacob | client can't load the map without it. Which archive is unsettled — see *What step 4 inherits* |
 | 5 | Run extractors server-side: `mapextractor`, `vmap4extractor` + `vmap4assembler`, `mmaps_generator` | Jacob | **mmaps is load-bearing** — creep pathfinding needs the navmesh built from WMO collision. Doodads inside a global WMO *are* extracted (`WDTFile` MODF branch calls `Doodad::ExtractSet`) |
-| 6 | Register the map server-side + point `BattlegroundMOBA` at the new map id | Claude (C++/SQL) | ties into existing BG code; also gets the standalone BG id + `BattlemasterList.dbc` client patch that was always planned |
+| 6 | Register the map server-side + point `BattlegroundMOBA` at the new map id | Claude (C++/SQL) | `mod_moba_map.sql` already carries the DBC rows. Still needs `battleground_template.MapID`, and **`PvpDifficulty.dbc` rows keyed to map 900** or `GetBattlegroundBracketByLevel` returns null |
 
 ## Division of labor (per CLAUDE.md env rules)
 
@@ -345,12 +400,12 @@ dressing pass is unblocked on the tooling side.
 
 ## Next concrete step
 
-Step 3: the WDT + DBC rows. Decide `rootWMOID` first — it is stamped into the
-WMO itself, so changing it later costs a re-export (see *Two things step 3
-inherits*).
+Step 4: pack the MPQ patch, then step 5's extractors. Settle the archive
+question first — see *What step 4 inherits*.
 
-Nothing downstream has been exercised yet: the `.wmo` has never been inside an
-MPQ, no extractor has run against it, and `var/extractors/{dbc,maps,mmaps,vmaps}`
-are empty — which means the MOBA prototype has been running with no vmaps or
-mmaps at all. Worth understanding what that implies for current creep pathing
-before assuming the new map will behave differently.
+Two claims from earlier sessions were wrong and are corrected here:
+`var/extractors/{dbc,maps,mmaps,vmaps}` holds nothing but `.gitkeep` and is
+referenced nowhere, but the extractors **have** run — the data lives in
+`env/dist/bin/` (248 DBCs, 5744 `.map`, 12494 vmap files, 3780 mmap files,
+including 36/11/25 for map 566). The prototype has had full vmaps and mmaps all
+along. New map data has to be installed there, not into `var/extractors/`.

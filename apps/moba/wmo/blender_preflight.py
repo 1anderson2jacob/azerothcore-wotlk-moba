@@ -4,11 +4,16 @@
 # overwrites an existing assignment, never touches geometry or vertex groups.
 
 import bpy, re, bmesh
+from mathutils import Vector
 
+ROOT_WMO_ID = 9000              # must match blender_staging_setup.py
 SET_NAME   = "Set_$DefaultGlobal"
 DOODAD_OBJ = "TT_TestDoodad_Lamppost"
 DOODAD_M2  = "World\\EXPANSION01\\DOODADS\\GHOSTLANDS\\Lampposts\\BE_Lamppost_Ghostlands01.m2"
 DOODAD_LOC = (0.0, 0.0, 0.0)
+
+ORIENT_PROBE   = "TT_AltarEast_Pad"
+ORIENT_PROBE_X = 152.5
 
 COLLIDE = {"TT_Ground", "TT_Walls", "TT_FrontWall_E", "TT_FrontWall_W",
            "TT_FrontWall_EPocket", "TT_FrontWall_WPocket",
@@ -53,6 +58,9 @@ if root is not None:
     lc = bpy.context.view_layer.layer_collection.children.get(root.name)
     if lc:
         bpy.context.view_layer.active_layer_collection = lc
+    if root.wow_wmo.wmo_id != ROOT_WMO_ID:
+        notes.append("wmo_id was %d, set to %d" % (root.wow_wmo.wmo_id, ROOT_WMO_ID))
+        root.wow_wmo.wmo_id = ROOT_WMO_ID
 
 # -- 2. scene ---------------------------------------------------------------
 if scene.wow_scene.type != 'WMO':
@@ -73,6 +81,20 @@ if outdoor is None:
     fails.append("no Outdoor collection under the root")
 if doodads is None:
     fails.append("no Doodads collection under the root")
+
+# -- 2b. server frame -------------------------------------------------------
+# Checked, never repaired: turning the scene is blender_staging_setup.py's job,
+# and doing it here would silently rotate a scene that already carries doodads.
+probe = bpy.data.objects.get(ORIENT_PROBE)
+if probe is None:
+    fails.append("orientation probe %s is missing" % ORIENT_PROBE)
+else:
+    xs = [(probe.matrix_world @ Vector(c)).x for c in probe.bound_box]
+    cx = (min(xs) + max(xs)) / 2.0
+    print("\n== ORIENTATION ==\n  %s centres on x=%+.1f (server frame wants %+.1f)"
+          % (ORIENT_PROBE, cx, -ORIENT_PROBE_X))
+    if abs(cx + ORIENT_PROBE_X) > 1.0:
+        fails.append("scene is not in the server frame; re-run blender_staging_setup.py")
 
 # -- 3. materials: report, and only fill in what is missing -----------------
 print("\n== MATERIALS ==")
@@ -173,6 +195,7 @@ if doodads is not None:
 # -- 6. report --------------------------------------------------------------
 print("\n" + "=" * 70)
 print("root            : %s" % (root.name if root else "NONE"))
+print("wmo_id          : %s" % (root.wow_wmo.wmo_id if root else "-"))
 print("active collection: %s" % bpy.context.view_layer.active_layer_collection.name)
 print("scene           : type=%s version=%s" % (scene.wow_scene.type, scene.wow_scene.version))
 for n in notes:
