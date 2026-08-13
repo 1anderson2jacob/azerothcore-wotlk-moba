@@ -6,6 +6,12 @@ Steps 1 and 2 are complete. Steps 3–6 remain **unverified against tooling or
 engine source** — exact DBC columns, MPQ packing, extractor behaviour on a
 WMO-only map. Treat each as a thing to prove in its own focused session.
 
+**This file is scheduled for deletion when the map ships.** Anything here that
+is not specific to Twisted Treeline belongs in `apps/moba/wmo/README.md`, which
+survives — the procedure, the toolchain and the export traps have already
+moved. As each remaining step is proven, move its *how* there and leave only
+the decisions and results here.
+
 ## Context / decision
 
 The MOBA currently hijacks the Eye of the Storm map (client queues EotS, server
@@ -41,8 +47,7 @@ from the client MPQs — see *Texture assignment*.
 **Brush is decoration for now.** Two consequences:
 
 - Its M2 must have **zero bounding triangles**, or it silently becomes a
-  collision wall (`Model::open` rejects models with no collision geometry, so
-  the ones it *accepts* are exactly the ones that block).
+  collision wall. Check any candidate with `mpq_tool.py probe`.
 - Making brush a real LoL-style feature later is **C++ work in
   `BattlegroundMOBA`**, not a doodad swap: WoW collision blocks movement and
   line-of-sight together, so "walkable but vision-blocking" has no static
@@ -200,105 +205,18 @@ Live the moment step 1 touches the scene:
 - `TT_Patch_*` (knob patches) and `TT_FWFill_*` (front-wall fillers) are
   deliberate geometry — don't "clean" them.
 
-## Export mechanics — proven end to end 2026-08-12
+## Export mechanics
 
-**Collision defaults to OFF.** WBS's batcher sets `F_DETAIL` on any triangle
-whose three vertices aren't all in a vertex group named `"Collision"`
-(`_is_vertex_collidable` returns false outright when the group is absent).
-Our extractor then drops it: `isRenderFace = RENDER && !DETAIL`, and a
-non-render non-collision face is skipped (`wmo.cpp:404-408`). Export the
-blockout without that vertex group and the map has **zero** collision — it
-looks perfect in the client, players fall through the floor, mmaps builds
-nothing. Measured on the real export: 16,476 of 32,620 triangles survive as
+**Moved to `apps/moba/wmo/README.md`** — the collision chain, the four silent
+export failures, and the doodad rules are map-agnostic and must outlive this
+file. Measured on the real export: 16,476 of 32,620 triangles survive as
 collision, matching the Blender-side collide/render split exactly.
 
-Collision is authored one of two ways: a `"Collision"` vertex group covering
-every vertex (assigned to `wow_wmo_vertex_info.vertex_group`), or a separate
-invisible mesh in WBS's `Collision` collection referenced by the group's
-`collision_mesh` pointer (that path writes `F_COLLISION` + material id `0xFF`).
+## Toolchain
 
-**One Blender mesh object = one WMO group.** Sorting is by membership in WBS's
-special collections: `Outdoor` / `Indoor` / `Collision` / `Portals` / `Lights`
-/ `Doodads` / `Liquids` / `Fogs`.
-
-Ngons need no pre-triangulation — the batcher consumes Blender loop triangles,
-and every ngon in the blockout is planar to 2e-5 yd.
-
-`walkableClimb: 6` cells ~= 1.6 yd (`mmaps-config.yaml:50`), so the 1 yd nexus
-plateaus are climbable as collision. `skipBattlegrounds` defaults to false.
-
-### Four ways the export fails that the file itself won't show you
-
-Each of these was hit for real. `apps/moba/wmo/blender_preflight.py` checks all
-four; run it before every export rather than rediscovering them.
-
-- **A material with no `diff_texture_1` raises** `ReferenceError` in
-  `save_materials`. Loading a BLP into the scene does *not* assign it — that is
-  a second, separate step, and skipping it is invisible until export.
-- **The root collection is resolved from `bpy.context.collection`**, i.e.
-  whatever is selected in the Outliner. Select the Scene Collection and
-  `get_current_wow_model_collection` returns `None`, and `save_root_header`
-  dies on it.
-- **`build_references` skips hidden objects** (`group_object.hide_get()`). A
-  hidden group silently does not ship, taking its collision with it.
-- **Every group mesh needs a UV layer named exactly `UVMap`**, or
-  `create_batching_parameters` raises.
-
-A doodad additionally needs `wow_wmo_doodad.enabled = True`, or WBS's depsgraph
-handler evicts it from the set collection for "not matching required custom
-object types". Do **not** set its `color`: `update_doodad_color` indexes
-`mat.node_tree.nodes['DoodadColor']` and `KeyError`s on a plain material.
-
-**No BLP export is needed at all.** MOTX stores paths only, and the eight
-chosen textures are stock Blizzard assets, so the client patch carries geometry
-and DBCs but no textures. This holds for any map dressed from stock assets.
-
-## Toolchain — the two version traps
-
-WBS targets **Blender 3.4** (`bl_info` `(3, 4, 0)`, all releases tagged `3.4-*`,
-WoW 3.3.5 supported). Prebuilt releases are **Windows-only** — CI runs
-`C:\Python310\python.exe io_scene_wmo/build.py` with no macOS job. On Apple
-Silicon, `wbs_kernel` must be compiled locally: one Cython extension
-(`wmo_utils`) over 6 C++17 files, GLM and Blender headers vendored, and
-`setup.py` has an explicit Darwin branch. Needs Python 3.10 to match Blender
-3.4's embedded interpreter. Clone with `--recurse-submodules` — `pywowlib` is a
-submodule.
-
-**The .blend cannot go backward.** Written with 5.1.30; Blender is not forward
-compatible. 5.1 stays the source of truth. Prep happens in 5.1, then the 47
-objects in `TT_WMO_Export` transfer as OBJ (Forward=Y, Up=Z) into a disposable
-3.4 staging file where only the WBS assignment happens. Verify the transfer
-against known bounds: `TT_Walls` +/-235/+/-120/0-8, `TT_Ground` +/-245/+/-130/-1-0.
-
-### Building WBS on Apple Silicon — five patches, 2026-08-11
-
-Blender 3.4.1 (`blender-3.4.1-macos-arm64.dmg`, installed as
-`/Applications/Blender-3.4.app` — do NOT let it replace the 5.1 `Blender.app`)
-embeds Python 3.10.8. Build with Homebrew `python@3.10`; ABI is stable across
-3.10.x. Clone at `~/tools/blender-wow-studio`, dist at `~/tools/wbs-dist`.
-
-Every failure was 2022-era code meeting a 2026 toolchain — none was Apple
-Silicon or addon logic, and `wbs_kernel` compiled first try. Re-apply all five
-on a fresh clone:
-
-1. `pip install "Cython<3"` — Cython 3 crashes compiling pyimgui's `core.pyx`.
-2. Build with `PIP_NO_BUILD_ISOLATION=1`, or pip fetches its own Cython 3 into
-   an isolated env and (1) is silently ignored.
-3. `blp/{BLP2PNG,PNG2BLP}/setup.py`: `extra_compile_args` applies `-std=c++17`
-   to the bundled libpng/zlib **C** sources; clang errors. Add a `build_ext`
-   subclass stripping `-std=*` for `*.c` only. Deleting the flag outright is
-   wrong — Apple clang defaults to C++14.
-4. Same two files: add `-DZ_HAVE_UNISTD_H` to the POSIX branches only (MSVC has
-   no `<unistd.h>`). Without it zlib never includes it, `lseek` is implicitly
-   declared, and clang 16+ errors. Do **not** silence with
-   `-Wno-implicit-function-declaration`: an implicit `lseek` returns `int` and
-   truncates 64-bit file offsets.
-5. Delete `|| defined(TARGET_OS_MAC)` from `blp/include/libpng/pngpriv.h:512`
-   and `blp/include/zlib/zutil.h:133`. Modern macOS defines it on every Apple
-   platform; these guards predate that and mean Classic Mac OS — pulling in
-   `<fp.h>` (gone ~20 years) and `#define fdopen(fd,mode) NULL` over the SDK's
-   real declaration. StormLib's copy of `zutil.h` has the same latent bug but
-   compiles clean; leave it.
+**Moved to `apps/moba/wmo/README.md`** — the two version traps, the five Apple
+Silicon build patches, and what cannot be automated. None of it is specific to
+this map.
 
 ## Step 1 — complete 2026-08-11
 
@@ -326,44 +244,19 @@ needing no action.
 
 ### 3.4 staging scene
 
-`~/tools/tt-transfer/tt_staging_34.blend` is disposable; the 5.1 file stays
-source of truth. To rebuild: re-export the OBJ from 5.1, re-import, run
-`apps/moba/wmo/blender_staging_setup.py`.
+`~/tools/tt-transfer/tt_staging_34.blend`, built from
+`~/tools/tt-transfer/tt_blockout.obj` — 47 objects, 8 materials, 32,620 tris,
+bounds byte-exact. Disposable, and proven so: `blender_staging_setup.py`
+reproduces it from the OBJ (see the README).
 
-**The setup exists only in RAM until the .blend is saved.** A whole session's
-WBS assignment was found missing from the file on disk while still live in the
-open Blender instance — the geometry import had been saved, the setup had not.
-Inspecting the .blend from 5.1 is the way to tell the two apart: vertex groups
-are real mesh data and survive without the addon registered, so
-`0 objects with vertex groups` is proof the collision pass is not in the file,
-whatever the running session shows.
+WMO root = collection `TwistedTreeline` (`dir_path = World\wmo\TwistedTreeline\`),
+child collection `Outdoor` holds all 47. The `"Collision"` vertex group covers
+every vertex on the 32 collide objects; the 15 render-only ones have it
+removed. All 8 materials carry `diff_texture_1`, pointing at the paths in
+*Texture assignment* below.
 
-- Transferred via `~/tools/tt-transfer/tt_blockout.obj` — 47 objects, 8
-  materials, 32,620 tris, bounds byte-exact. **Exporter and importer axis
-  defaults differ**; both need Forward Y / Up Z. The importer's default
-  (−Z/Y) silently rotates −90° about X. Caught only by the `TT_Walls`
-  bounds check — always run it after transfer.
-- WMO root = collection `TwistedTreeline` (`wow_wmo.enabled = True`,
-  `dir_path = World\wmo\TwistedTreeline\`); child collection `Outdoor` holds
-  all 47. **Group membership is collection membership and nothing else** —
-  `wow_wmo_group` has no `enabled` property in this WBS revision, and
-  `get_wmo_groups_list` reads the `Outdoor`/`Indoor` collections directly. (An
-  earlier note here claimed a three-part condition including an `enabled` flag;
-  that was wrong.)
-- `"Collision"` vertex group covering every vertex on the 32 collide objects,
-  assigned to `wow_wmo_vertex_info.vertex_group`. The 15 render-only ones have
-  it explicitly removed.
-- All 8 materials carry `diff_texture_1`. Export takes the path from
-  `image.wow_wmo_texture.path`, **not** the image filepath
-  (`wmo_scene.py:539`). Store paths lowercase — the BLP→PNG step does a
-  `.replace('.blp', ...)` that misses an uppercase `.BLP`.
-
-**Tooling limits.** The Blender MCP bridge is extensions-format
-(`blender_version_min 5.1.0`, no `bl_info`), so 3.4 cannot be driven
-programmatically — scripts go into its Text Editor and output lands in the
-launching terminal. WBS also *crashes* Blender 3.4 under `--background` (dies
-in `auto_load` at `ui/operators.py:557`), so headless verification requires
-`--factory-startup`, limiting it to geometry checks only.
+The procedure, the axis trap, the save-vs-RAM hazard and the export
+preconditions are in `apps/moba/wmo/README.md`.
 
 ### Texture assignment — decided 2026-08-11, all paths verified in-client
 
