@@ -420,12 +420,49 @@ maps are larger only because their WMOs carry far more doodads — DeeprunTram
 Map 900 is loadable, collidable and pathable. Step 6 is registration only, and all
 of it is SQL:
 
-- `battleground_template.MapID` for the Eye of the Storm row → 900. The BG id
-  stays `BATTLEGROUND_EY` and `BattlegroundMgr.cpp` does **not** change — that is
-  the hijack working as designed: the client queues EotS and is ported to whatever
-  map the template names.
+- **`battlemasterlist_dbc` row 7, `MapID_1` 566 → 900.** `battleground_template`
+  has **no** `MapID` column; the map comes from `BattlemasterList.dbc` via
+  `bg->SetMapId(bgTemplate->BattlemasterEntry->mapid[0])`
+  (`BattlegroundMgr.cpp:448`). `BATTLEGROUND_EY = 7` (`SharedDefines.h:3743`) is
+  both the enum and the DBC row id — `sBattlemasterListStore.LookupEntry(bgTypeId)`
+  uses it directly. `BattlegroundMgr.cpp` itself does not change: the client queues
+  EotS and is ported to whatever map that row names, which is the hijack working as
+  designed.
 - `pvpdifficulty_dbc` rows keyed to map 900, or `GetBattlegroundBracketByLevel`
   returns null. SQL, not a DBC file — see the step 4 decision.
+
+**This override is a different shape from `mod_moba_map.sql`, and getting it wrong
+is silent.** Those rows are new ids, so nothing is lost by inserting a partial
+column list and letting the rest default. Row 7 already exists in the DBC file, and
+`DBCDatabaseLoader::Load` **replaces the record wholesale rather than merging
+it** — it allocates a fresh buffer and walks the entire format string filling every
+field from the SQL columns. Any column omitted takes the *table default*, not the
+file's value. Supply all 32 columns or Eye of the Storm loses its name, level range
+and group size.
+
+Stock row 7, read out of `env/dist/bin/dbc/BattlemasterList.dbc` (`fmt` is
+`niiiiiiiiixssssssssssssssssxiixx`, 32 fields, matching the table's 32 columns):
+
+| Column | Value |
+|---|---|
+| `ID` | 7 |
+| `MapID_1` | 566 → **900** |
+| `MapID_2`..`MapID_8` | -1 |
+| `InstanceType` | 3 |
+| `GroupsAllowed` | 1 |
+| `Name_Lang_enUS` | `Eye of the Storm` |
+| `Name_Lang_Mask` | 16712190 |
+| `MaxGroupSize` | 15 |
+| `HolidayWorldState` | 2851 |
+| `Minlevel` / `Maxlevel` | 61 / 80 |
+
+All other `Name_Lang_*` are empty in stock.
+
+**Settle first, before writing any SQL:** whether the server-side override alone is
+enough, or the client's own `BattlemasterList.dbc` inside `patch-enUS-4.MPQ` needs
+the same edit. The client reads that file to decide where the queue sends it, so
+this is the usual client/server split — and `dbc_tool.py` already knows how to
+patch a DBC and `mpq_pack` how to repack, if it does.
 - Graveyards come from the `game_graveyard` world table. There is no
   `sWorldSafeLocsStore` in AzerothCore, so `WorldSafeLocs.dbc` is not involved.
 
@@ -442,7 +479,7 @@ That is the known state, not a bug to chase.
 | 3 | ~~WDT + DBC rows~~ **done 2026-08-13** | — | see *Step 3 — complete* |
 | 4 | ~~Pack `.wmo` + WDT + DBCs into an MPQ client patch~~ **done 2026-08-13** | — | see *Step 4 — complete* |
 | 5 | ~~Run extractors server-side~~ **done 2026-08-13** | — | see *Step 5 — complete* |
-| 6 | Register the map server-side | Claude (SQL) | `battleground_template.MapID` → 900 plus `pvpdifficulty_dbc` rows. Mechanical; `BattlegroundMgr.cpp` unchanged — see *What step 6 inherits* |
+| 6 | Register the map server-side | Claude (SQL) | `battlemasterlist_dbc` row 7 `MapID_1` → 900, plus `pvpdifficulty_dbc` rows. **Not** `battleground_template`, which has no `MapID` column. `BattlegroundMgr.cpp` unchanged — see *What step 6 inherits* |
 | 7 | Port the content into Twisted Treeline coordinates | Claude drives, Jacob decides placement | new `apps/moba/maps/twisted_treeline/` bundle. All six configs are still `map: 566` in EotS space; the source is `twisted_treeline_layout.json`, which nothing consumes yet. Needs fresh id allocation and lockfiles |
 | 8 | Dressing pass — doodads | Jacob authors in Blender, Claude tools it | pipeline proven at step 5; blocked instead on **where placements are stored** (README step 3). Each change costs re-export → re-pack → re-extract → re-mmaps |
 
@@ -463,8 +500,9 @@ That is the known state, not a bug to chase.
 
 ## Next concrete step
 
-Step 6: register the map — `battleground_template.MapID` → 900 and
-`pvpdifficulty_dbc` rows for it. Both are SQL; see *What step 6 inherits*.
+Step 6: register the map — `battlemasterlist_dbc` row 7 `MapID_1` → 900, plus
+`pvpdifficulty_dbc` rows for map 900. Both are SQL; see *What step 6 inherits*,
+which carries the stock row values and the whole-record-replacement trap.
 
 Two claims from earlier sessions were wrong and are corrected here:
 `var/extractors/{dbc,maps,mmaps,vmaps}` holds nothing but `.gitkeep` and is
