@@ -23,10 +23,10 @@ the game install or the databases.
 | 5 | Verify offline | yes |
 | 6 | WDT + DBC rows | yes |
 | 7 | Pack the MPQ client patch | yes |
-| 8 | Run the extractors | **no** |
+| 8 | Run the extractors | yes |
 
-Steps 1–7 below are a procedure that has been run start to finish. Step 8 has
-not; what is known about it is in the plan file, not written here as recipe.
+All eight steps below are a procedure that has been run start to finish, most
+recently for Twisted Treeline on 2026-08-13.
 
 ### 1. Blockout — Blender 5.1
 
@@ -218,12 +218,58 @@ carries no incremental state that can drift.
 
 ### 8. Run the extractors
 
-`map_extractor` / `vmap4_extractor` + `vmap4_assembler` / `mmaps_generator`
-(underscored — that is what the build actually produces), output installed into
-`env/dist/bin/`.
+The tools are not built by default — `TOOLS_BUILD` defaults to `none`:
 
-**Not yet done, so not written here.** `.github/MOBA_MAP_WMO_PLAN.md` holds what
-is known and what is still unverified. Move it here once it has actually run.
+```bash
+cd var/build/obj
+cmake -DTOOLS_BUILD=maps-only .
+make -j$(sysctl -n hw.ncpu)
+make install
+```
+
+That whitelists the four needed and installs them, plus `mmaps-config.yaml`, into
+`env/dist/bin/`. The binaries are the lowercased source directory names —
+`map_extractor`, `vmap4_extractor`, `vmap4_assembler`, `mmaps_generator` — not the
+un-underscored spellings upstream uses for its release archives.
+
+```bash
+cd <empty scratch dir>
+vmap4_extractor -d <wow>/Data/          # -> ./Buildings
+vmap4_assembler Buildings vmaps         # -> ./vmaps
+cp vmaps/<id>.vmtree vmaps/<Model>.wmo.vmo <install>/vmaps/
+cd <install> && ./mmaps_generator <id>
+```
+
+**A WMO-only map produces no `.map` files and no `.vmtile`.** The global WMO's
+spawn lives in the `.vmtree` itself, and the model sits beside it as
+`<Model>.wmo.vmo` — basename with only the first letter capitalised. The whole
+footprint is that pair plus `mmaps/<id>.mmap` and one `.mmtile` per tile.
+`map_extractor` need not run at all: it has no per-map flag, and there are no map
+tiles to extract.
+
+- **`vmap4_extractor` refuses a non-empty output directory.** It stats
+  `Buildings/dir` and `Buildings/dir_bin` and quits with "Your output directory
+  seems to be polluted". Clear the scratch dir before re-running.
+- **The two extractors mean different things by their path argument.**
+  `map_extractor -i` takes the game *root* and appends `/Data/` itself;
+  `vmap4_extractor -d` takes the *Data* directory.
+- **The `.vmtree` must be installed before `mmaps_generator` runs.**
+  `discoverTiles` finds a tile-less map only through it
+  (`MapBuilder.cpp:116-125`) — with no `.map` files that is the sole discovery
+  path.
+- `checkDirectories` wants `maps/` non-empty *globally* and `vmaps/` holding at
+  least one `.vmtree`, so `mmaps_generator` runs from the install directory, not
+  the scratch dir. It needs `mmaps-config.yaml` in the CWD, or `--config`.
+- `Couldn't open RootWmo!!!` on `World\Wmo\Band\Final_Stage.wmo` is expected;
+  `apps/extractor/extractor.sh` prints a banner saying so. Do not chase it.
+- Do not use that script for one map: every function in it opens with `rm -rf`
+  over the target directories, and its `mmaps_generator` call passes no map id, so
+  even the cheapest option rebuilds everything.
+
+Verify by parsing, not eyeballing. The `.vmtree`'s `GOBJ` spawn should sit at the
+grid centre `(17066.67, 17066.67, 0)` with the model's bounds around it, and every
+`.mmtile` should report `DNAV` v7, `mmapVersion 19` and a **nonzero polygon
+count** — a tile that builds with zero polygons is terrain nothing can walk.
 
 ## Where the map lands
 
