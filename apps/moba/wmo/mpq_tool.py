@@ -9,17 +9,27 @@
 Needs pywowlib's compiled StormLib binding, which is built for Blender 3.4's
 interpreter -- so run this with python3.10, not the system python.
 
-Overrides: WOW_DATA (client Data dir), WBS_ROOT (blender-wow-studio checkout).
+Overrides: WOW_DATA (client Data dir), WBS_ROOT (blender-wow-studio checkout),
+WOW_LOCALE (client locale, default enUS).
 """
 import os, re, struct, sys
 
-DATA = os.environ.get("WOW_DATA", os.path.expanduser("~/Games/wow335/Data"))
-WBS  = os.environ.get("WBS_ROOT", os.path.expanduser("~/tools/blender-wow-studio"))
-STORM = os.path.join(WBS, "io_scene_wmo/pywowlib/archives/mpq/native")
+DATA   = os.environ.get("WOW_DATA", os.path.expanduser("~/Games/wow335/Data"))
+WBS    = os.environ.get("WBS_ROOT", os.path.expanduser("~/tools/blender-wow-studio"))
+LOCALE = os.environ.get("WOW_LOCALE", "enUS")
+STORM  = os.path.join(WBS, "io_scene_wmo/pywowlib/archives/mpq/native")
 
-# later archives win in WoW's load order, so search patches first
-ARCHIVES = ["patch-3.MPQ", "patch-2.MPQ", "patch.MPQ", "lichking.MPQ",
-            "expansion.MPQ", "common-2.MPQ", "common.MPQ"]
+# Highest priority first: the locale chain outranks the base one, mirroring
+# vmap4extractor. Full precedence chain in README.md, step 7.
+ARCHIVES = ["%s/patch-%s-4.MPQ" % (LOCALE, LOCALE),   # this fork's client patch
+            "%s/patch-%s-3.MPQ" % (LOCALE, LOCALE),
+            "%s/patch-%s-2.MPQ" % (LOCALE, LOCALE),
+            "%s/patch-%s.MPQ"   % (LOCALE, LOCALE),
+            "patch-3.MPQ", "patch-2.MPQ", "patch.MPQ",
+            "lichking.MPQ", "expansion.MPQ", "common-2.MPQ", "common.MPQ",
+            "%s/lichking-locale-%s.MPQ"  % (LOCALE, LOCALE),
+            "%s/expansion-locale-%s.MPQ" % (LOCALE, LOCALE),
+            "%s/locale-%s.MPQ"           % (LOCALE, LOCALE)]
 
 
 def open_archives():

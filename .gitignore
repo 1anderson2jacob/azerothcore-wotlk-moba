@@ -121,6 +121,7 @@ local.properties
 !/src/server/scripts/Custom/*
 !/data/sql/custom/*
 /apps/moba/local.conf
+/apps/moba/wmo/mpq_pack
 .github/MOBA_*_PLAN.md
 .clangd
 # fork: track the Blender blockout (overrides /var/* on line 17)

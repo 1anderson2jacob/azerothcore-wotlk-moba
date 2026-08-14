@@ -22,9 +22,10 @@ the game install or the databases.
 | 4 | Export to `.wmo` | yes |
 | 5 | Verify offline | yes |
 | 6 | WDT + DBC rows | yes |
-| 7 | MPQ patch, then run the extractors | **no** |
+| 7 | Pack the MPQ client patch | yes |
+| 8 | Run the extractors | **no** |
 
-Steps 1–6 below are a procedure that has been run start to finish. Step 7 has
+Steps 1–7 below are a procedure that has been run start to finish. Step 8 has
 not; what is known about it is in the plan file, not written here as recipe.
 
 ### 1. Blockout — Blender 5.1
@@ -179,10 +180,46 @@ column in one of those tables kills the worldserver at startup.
 `sWorldSafeLocsStore` at all; graveyards come from the `game_graveyard` world
 table.
 
-### 7. Pack and extract
+### 7. Pack the client patch
 
-MPQ packing, then `mapextractor` / `vmap4extractor` + `vmap4assembler` /
-`mmaps_generator`.
+```bash
+apps/moba/wmo/mpq_pack ~/Games/wow335/Data/enUS/patch-enUS-4.MPQ \
+                       ~/tools/wbs-project World DBFilesClient
+```
+
+One archive holds the whole patch: the `.wmo` set, the WDT, and the patched DBCs.
+No textures — MOTX ships paths, and everything referenced is a stock asset.
+
+**It has to be the locale archive.** Both extractors search the most recently
+opened archive first (`MPQArchive`'s ctor does `push_front`), and they build that
+order in opposite directions: `map_extractor` opens locale archives then base
+ones, so `Data/patch-N.MPQ` ends up ahead; `vmap4extractor` appends the locale
+patch scan last, so the locale chain ends up ahead.
+
+For the `.wmo` and the WDT that disagreement is harmless — new filenames, nothing
+else provides them. For the DBCs it decides the map, because they shadow files
+the client already ships, and **every stock DBC lives only in the locale chain —
+not one base archive holds a single one.** Pack them into `Data/patch-4.MPQ` and
+`vmap4extractor` resolves `Map.dbc` to the stock locale patch, never sees the new
+map id, and builds no vmaps for it. `map_extractor` meanwhile reads the new row
+fine, so the map half-works and the failure surfaces much later as missing
+collision.
+
+In the locale chain both extractors agree, and so does the client — a higher
+patch number winning is the same mechanism that makes stock `patch-<loc>-3.MPQ`
+override `patch-<loc>-2.MPQ`.
+
+Files go in **locale-neutral (0), zlib-compressed**, matching how Blizzard stores
+DBCs inside its own locale patches (flags `0x84000200` =
+`EXISTS | SECTOR_CRC | COMPRESS`).
+
+Re-packing rebuilds the archive from scratch, so re-export → re-pack → re-extract
+carries no incremental state that can drift.
+
+### 8. Run the extractors
+
+`mapextractor` / `vmap4extractor` + `vmap4assembler` / `mmaps_generator`, output
+installed into `env/dist/bin/`.
 
 **Not yet done, so not written here.** `.github/MOBA_MAP_WMO_PLAN.md` holds what
 is known and what is still unverified. Move it here once it has actually run.
@@ -298,13 +335,15 @@ only, so the client patch carries geometry and DBCs but no textures.
 | `gen_wdt.py` | `python3.10`, standalone | yes, 2026-08-13 |
 | `dbc_tool.py` | `python3.10`, standalone | yes, 2026-08-13 |
 | `mpq_tool.py` | `python3.10`, standalone | yes, 2026-08-12 |
+| `mpq_pack.cpp` | compiled, standalone | yes, 2026-08-13 |
 
 All four map-specific scripts — the two Blender ones plus `gen_wdt.py` and
 `dbc_tool.py` — hardcode Twisted Treeline's names, ids and paths in a constants
 block at the top. **That block is the per-map part**; a second map edits it and
 leaves the rest alone. If a third map turns up, that is the point to move the
 block into a YAML config the way the SQL generators do; two maps do not justify
-it yet.
+it yet. `mpq_tool.py` and `mpq_pack` are not in that set: both take what they
+operate on as arguments, so neither has a per-map part at all.
 
 ### `blender_staging_setup.py` — build a staging scene from a bare OBJ import
 
@@ -371,7 +410,7 @@ copy.
 ### `mpq_tool.py` — query the client archives
 
 ```
-python3.10 mpq_tool.py index listfile.txt     every entry (~184k)
+python3.10 mpq_tool.py index listfile.txt     every entry
 python3.10 mpq_tool.py find ghostlands .m2    entries matching all substrings
 python3.10 mpq_tool.py probe 'World\...\X.m2' collision header of a model
 python3.10 mpq_tool.py extract 'World\...\Y.wmo' outdir/
@@ -385,6 +424,29 @@ diffuse.
 a wall: a model with **0 bounding triangles** renders and never collides, and
 one with more than 0 always collides. There is no third option, which is why
 "walkable but vision-blocking" brush cannot be a doodad at all.
+
+### `mpq_pack` — build the client patch archive
+
+```bash
+STORM="${WBS_ROOT:-$HOME/tools/blender-wow-studio}/io_scene_wmo/pywowlib/archives/mpq/native"
+clang++ -std=c++17 -O2 -I "$STORM/include" \
+  apps/moba/wmo/mpq_pack.cpp "$STORM/lib/libstorm.a" -lz -lbz2 \
+  -o apps/moba/wmo/mpq_pack
+```
+
+```
+mpq_pack OUT.MPQ SRCDIR [SUBDIR ...]
+```
+
+Packs a directory tree into a fresh MPQ v1 archive, turning `/` into `\` and
+skipping dotfiles. Replaces the output if it already exists.
+
+**pywowlib's storm binding cannot do this** — `SFileCreateArchive` is commented
+out of its method table and there is no add-file wrapper at all, so the module is
+read-only. The write API comes instead from `lib/libstorm.a`, a byproduct of the
+*same* pywowlib build that produces the `storm` module every other tool here
+imports: no extra setup step, and a rebuilt WBS restores both together. The
+binary is gitignored — rebuild it with the command above.
 
 ## Toolchain setup
 
@@ -450,9 +512,10 @@ on a fresh clone:**
 
 ## Requirements
 
-`python3.10` specifically for the standalone tools — they import pywowlib's
-StormLib binding, compiled against Blender 3.4's interpreter
-(`storm.cpython-310-darwin.so`). Any other python fails the import.
+`python3.10` specifically for the standalone *python* tools — they import
+pywowlib's StormLib binding, compiled against Blender 3.4's interpreter
+(`storm.cpython-310-darwin.so`). Any other python fails the import. `mpq_pack` is
+C++ and needs only clang plus `libstorm.a` from that same build.
 
 Paths default to `~/Games/wow335/Data` and `~/tools/blender-wow-studio`;
-override with `WOW_DATA` and `WBS_ROOT`.
+override with `WOW_DATA`, `WBS_ROOT` and `WOW_LOCALE`.

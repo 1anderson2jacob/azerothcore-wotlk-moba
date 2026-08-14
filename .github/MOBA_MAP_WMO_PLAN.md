@@ -2,9 +2,9 @@
 
 ## Status of this doc
 
-Steps 1, 2 and 3 are complete. Steps 4–6 remain **unverified against tooling or
-engine source** — MPQ packing and extractor behaviour on a WMO-only map. Treat
-each as a thing to prove in its own focused session.
+Steps 1 through 4 are complete. Steps 5–6 remain **unverified against tooling or
+engine source** — extractor behaviour on a WMO-only map, then registering it
+server-side. Treat each as a thing to prove in its own focused session.
 
 **This file is scheduled for deletion when the map ships.** Anything here that
 is not specific to Twisted Treeline belongs in `apps/moba/wmo/README.md`, which
@@ -355,22 +355,33 @@ One export defect, client-side only: **`MOGI[0]` carries the root bounding box**
 instead of its own group's. The group *file* is correct and the server reads
 group files, so the only effect is that one group is never frustum-culled.
 
-### What step 4 inherits
+## Step 4 — complete 2026-08-13
 
-- The archive question is **unsettled**: the two extractors disagree on
-  precedence. `map_extractor` opens base patches last, so `Data/patch-4.MPQ`
-  wins there; `vmap4extractor` appends locale patches last, so
-  `Data/enUS/patch-enUS-4.MPQ` wins there. Putting the files in exactly one
-  archive means the disagreement never fires. Which one the *client* prefers for
-  `DBFilesClient` is unverified.
-- Files to pack, all under `~/tools/wbs-project/`:
-  `World/wmo/TwistedTreeline/` (48 files),
-  `World/Maps/TwistedTreeline/TwistedTreeline.wdt`,
-  `DBFilesClient/{Map,AreaTable,WMOAreaTable,Light}.dbc`. **No textures** — all 8
-  are stock assets referenced by path.
+`~/Games/wow335/Data/enUS/patch-enUS-4.MPQ` — 1,111,788 bytes from 4,965,170 in,
+built by `apps/moba/wmo/mpq_pack`. Why the locale archive rather than
+`Data/patch-4.MPQ` is in `apps/moba/wmo/README.md` step 7; it is map-agnostic and
+not a per-map choice.
+
+| | |
+|---|---|
+| entries | 54 — 53 payload + `(listfile)` |
+| fidelity | 53 / 53 byte-identical to `~/tools/wbs-project` |
+| DBC rows in-archive | Map 900 (`Directory='TwistedTreeline'`, InstanceType 3, Flags 0x1), AreaTable 5000, WMOAreaTable 51200/51201, Light 3000; map 566 still intact |
+| WDT | MVER 18, MPHD 0x1, MAIN 32768, MWMO 46, MODF 64 |
+| MWMO -> WMO | `World\wmo\TwistedTreeline\TwistedTreeline.wmo` resolves in-archive |
+| root MOHD | nTextures 8, nGroups 47, RootWMOID 9000, bbox X[−245, 245] Y[−130, 130] Z[−1, 16.89] |
+| derived groups | 47 / 47 present, `_047` correctly absent |
+
+Both extractors' archive search order was replayed against the real install: all
+six of our files resolve to `patch-enUS-4.MPQ` in each, with no divergence.
+
+### What step 5 inherits
+
 - From source, mmaps should handle a WMO-only map: `discoverTiles` finds it via
   the `.vmtree`, sees no tiles, and derives grid bounds from the model mesh, and
   map 900 is in none of the junk/battleground skip lists. Unproven in practice.
+- Extracted output installs into `env/dist/bin/`, **not** `var/extractors/` — see
+  the correction at the end of this file.
 
 ## Pipeline (each step is its own session-sized chunk)
 
@@ -379,7 +390,7 @@ group files, so the only effect is that one group is never frustum-culled.
 | 1 | Prep scene for export: separate collision geometry, assign materials, split into WMO groups, confirm scale/axis | Claude drives, Jacob runs Blender | 1u=1yd is already correct for WoW. Groups are the culling unit **and** the collision unit — `ShouldSkip` drops any group flagged unreachable (0x80) or antiportal (0x4000000), silently |
 | 2 | ~~Export to `.wmo`~~ **done 2026-08-12** | — | see *Step 2 — complete* |
 | 3 | ~~WDT + DBC rows~~ **done 2026-08-13** | — | see *Step 3 — complete* |
-| 4 | Pack `.wmo` + WDT + DBCs into an MPQ client patch | Jacob | client can't load the map without it. Which archive is unsettled — see *What step 4 inherits* |
+| 4 | ~~Pack `.wmo` + WDT + DBCs into an MPQ client patch~~ **done 2026-08-13** | — | see *Step 4 — complete* |
 | 5 | Run extractors server-side: `mapextractor`, `vmap4extractor` + `vmap4assembler`, `mmaps_generator` | Jacob | **mmaps is load-bearing** — creep pathfinding needs the navmesh built from WMO collision. Doodads inside a global WMO *are* extracted (`WDTFile` MODF branch calls `Doodad::ExtractSet`) |
 | 6 | Register the map server-side + point `BattlegroundMOBA` at the new map id | Claude (C++/SQL) | `mod_moba_map.sql` already carries the DBC rows. Still needs `battleground_template.MapID`, and **`PvpDifficulty.dbc` rows keyed to map 900** or `GetBattlegroundBracketByLevel` returns null |
 
@@ -400,8 +411,8 @@ group files, so the only effect is that one group is never frustum-culled.
 
 ## Next concrete step
 
-Step 4: pack the MPQ patch, then step 5's extractors. Settle the archive
-question first — see *What step 4 inherits*.
+Step 5: run the extractors — `mapextractor`, `vmap4extractor` + `vmap4assembler`,
+`mmaps_generator` — and install the output into `env/dist/bin/`.
 
 Two claims from earlier sessions were wrong and are corrected here:
 `var/extractors/{dbc,maps,mmaps,vmaps}` holds nothing but `.gitkeep` and is
