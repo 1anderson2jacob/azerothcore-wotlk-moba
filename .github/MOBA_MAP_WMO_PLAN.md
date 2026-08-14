@@ -2,8 +2,8 @@
 
 ## Status of this doc
 
-Steps 1 through 5 are complete: the map builds, packs, extracts, and has a
-navmesh. Steps 6–8 remain — registering it server-side, porting the content into
+Steps 1 through 6 are complete: the map builds, packs, extracts, has a navmesh,
+and the battleground now runs on it. Steps 7–8 remain — porting the content into
 its coordinate space, then dressing it. Treat each as its own focused session.
 
 **This file is scheduled for deletion when the map ships.** Anything here that
@@ -411,64 +411,85 @@ Three things moved from unproven to proven:
   `(17066.666, 17066.666, 0)` with bounds `X[−245, 245] Y[−130, 130] Z[−1, 16.89]`
   relative to it — the step 3 server extent to the decimal.
 
+**Confirmed in-game 2026-08-14**, during step 6's first port: the geometry renders
+and the floor is solid where the extractors said it would be. Vmaps and mmaps are
+not merely well-formed, they are correct.
+
 248 bytes is the correct size for a `.vmtree` holding 2 spawns. Stock global-WMO
 maps are larger only because their WMOs carry far more doodads — DeeprunTram
 56,810, StormwindPrison 21,956, AlliancePVPBarracks 4,866.
 
-### What step 6 inherits
+## Step 6 — complete 2026-08-14
 
-Map 900 is loadable, collidable and pathable. Step 6 is registration only, and all
-of it is SQL:
+`data/sql/custom/db_world/mod_moba_bg_map.sql`, plus a `pvpdifficulty_dbc`
+namespace (block `200-209`) in `apps/moba/id_blocks.json`. Two rows:
 
-- **`battlemasterlist_dbc` row 7, `MapID_1` 566 → 900.** `battleground_template`
-  has **no** `MapID` column; the map comes from `BattlemasterList.dbc` via
-  `bg->SetMapId(bgTemplate->BattlemasterEntry->mapid[0])`
-  (`BattlegroundMgr.cpp:448`). `BATTLEGROUND_EY = 7` (`SharedDefines.h:3743`) is
-  both the enum and the DBC row id — `sBattlemasterListStore.LookupEntry(bgTypeId)`
-  uses it directly. `BattlegroundMgr.cpp` itself does not change: the client queues
-  EotS and is ported to whatever map that row names, which is the hijack working as
-  designed.
-- `pvpdifficulty_dbc` rows keyed to map 900, or `GetBattlegroundBracketByLevel`
-  returns null. SQL, not a DBC file — see the step 4 decision.
-
-**This override is a different shape from `mod_moba_map.sql`, and getting it wrong
-is silent.** Those rows are new ids, so nothing is lost by inserting a partial
-column list and letting the rest default. Row 7 already exists in the DBC file, and
-`DBCDatabaseLoader::Load` **replaces the record wholesale rather than merging
-it** — it allocates a fresh buffer and walks the entire format string filling every
-field from the SQL columns. Any column omitted takes the *table default*, not the
-file's value. Supply all 32 columns or Eye of the Storm loses its name, level range
-and group size.
-
-Stock row 7, read out of `env/dist/bin/dbc/BattlemasterList.dbc` (`fmt` is
-`niiiiiiiiixssssssssssssssssxiixx`, 32 fields, matching the table's 32 columns):
-
-| Column | Value |
+| | |
 |---|---|
-| `ID` | 7 |
-| `MapID_1` | 566 → **900** |
-| `MapID_2`..`MapID_8` | -1 |
-| `InstanceType` | 3 |
-| `GroupsAllowed` | 1 |
-| `Name_Lang_enUS` | `Eye of the Storm` |
-| `Name_Lang_Mask` | 16712190 |
-| `MaxGroupSize` | 15 |
-| `HolidayWorldState` | 2851 |
-| `Minlevel` / `Maxlevel` | 61 / 80 |
+| `battlemasterlist_dbc` row 7 | all 32 columns; `MapID_1` 900, `Name_Lang_enUS` 'Twisted Treeline', every other field stock |
+| `pvpdifficulty_dbc` row 200 | map 900, `RangeIndex` 0, levels 61–85, difficulty 0 |
 
-All other `Name_Lang_*` are empty in stock.
+The queue ports to map 900 and the client loads it. `SetupBattleground` then
+fails finding no map-900 content rows, which is step 7 and not a defect.
+`BattlegroundMgr.cpp` did not change, as predicted.
 
-**Settle first, before writing any SQL:** whether the server-side override alone is
-enough, or the client's own `BattlemasterList.dbc` inside `patch-enUS-4.MPQ` needs
-the same edit. The client reads that file to decide where the queue sends it, so
-this is the usual client/server split — and `dbc_tool.py` already knows how to
-patch a DBC and `mpq_pack` how to repack, if it does.
-- Graveyards come from the `game_graveyard` world table. There is no
-  `sWorldSafeLocsStore` in AzerothCore, so `WorldSafeLocs.dbc` is not involved.
+### Settled here
 
-**Expect the first boot on map 900 to drop players somewhere arbitrary.** Every
-content config is still `map: 566` in Eye of the Storm coordinates until step 7.
-That is the known state, not a bug to chase.
+- **The client's `BattlemasterList.dbc` is not patched, and must not be.** The
+  client is never asked where to go — the map id reaches it from `bg->GetMapId()`
+  in `SMSG_BATTLEFIELD_STATUS` and again in `SMSG_NEW_WORLD`. Its own row 7 drives
+  only the PvP frame, so leaving it at 566 is what keeps the queue window reading
+  "Eye of the Storm" while server-side text says Twisted Treeline. Full reasoning
+  is in the SQL file's header.
+- **Row 32 (Random Battleground) left alone**, so this slot has dropped out of the
+  random rotation: row 32 resolves its map list by map id and still names 566.
+  Deliberate — the real fix is a standalone battleground id, which the step 3–4
+  DBC-patch pipeline has now made cheap.
+
+### Two facts that cost a round
+
+Neither is about a row, so neither fits the SQL header. Both belong in
+`MOBA_GUIDE.md`'s gotcha index when the map ships; the second is also now in
+`apps/moba/wmo/README.md` step 8, being map-agnostic.
+
+- **`GetRandomBG` runs on every queue, not just Random Battleground.**
+  `CreateNewBattleground` calls it first thing, and it keeps a candidate template
+  only while `bg->MinLevel <= bracketEntry->minLevel`. A bracket whose `MinLevel`
+  sits below `battleground_template.MinLvl` empties the candidate list, and the
+  console reports `bg template not found for 0` — naming neither
+  `pvpdifficulty_dbc` nor the level comparison. Lowering the floor for the wanted
+  level 60/50/40/30 testing means lowering `battleground_template.MinLvl` in the
+  same change — and `gen_base.py` does not emit that field today, so it is a
+  `base_config.yaml` plus generator change, not just a new value.
+
+- **`.go` reaches a battleground map only from inside a battleground.**
+  `Player::TeleportTo` returns false silently when `mEntry->IsBattlegroundOrArena()`
+  — `InstanceType` 3 or 4 — and the player is not already in one
+  (`Player.cpp:1375`). No message, no packet, GM level irrelevant. Queue in first
+  and `.go xyz` behaves normally. That is how the geometry was first seen in-game
+  (2026-08-14): ported to map 900, fell, `.go xyz 0 0 20 900` mid-fall, landed on
+  Twisted Treeline. The match ended seconds later only because `SetupBattleground`
+  had already failed. Once step 7 makes setup succeed, `.debug bg` holds the match
+  open and the map is freely walkable — so step 8's dressing pass is not blocked on
+  this.
+
+### What step 7 inherits
+
+A battleground that reaches map 900 and dies there. Every content config is still
+`map: 566` in Eye of the Storm coordinates, so two things are broken by the same
+cause:
+
+- `SetupBattleground` fails at the first store it reads — towers — and
+  `Battleground::_ProcessJoin` turns that into `EndNow()` (`Battleground.cpp:494`).
+- Start positions come from `game_graveyard` 1103/1104 at (2523, 1596, 1269) and
+  (1807, 1539, 1267), while map 900 spans X[−245, 245] Y[−130, 130] Z[−1, 16.9].
+  Players port in ~1250 yd above nothing and fall.
+
+Both are fixed by the same work: a new `apps/moba/maps/twisted_treeline/` bundle
+sourced from `var/blender/twisted_treeline_layout.json`, needing fresh id
+allocation and lockfiles, plus map-900 graveyard rows for the two start points
+(`AllianceStartLoc`/`HordeStartLoc` are `game_graveyard` ids, set from
+`base_config.yaml`).
 
 ## Pipeline (each step is its own session-sized chunk)
 
@@ -479,7 +500,7 @@ That is the known state, not a bug to chase.
 | 3 | ~~WDT + DBC rows~~ **done 2026-08-13** | — | see *Step 3 — complete* |
 | 4 | ~~Pack `.wmo` + WDT + DBCs into an MPQ client patch~~ **done 2026-08-13** | — | see *Step 4 — complete* |
 | 5 | ~~Run extractors server-side~~ **done 2026-08-13** | — | see *Step 5 — complete* |
-| 6 | Register the map server-side | Claude (SQL) | `battlemasterlist_dbc` row 7 `MapID_1` → 900, plus `pvpdifficulty_dbc` rows. **Not** `battleground_template`, which has no `MapID` column. `BattlegroundMgr.cpp` unchanged — see *What step 6 inherits* |
+| 6 | ~~Register the map server-side~~ **done 2026-08-14** | — | see *Step 6 — complete* |
 | 7 | Port the content into Twisted Treeline coordinates | Claude drives, Jacob decides placement | new `apps/moba/maps/twisted_treeline/` bundle. All six configs are still `map: 566` in EotS space; the source is `twisted_treeline_layout.json`, which nothing consumes yet. Needs fresh id allocation and lockfiles |
 | 8 | Dressing pass — doodads | Jacob authors in Blender, Claude tools it | pipeline proven at step 5; blocked instead on **where placements are stored** (README step 3). Each change costs re-export → re-pack → re-extract → re-mmaps |
 
@@ -500,9 +521,10 @@ That is the known state, not a bug to chase.
 
 ## Next concrete step
 
-Step 6: register the map — `battlemasterlist_dbc` row 7 `MapID_1` → 900, plus
-`pvpdifficulty_dbc` rows for map 900. Both are SQL; see *What step 6 inherits*,
-which carries the stock row values and the whole-record-replacement trap.
+Step 7: port the content into Twisted Treeline coordinates — a new
+`apps/moba/maps/twisted_treeline/` bundle sourced from
+`var/blender/twisted_treeline_layout.json`, which nothing consumes yet. See
+*What step 7 inherits*.
 
 Two claims from earlier sessions were wrong and are corrected here:
 `var/extractors/{dbc,maps,mmaps,vmaps}` holds nothing but `.gitkeep` and is

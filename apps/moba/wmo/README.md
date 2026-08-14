@@ -216,6 +216,19 @@ DBCs inside its own locale patches (flags `0x84000200` =
 Re-packing rebuilds the archive from scratch, so re-export → re-pack → re-extract
 carries no incremental state that can drift.
 
+**The archive this writes is the extraction source, not the play copy.** The path
+above is whatever install `vmap4_extractor` will read. A client you actually play
+on that is a different install — another machine, or a VM — needs its own copy of
+the same file, and nothing in this pipeline puts it there. Copy it with the client
+closed; MPQs are held open.
+
+Three things have to hold on that copy, and all three fail silently: it goes in the
+**locale** folder (`Data\enUS\`, not `Data\`), for the same reason the pack does;
+the patch number must not collide with one the install already ships (stock 3.3.5a
+ends at `patch-<loc>-3`); and the locale in the folder and filename must match the
+client's own. The bytes are locale-independent — files are packed locale-neutral —
+so a rename is all a different locale needs.
+
 ### 8. Run the extractors
 
 The tools are not built by default — `TOOLS_BUILD` defaults to `none`:
@@ -270,6 +283,18 @@ Verify by parsing, not eyeballing. The `.vmtree`'s `GOBJ` spawn should sit at th
 grid centre `(17066.67, 17066.67, 0)` with the model's bounds around it, and every
 `.mmtile` should report `DNAV` v7, `mmapVersion 19` and a **nonzero polygon
 count** — a tile that builds with zero polygons is terrain nothing can walk.
+
+### Getting onto the finished map
+
+Parsing proves the files are right. It does not prove the client renders the map or
+that a player can stand on it — that needs `.go xyz <x> <y> <z> <mapid>` in-game.
+
+**If the map's `Map.dbc` `InstanceType` is 3 or 4, `.go` refuses it silently.**
+`Player::TeleportTo` returns false with no message and no packet when
+`mEntry->IsBattlegroundOrArena()` and the player is not already inside one
+(`Player.cpp:1375`); GM level is irrelevant. Enter a match on that map first — from
+inside, `.go` works normally and is the way to walk terrain that has no content on
+it yet. A map registered as a normal world map (`InstanceType 0`) has no such guard.
 
 ## Where the map lands
 

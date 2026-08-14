@@ -78,6 +78,16 @@
       "source": "-"
     }
   },
+  "pvpdifficulty_dbc": {
+    "twisted_treeline": {
+      "blocks": [
+        "200-209"
+      ],
+      "enumerated": false,
+      "note": "hand-assigned, nothing allocates here. 200 = map 900's only bracket; stock PvpDifficulty.dbc runs to id 108. Small ids for the same reason as map_dbc: DBCStorage sizes its index table to max(id)+1. RangeIndex is a different id space and is NOT covered by this block -- it is the bracket index, and must stay under MAX_BATTLEGROUND_BRACKETS (16) because BattlegroundQueue arrays are dimensioned by it.",
+      "source": "-"
+    }
+  },
   "waypoint_data": {
     "creep_paths": {
       "blocks": [
