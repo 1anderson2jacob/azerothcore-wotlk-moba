@@ -377,11 +377,122 @@ six of our files resolve to `patch-enUS-4.MPQ` in each, with no divergence.
 
 ### What step 5 inherits
 
-- From source, mmaps should handle a WMO-only map: `discoverTiles` finds it via
-  the `.vmtree`, sees no tiles, and derives grid bounds from the model mesh, and
-  map 900 is in none of the junk/battleground skip lists. Unproven in practice.
-- Extracted output installs into `env/dist/bin/`, **not** `var/extractors/` — see
-  the correction at the end of this file.
+**The extractors are not built.** `var/build/obj/CMakeCache.txt` carries
+`TOOLS_BUILD=none`, and `env/dist/bin/` holds only `authserver` and
+`worldserver` — the installed map data came from AzerothCore's prebuilt v19
+release, never from a local run. So step 5 opens with a reconfigure:
+
+```bash
+cd var/build/obj
+cmake -DTOOLS_BUILD=maps-only .
+make -j$(sysctl -n hw.ncpu)
+make install
+```
+
+`maps-only` whitelists exactly the four needed. The binaries keep their source
+directory names lowercased — **`map_extractor`, `vmap4_extractor`,
+`vmap4_assembler`, `mmaps_generator`**, with underscores, not the `mapextractor` /
+`vmap4extractor` spellings used in upstream release archives. `make install` puts
+them plus `mmaps-config.yaml` into `env/dist/bin/`.
+
+**Format compatibility is already confirmed**, so new files can sit beside the
+v19 set instead of forcing a full regeneration: the source's `VMAP_MAGIC` is
+`VMAP_4.8`, matching the header of the installed `369.vmtree`, and an installed
+`.mmtile` reads `mmapVersion 19` / `dtVersion 7`, matching `MMAP_VERSION` and
+`DT_NAVMESH_VERSION` in `MapDefines.h`.
+
+#### What a WMO-only map produces
+
+Measured against the three stock global-WMO maps already installed here —
+DeeprunTram (369), StormwindPrison (035), AlliancePVPBarracks (449): **0 files in
+`maps/`, one `.vmtree` and no `.vmtile` in `vmaps/`, 5–13 files in `mmaps/`.** A
+global WMO's spawn lives in the `.vmtree` itself; the model sits beside it as
+`Subway.wmo.vmo` / `Stormwindprison.wmo.vmo` — basename, first letter capitalised
+only.
+
+Map 900's whole footprint should therefore be:
+
+- `vmaps/900.vmtree`
+- `vmaps/Twistedtreeline.wmo.vmo`
+- `mmaps/900.mmap` + `900*.mmtile` — the WDT predicts 4 tiles
+- nothing in `maps/`
+
+#### `map_extractor` is not needed
+
+It has no per-map flag (`-e` picks MAP/DBC/Camera, nothing finer), it would
+reprocess all 5744 tiles, and a WMO-only map yields no `.map` files anyway. Map
+900 reaches the server through `mod_moba_map.sql` and the `*_dbc` override
+tables, which is what those tables are for.
+
+**Decided 2026-08-13 — leave the extracted DBCs alone.** `mod_moba_map.sql` is
+the only server-side source and stays that way. All 112 DBC loads in
+`DBCStores.cpp` have an override table, `pvpdifficulty_dbc` among them, so
+nothing in step 6 or later forces a DBC file edit.
+
+Two things decided it past mere convenience:
+
+- **A SQL row survives a client-data bump; a patched file does not.**
+  `inst_download_client_data` guards on `env/dist/bin/data-version` — `v19` today,
+  matching its own hardcoded `VERSION`, so it is currently a no-op. When upstream
+  bumps that version the guard fails and it runs `unzip -o` over
+  `env/dist/bin/`. DBC files are inside that archive and would silently revert to
+  stock; map 900's `.vmtree`, `.vmo` and `.mmtile` are not in it and survive.
+- **Editing SQL is one restart.** Editing a DBC is `dbc_tool.py` → `mpq_pack` →
+  `map_extractor` → restart, for a value the client never reads.
+
+The cost is that `env/dist/bin/dbc/Map.dbc` will never contain map 900, which
+looks like a missing registration and is not. That is called out in
+`mod_moba_map.sql` itself, so the confusion is answered where it arises.
+
+#### Why not `apps/extractor/extractor.sh`
+
+The repo ships a driver, and it is where the underscored binary names above are
+confirmed. It is the wrong tool here: every one of its functions opens with
+`rm -rf` over the target directories, and its `mmaps_generator` call passes no map
+id — so even its cheapest option rebuilds every map from scratch, in the script's
+own words "may take a few hours". It also guards on `[ -d "./Data" ]`, so it only
+runs from the WoW folder and could never write into `env/dist/bin/` regardless.
+
+One thing worth taking from it: `Couldn't open RootWmo!!!` on
+`World\Wmo\Band\Final_Stage.wmo` during vmap extraction is **expected and
+harmless** — the script prints a banner saying exactly that. Do not chase it.
+
+#### The run
+
+```bash
+cd <empty scratch dir>
+vmap4_extractor -d ~/Games/wow335/Data/    # -> ./Buildings, ./temp_gameobject_models
+vmap4_assembler Buildings vmaps            # -> ./vmaps
+cp vmaps/900.vmtree vmaps/Twistedtreeline.wmo.vmo <repo>/env/dist/bin/vmaps/
+cd <repo>/env/dist/bin && ./mmaps_generator 900
+```
+
+Traps, all read out of the source rather than guessed:
+
+- **`vmap4_extractor` refuses a non-empty output directory.** It stats
+  `Buildings/dir` and `Buildings/dir_bin` and quits with "Your output directory
+  seems to be polluted, please use an empty directory!". Start from an empty one.
+- **The two extractors mean different things by their path argument.**
+  `map_extractor -i` takes the game *root* and appends `/Data/` itself
+  (`System.cpp:1169`); `vmap4_extractor -d` takes the *Data* directory
+  (`vmapexport.cpp:240`). Same install, different string.
+- **`900.vmtree` has to be in `vmaps/` before `mmaps_generator` runs.**
+  `discoverTiles` picks a tile-less map up only through the `.vmtree`
+  (`MapBuilder.cpp:116-125`); with no `.map` files that is the sole discovery path.
+- `checkDirectories` wants `maps/` non-empty *globally* and `vmaps/` holding at
+  least one `.vmtree`, so `mmaps_generator` must run from `env/dist/bin/`, not the
+  scratch dir. It also needs `mmaps-config.yaml` in the CWD, or `--config`.
+- `mmaps_generator` reads no DBCs — it neither knows nor cares that 900 is custom.
+  It takes a bare map id as its positional argument.
+- Copy only the two vmap files across. `vmap4_assembler` regenerates every map's
+  `.vmo`, and `temp_gameobject_models` is absent from this install; nothing else
+  under `env/dist/bin/` should change.
+
+#### Done when
+
+- `env/dist/bin/mmaps/900.mmap` plus ~4 `900*.mmtile` exist
+- a new `.mmtile` header reads `mmapVersion 19`, `dtVersion 7`
+- `git status` is clean — every artefact above lands outside the repo
 
 ## Pipeline (each step is its own session-sized chunk)
 
@@ -391,7 +502,7 @@ six of our files resolve to `patch-enUS-4.MPQ` in each, with no divergence.
 | 2 | ~~Export to `.wmo`~~ **done 2026-08-12** | — | see *Step 2 — complete* |
 | 3 | ~~WDT + DBC rows~~ **done 2026-08-13** | — | see *Step 3 — complete* |
 | 4 | ~~Pack `.wmo` + WDT + DBCs into an MPQ client patch~~ **done 2026-08-13** | — | see *Step 4 — complete* |
-| 5 | Run extractors server-side: `mapextractor`, `vmap4extractor` + `vmap4assembler`, `mmaps_generator` | Jacob | **mmaps is load-bearing** — creep pathfinding needs the navmesh built from WMO collision. Doodads inside a global WMO *are* extracted (`WDTFile` MODF branch calls `Doodad::ExtractSet`) |
+| 5 | Run extractors server-side: `vmap4_extractor` + `vmap4_assembler`, then `mmaps_generator 900` | Jacob | **mmaps is load-bearing** — creep pathfinding needs the navmesh built from WMO collision. Doodads inside a global WMO *are* extracted (`WDTFile` MODF branch calls `Doodad::ExtractSet`). The tools are not built yet — see *What step 5 inherits* |
 | 6 | Register the map server-side + point `BattlegroundMOBA` at the new map id | Claude (C++/SQL) | `mod_moba_map.sql` already carries the DBC rows. Still needs `battleground_template.MapID`, and **`PvpDifficulty.dbc` rows keyed to map 900** or `GetBattlegroundBracketByLevel` returns null |
 
 ## Division of labor (per CLAUDE.md env rules)
@@ -411,8 +522,9 @@ six of our files resolve to `patch-enUS-4.MPQ` in each, with no divergence.
 
 ## Next concrete step
 
-Step 5: run the extractors — `mapextractor`, `vmap4extractor` + `vmap4assembler`,
-`mmaps_generator` — and install the output into `env/dist/bin/`.
+Step 5: build the map tools (`cmake -DTOOLS_BUILD=maps-only .`), then run
+`vmap4_extractor` → `vmap4_assembler` → `mmaps_generator 900`, installing only map
+900's output into `env/dist/bin/`. Full handoff in *What step 5 inherits*.
 
 Two claims from earlier sessions were wrong and are corrected here:
 `var/extractors/{dbc,maps,mmaps,vmaps}` holds nothing but `.gitkeep` and is

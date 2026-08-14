@@ -134,7 +134,7 @@ Output is one root `.wmo` plus one file per group.
 python3.10 wmo_verify.py path/to/Root.wmo
 ```
 
-Do this before packing anything. It replays what `vmap4extractor` will decide,
+Do this before packing anything. It replays what `vmap4_extractor` will decide,
 so a dead map is caught here instead of after a pack-and-extract round trip.
 
 The number that decides whether the map is playable is **`triangles kept as
@@ -165,7 +165,7 @@ ambience) keeps a value already known to work on a live map. It never decodes a
 record, so a column with no known type keeps its bytes, and string columns keep
 valid offsets because the string block is only ever appended to.
 
-The client cannot load a map without its `Map.dbc` row, and **`vmap4extractor`
+The client cannot load a map without its `Map.dbc` row, and **`vmap4_extractor`
 enumerates maps from `Map.dbc` to find the WDT** — so the row has to be inside
 the MPQ before extraction can see the map at all.
 
@@ -193,14 +193,14 @@ No textures — MOTX ships paths, and everything referenced is a stock asset.
 **It has to be the locale archive.** Both extractors search the most recently
 opened archive first (`MPQArchive`'s ctor does `push_front`), and they build that
 order in opposite directions: `map_extractor` opens locale archives then base
-ones, so `Data/patch-N.MPQ` ends up ahead; `vmap4extractor` appends the locale
+ones, so `Data/patch-N.MPQ` ends up ahead; `vmap4_extractor` appends the locale
 patch scan last, so the locale chain ends up ahead.
 
 For the `.wmo` and the WDT that disagreement is harmless — new filenames, nothing
 else provides them. For the DBCs it decides the map, because they shadow files
 the client already ships, and **every stock DBC lives only in the locale chain —
 not one base archive holds a single one.** Pack them into `Data/patch-4.MPQ` and
-`vmap4extractor` resolves `Map.dbc` to the stock locale patch, never sees the new
+`vmap4_extractor` resolves `Map.dbc` to the stock locale patch, never sees the new
 map id, and builds no vmaps for it. `map_extractor` meanwhile reads the new row
 fine, so the map half-works and the failure surfaces much later as missing
 collision.
@@ -218,8 +218,9 @@ carries no incremental state that can drift.
 
 ### 8. Run the extractors
 
-`mapextractor` / `vmap4extractor` + `vmap4assembler` / `mmaps_generator`, output
-installed into `env/dist/bin/`.
+`map_extractor` / `vmap4_extractor` + `vmap4_assembler` / `mmaps_generator`
+(underscored — that is what the build actually produces), output installed into
+`env/dist/bin/`.
 
 **Not yet done, so not written here.** `.github/MOBA_MAP_WMO_PLAN.md` holds what
 is known and what is still unverified. Move it here once it has actually run.

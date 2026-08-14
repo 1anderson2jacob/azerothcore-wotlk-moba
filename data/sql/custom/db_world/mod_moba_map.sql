@@ -5,7 +5,12 @@ USE acore_world;
 -- merges them additively over the file, so one row per table adds a map without
 -- touching data/dbc. The CLIENT still needs the same rows inside the MPQ patch
 -- (apps/moba/wmo/dbc_tool.py) -- it cannot load a map otherwise, and
--- vmap4extractor finds the WDT by walking Map.dbc.
+-- vmap4_extractor finds the WDT by walking Map.dbc.
+--
+-- The extracted DBCs under env/dist/bin/dbc/ are stock client files and
+-- deliberately carry none of these rows: finding no map 900 in Map.dbc means
+-- nothing is broken. These tables are the only server-side source, and a row
+-- here always wins -- the loader writes it over the file's index entry.
 --
 -- Column COUNT is load-bearing in a way column values are not: the loader runs
 -- `SELECT *` and asserts the result's field count equals the DBC format string's
