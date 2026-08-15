@@ -52,7 +52,7 @@ Shipped:
 
 Next, in order:
 
-- [ ] Custom map — move onto Twisted Treeline (see `MOBA_MAP_WMO_PLAN.md`)
+- [x] Custom map — Twisted Treeline, map 900 (dressing pass outstanding)
 - [ ] Standalone battleground ID via a `BattlemasterList.dbc` patch — bundles with the map work
 - [ ] Client-patch bundle — recall tooltip and animation, fountain visuals, sounds, music
 - [ ] Lane and neutral mob gold pass

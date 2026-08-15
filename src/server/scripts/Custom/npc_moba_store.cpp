@@ -319,7 +319,10 @@ public:
                 sMobaStoreDataStore->LoadIfNeeded();
 
                 uint32 map = player->GetMapId();
-                moba->SendShopMessage(player, Acore::StringFormat("INIT:{}", map));
+                // The version rides on INIT because the addon cannot ask for it later
+                // without already knowing the map, and the map is what this carries.
+                moba->SendShopMessage(player, Acore::StringFormat("INIT:{}:{}",
+                    map, sMobaStoreDataStore->GetCatalogVersion(map)));
                 SendSuffixFactors(player, moba, map);
                 SendUnusableEntries(player, moba, map);
                 moba->SendShopRange(player, true);

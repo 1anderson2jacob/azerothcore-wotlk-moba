@@ -63,6 +63,9 @@ def validate(cfg, path):
         fail(f'{path}: "map" must be an integer map id')
     if not isinstance(cfg.get("battleground_template_id"), int):
         fail(f'{path}: "battleground_template_id" must be an integer')
+    active = cfg.get("active", True)
+    if not isinstance(active, bool):
+        fail(f'{path}: "active" must be true or false')
     mppt = cfg.get("min_players_per_team")
     if not isinstance(mppt, int) or mppt < 1:
         fail(f'{path}: "min_players_per_team" must be an integer >= 1')
@@ -151,6 +154,28 @@ def load_configs():
         configs.append((path, cfg))
     if not configs:
         fail(f"no base configs found under {MAPS_DIR}/*/base_config.yaml")
+
+    # Content tables are Map-keyed and coexist; the QUEUE SLOT does not. A
+    # battleground_template row is keyed by battleground type id, its start locations
+    # resolve once at load (BattlegroundMgr.cpp:527), and the map comes from
+    # BattlemasterList.dbc mapid[0] -- so one slot serves exactly one map's spawns no
+    # matter how many bundles ship content. Two maps queueable at once needs a second
+    # battleground type id, which needs a client DBC patch.
+    active_by_slot = {}
+    for path, cfg in configs:
+        if not cfg.get("active", True):
+            continue
+        slot = cfg["battleground_template_id"]
+        if slot in active_by_slot:
+            fail(f"{path}: battleground_template {slot} is already claimed by "
+                 f"{active_by_slot[slot]} -- exactly one config per slot may be active")
+        active_by_slot[slot] = path
+    for path, cfg in configs:
+        slot = cfg["battleground_template_id"]
+        if slot not in active_by_slot:
+            fail(f"{path}: battleground_template {slot} has no active config -- set "
+                 f"active: true on the bundle that owns the slot")
+
     id_alloc.validate_owner(id_alloc.GAMEOBJECT_TEMPLATE, "base_dome")
     return configs
 
@@ -279,6 +304,15 @@ def emit(configs, blocks):
 
     for path, cfg in configs:
         mode = path.parent.name
+        if not cfg.get("active", True):
+            lines += [
+                "",
+                f"-- Spawn wiring for map {cfg['map']} ({mode}) SKIPPED -- active: false.",
+                f"-- Its content rows above stay live and inert; battleground_template "
+                f"{cfg['battleground_template_id']} belongs to the active bundle.",
+            ]
+            continue
+
         spawn = cfg["spawn"]
         a, h = spawn["alliance"], spawn["horde"]
         lines += [
@@ -296,8 +330,11 @@ def emit(configs, blocks):
              f"StartMaxDist = 0, "
              f"MinPlayersPerTeam = {cfg['min_players_per_team']} "
              f"WHERE ID = {cfg['battleground_template_id']};"),
-            f"UPDATE game_graveyard SET x = {a['x']}, y = {a['y']}, z = {a['z']} WHERE ID = {a['graveyard_id']};",
-            f"UPDATE game_graveyard SET x = {h['x']}, y = {h['y']}, z = {h['z']} WHERE ID = {h['graveyard_id']};",
+            "-- Map moves with the coordinates. Player::RepopAtGraveyard teleports to",
+            "-- ClosestGrave->Map, so a graveyard left on the old map throws a releasing",
+            "-- player clean out of the battleground.",
+            f"UPDATE game_graveyard SET Map = {cfg['map']}, x = {a['x']}, y = {a['y']}, z = {a['z']} WHERE ID = {a['graveyard_id']};",
+            f"UPDATE game_graveyard SET Map = {cfg['map']}, x = {h['x']}, y = {h['y']}, z = {h['z']} WHERE ID = {h['graveyard_id']};",
         ]
     return "\n".join(lines) + "\n"
 

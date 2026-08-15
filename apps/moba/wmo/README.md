@@ -180,6 +180,14 @@ column in one of those tables kills the worldserver at startup.
 `sWorldSafeLocsStore` at all; graveyards come from the `game_graveyard` world
 table.
 
+**A new map needs a `mapdifficulty_dbc` row or every static spawn on it logs an
+error.** `ObjectMgr::LoadCreatures` builds `spawnMasks[mapId]` by ORing a bit per
+difficulty that has a row (`ObjectMgr.cpp:2345`), so a map with no row gets mask 0 and
+any spawn's `spawnMask` trips "wrong spawn mask ... not supported difficulty modes".
+Log-only — nothing at spawn time reads `spawnMask`, and the creatures spawn fine — but
+it is an ERROR on every boot, and a real failure hiding in that noise is expensive.
+Stock battleground rows carry nothing but ID, MapID, Difficulty and the locale mask.
+
 ### 7. Pack the client patch
 
 ```bash
@@ -252,6 +260,9 @@ vmap4_assembler Buildings vmaps         # -> ./vmaps
 cp vmaps/<id>.vmtree vmaps/<Model>.wmo.vmo <install>/vmaps/
 cd <install> && ./mmaps_generator <id>
 ```
+
+Into `env/dist/bin/`, not `var/extractors/` — those five `.gitkeep` directories are
+upstream's Docker layout and nothing in a local build reads them.
 
 **A WMO-only map produces no `.map` files and no `.vmtile`.** The global WMO's
 spawn lives in the `.vmtree` itself, and the model sits beside it as

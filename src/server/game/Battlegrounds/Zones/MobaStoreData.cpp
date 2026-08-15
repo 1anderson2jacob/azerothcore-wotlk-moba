@@ -108,6 +108,18 @@ void MobaStoreDataStore::LoadIfNeeded()
     else
         LOG_ERROR("sql.sql", "MobaStoreDataStore: table `mod_moba_store_sell` is empty or missing.");
 
+    if (QueryResult versions = WorldDatabase.Query(
+        "SELECT Map, Hash FROM mod_moba_store_version"))
+    {
+        do
+        {
+            Field* fields = versions->Fetch();
+            _catalogVersions[fields[0].Get<uint32>()] = fields[1].Get<std::string>();
+        } while (versions->NextRow());
+    }
+    else
+        LOG_ERROR("sql.sql", "MobaStoreDataStore: table `mod_moba_store_version` is empty or missing.");
+
     LOG_INFO("server.loading", ">> Loaded {} MOBA shopkeeper(s), {} catalog node(s), {} sell price(s).",
              _npcs.size(), _nodes.size(), _sellByItem.size());
 }
@@ -164,4 +176,10 @@ bool MobaStoreDataStore::GetSellValue(uint32 map, uint32 itemEntry, uint32& out)
 
     out = itr->second;
     return true;
+}
+
+std::string MobaStoreDataStore::GetCatalogVersion(uint32 map) const
+{
+    auto itr = _catalogVersions.find(map);
+    return itr != _catalogVersions.end() ? itr->second : "";
 }

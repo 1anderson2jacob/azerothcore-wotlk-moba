@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 import id_alloc
-from gen_creep_roster import get_entry
+from gen_creep_roster import get_entry, LANE_IDS
 
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_towers.sql")
@@ -43,12 +43,6 @@ REQUIRED_TOWER = ["key", "team", "tier",
 # Structure kind -> mod_moba_tower_data.Kind. Matches MobaStructureKind in
 # MobaTowerData.h. "kind" is optional in config (default "tower").
 KIND_IDS = {"tower": 0, "inhibitor": 1, "core": 2}
-
-# Lane -> mod_moba_tower_data.Lane. Matches MobaLane in MobaTowerData.h and
-# LANE_NAMES in client/addons/MobaHUD/Feed.lua -- all three must agree.
-# "lane" is optional (default "none"): 0 is what a core carries, and the HUD
-# renders no lane word for it.
-LANE_IDS = {"none": 0, "top": 1, "mid": 2, "bot": 3}
 
 DEFAULT_SUBNAME = "MOBA Objective"
 DEFAULT_ARMOR_MODIFIER = 5

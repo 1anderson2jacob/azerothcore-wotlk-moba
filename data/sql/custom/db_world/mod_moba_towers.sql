@@ -14,7 +14,7 @@
 
 USE acore_world;
 
-DELETE FROM `creature_template` WHERE `entry` BETWEEN 900000 AND 900009;
+DELETE FROM `creature_template` WHERE (`entry` BETWEEN 900000 AND 900009 OR `entry` BETWEEN 900400 AND 900499);
 INSERT INTO `creature_template`
 (`entry`, `name`, `subname`, `minlevel`, `maxlevel`, `faction`, `npcflag`,
  `speed_walk`, `speed_run`, `rank`, `unit_class`, `unit_flags`, `unit_flags2`,
@@ -26,14 +26,24 @@ VALUES
 (900004, 'Alliance Base', 'MOBA Objective', 80, 80, 84, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 15, 5, 0, 0, 0, 'npc_moba_tower', 0),
 (900001, 'Horde Tower', 'MOBA Objective', 80, 80, 83, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 8, 5, 0, 0, 0, 'npc_moba_tower', 0),
 (900003, 'Horde Inhibitor', 'MOBA Objective', 80, 80, 83, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 10, 5, 0, 0, 0, 'npc_moba_tower', 0),
-(900005, 'Horde Base', 'MOBA Objective', 80, 80, 83, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 15, 5, 0, 0, 0, 'npc_moba_tower', 0);
+(900005, 'Horde Base', 'MOBA Objective', 80, 80, 83, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 15, 5, 0, 0, 0, 'npc_moba_tower', 0),
+(900006, 'Alliance Tower', 'MOBA Objective', 80, 80, 84, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 8, 5, 0, 0, 0, 'npc_moba_tower', 0),
+(900007, 'Alliance Tower', 'MOBA Objective', 80, 80, 84, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 8, 5, 0, 0, 0, 'npc_moba_tower', 0),
+(900008, 'Alliance Inhibitor', 'MOBA Objective', 80, 80, 84, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 10, 5, 0, 0, 0, 'npc_moba_tower', 0),
+(900009, 'Alliance Inhibitor', 'MOBA Objective', 80, 80, 84, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 10, 5, 0, 0, 0, 'npc_moba_tower', 0),
+(900400, 'Alliance Base', 'MOBA Objective', 80, 80, 84, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 15, 5, 0, 0, 0, 'npc_moba_tower', 0),
+(900401, 'Horde Tower', 'MOBA Objective', 80, 80, 83, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 8, 5, 0, 0, 0, 'npc_moba_tower', 0),
+(900402, 'Horde Tower', 'MOBA Objective', 80, 80, 83, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 8, 5, 0, 0, 0, 'npc_moba_tower', 0),
+(900403, 'Horde Inhibitor', 'MOBA Objective', 80, 80, 83, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 10, 5, 0, 0, 0, 'npc_moba_tower', 0),
+(900404, 'Horde Inhibitor', 'MOBA Objective', 80, 80, 83, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 10, 5, 0, 0, 0, 'npc_moba_tower', 0),
+(900405, 'Horde Base', 'MOBA Objective', 80, 80, 83, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 15, 5, 0, 0, 0, 'npc_moba_tower', 0);
 
 -- Structures spawn from C++, never from `creature` rows, so this normally
 -- deletes nothing. It sweeps GM `.npc add` test spawns. The spawn table's
 -- entry column is `id`, not `id1`: upstream 2026_06_16_00.sql renamed it.
-DELETE FROM `creature` WHERE `id` BETWEEN 900000 AND 900009;
+DELETE FROM `creature` WHERE (`id` BETWEEN 900000 AND 900009 OR `id` BETWEEN 900400 AND 900499);
 
-DELETE FROM `creature_template_model` WHERE `CreatureID` BETWEEN 900000 AND 900009;
+DELETE FROM `creature_template_model` WHERE (`CreatureID` BETWEEN 900000 AND 900009 OR `CreatureID` BETWEEN 900400 AND 900499);
 INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)
 VALUES
 (900000, 0, 27101, 3.0, 1, 0),
@@ -41,7 +51,17 @@ VALUES
 (900004, 0, 11659, 2.0, 1, 0),
 (900001, 0, 18505, 2.0, 1, 0),
 (900003, 0, 1461, 0.75, 1, 0),
-(900005, 0, 11659, 2.0, 1, 0);
+(900005, 0, 11659, 2.0, 1, 0),
+(900006, 0, 27101, 3.0, 1, 0),
+(900007, 0, 27101, 3.0, 1, 0),
+(900008, 0, 1460, 0.75, 1, 0),
+(900009, 0, 1460, 0.75, 1, 0),
+(900400, 0, 11659, 2.0, 1, 0),
+(900401, 0, 18505, 2.0, 1, 0),
+(900402, 0, 18505, 2.0, 1, 0),
+(900403, 0, 1461, 0.75, 1, 0),
+(900404, 0, 1461, 0.75, 1, 0),
+(900405, 0, 11659, 2.0, 1, 0);
 
 DROP TABLE IF EXISTS `mod_moba_tower_data`;
 CREATE TABLE `mod_moba_tower_data` (
@@ -72,4 +92,14 @@ VALUES
 (900004, 566, 0, 2, 0, 900002, 2, 0, 2354.7302, 1587.6167, 1171.2659, 0.89613223, 0, 1500, 0, 0, 0),
 (900001, 566, 1, 0, 2, 0, 0, 0, 2056.0195, 1547.1702, 1162.6882, 0.21284086, 40, 1500, 9053, 3000, 1500),
 (900003, 566, 1, 1, 2, 900001, 1, 120000, 2018.5479, 1549.687, 1168.0171, 0.04476848, 0, 1500, 0, 0, 1500),
-(900005, 566, 1, 2, 0, 900003, 2, 0, 1983.9092, 1547.2158, 1170.3706, 5.8048787, 0, 1500, 0, 0, 0);
+(900005, 566, 1, 2, 0, 900003, 2, 0, 1983.9092, 1547.2158, 1170.3706, 5.8048787, 0, 1500, 0, 0, 0),
+(900006, 900, 0, 0, 1, 0, 0, 0, -75.0, 66.0, 0.0, 0.0, 40, 1500, 9053, 3000, 1500),
+(900007, 900, 0, 0, 3, 0, 0, 0, -75.0, -79.0, 0.0, 0.0, 40, 1500, 9053, 3000, 1500),
+(900008, 900, 0, 1, 1, 900006, 1, 120000, -172.0, 12.0, 0.0, 0.0, 0, 1500, 0, 0, 1500),
+(900009, 900, 0, 1, 3, 900007, 1, 120000, -172.0, -22.0, 0.0, 0.0, 0, 1500, 0, 0, 1500),
+(900400, 900, 0, 2, 0, 0, 2, 0, -185.0, -5.0, 1.0, 0.0, 0, 1500, 0, 0, 0),
+(900401, 900, 1, 0, 1, 0, 0, 0, 75.0, 66.0, 0.0, 3.1415927, 40, 1500, 9053, 3000, 1500),
+(900402, 900, 1, 0, 3, 0, 0, 0, 75.0, -79.0, 0.0, 3.1415927, 40, 1500, 9053, 3000, 1500),
+(900403, 900, 1, 1, 1, 900401, 1, 120000, 172.0, 12.0, 0.0, 3.1415927, 0, 1500, 0, 0, 1500),
+(900404, 900, 1, 1, 3, 900402, 1, 120000, 172.0, -22.0, 0.0, 3.1415927, 0, 1500, 0, 0, 1500),
+(900405, 900, 1, 2, 0, 0, 2, 0, 185.0, -5.0, 1.0, 3.1415927, 0, 1500, 0, 0, 0);

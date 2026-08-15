@@ -967,6 +967,10 @@ RenderShop = function()
     local tab = ShopTab()
     RenderTabs()
     shopGold:SetText(FormatMoneyHeader(ns.gold))
+    if shop.stale then
+        shopStatus:SetText("|cffff3333MobaHUD is out of date -- reinstall the addon|r")
+        return
+    end
     if not tab then
         shopStatus:SetText("|cffff3333no catalog for this map|r")
         return
@@ -1014,9 +1018,14 @@ local function HandleShopPayload(payload)
     -- minimap button the panel must be able to draw itself with no NPC involved,
     -- and Cat() keys the entire catalog off mapId. It is also the once-per-match
     -- state reset, which is why ShowShop does not repeat it.
-    local initMap = string.match(payload, "^INIT:(%d+)$")
+    local initMap, initVer = string.match(payload, "^INIT:(%d+):(%w*)$")
     if initMap then
         shop.mapId = tonumber(initMap)
+        -- An empty hash means the server has no row for this map, so there is nothing
+        -- to disagree with. A present one that differs means this file is older than
+        -- the prices the server will charge.
+        local mine = MobaShopCatalogVersion and MobaShopCatalogVersion[shop.mapId]
+        shop.stale = (initVer ~= "" and mine ~= initVer)
         -- One shopkeeper sells every tab, so the server names no tab; open on the
         -- first one the catalog defines. Cat() reads shop.mapId, so order matters.
         local c = Cat()
@@ -1083,6 +1092,7 @@ ns.Shop = {
     Stop = function()
         HideShop()
         shop.mapId = nil
+        shop.stale = nil
         SetInRange(false)
     end,
 

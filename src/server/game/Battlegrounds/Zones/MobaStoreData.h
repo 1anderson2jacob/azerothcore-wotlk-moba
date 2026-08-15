@@ -57,6 +57,11 @@ public:
     // refused; true with out == 0 means it was free and refunds nothing.
     bool GetSellValue(uint32 map, uint32 itemEntry, uint32& out) const;
 
+    // The hash of this map's block in the addon's Catalog.lua, as gen_store.py wrote it.
+    // Empty when the map has no row, and the addon then skips the check rather than
+    // locking itself out.
+    std::string GetCatalogVersion(uint32 map) const;
+
 private:
     MobaStoreDataStore() = default;
 
@@ -78,6 +83,7 @@ private:
     std::unordered_map<uint64, MobaStoreNode const*> _byNode;
     std::unordered_map<uint64, std::vector<MobaStoreGrant>> _grants;
     std::unordered_map<uint64, uint32> _sellByItem;
+    std::unordered_map<uint32, std::string> _catalogVersions;
 };
 
 #define sMobaStoreDataStore MobaStoreDataStore::instance()

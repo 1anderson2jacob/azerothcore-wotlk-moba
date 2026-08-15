@@ -67,6 +67,11 @@ MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_creeps.sql")
 
 ROLE_IDS = {"melee": 0, "caster": 1, "siege": 2, "super": 3}
+# Lane -> mod_moba_creep_data.Lane. Matches MobaLane in MobaTowerData.h and LANE_NAMES
+# in client/addons/MobaHUD/Feed.lua -- all three must agree. Defined HERE rather than in
+# gen_tower_data.py, which already imports from this module: the reverse direction would
+# be a circular import.
+LANE_IDS = {"none": 0, "top": 1, "mid": 2, "bot": 3}
 STRING_COLUMNS = {"name", "subname", "IconName", "AIName", "ScriptName"}
 NUMBER_RE = re.compile(r"^-?\d+(\.\d+)?$")
 DUMP_LINE_RE = re.compile(r"^\s*(\w+): ?(.*)$")
@@ -206,6 +211,10 @@ def validate_config(cfg, path):
         if "creature_type" in creep and not isinstance(creep["creature_type"], int):
             fail(f'creep "{key}": "creature_type" must be an integer '
                  "(enum CreatureType; 7 = Humanoid, 9 = Mechanical)")
+        if creep["lane"] not in LANE_IDS:
+            fail(f'creep "{key}": "lane" must be one of {sorted(LANE_IDS)} -- it is '
+                 "matched against the inhibitor's lane to pick which lane fields super "
+                 "minions, so a name outside this set silently fields none")
 
         # One waypoint path per team/lane/slot, so two creeps sharing one would
         # spawn and walk on top of each other.
@@ -541,11 +550,14 @@ def emit_sql(roster, column_order, blocks):
         "    `AttackIntervalMs` INT UNSIGNED NOT NULL DEFAULT 2000,",
         "    `AttackSpellId`    INT UNSIGNED NOT NULL DEFAULT 0,",
         "    `WaypointPathId`   INT UNSIGNED NOT NULL,",
-        "    `DespawnMs`        INT UNSIGNED NOT NULL DEFAULT 60000",
+        "    `DespawnMs`        INT UNSIGNED NOT NULL DEFAULT 60000,",
+        "    `Lane`             TINYINT UNSIGNED NOT NULL DEFAULT 0  -- 0 none, 1 top, 2 mid, 3 bot;",
+        "                                                           -- a super creep spawns only while the",
+        "                                                           -- ENEMY inhibitor on THIS lane is down",
         ");",
         "",
         "INSERT INTO `mod_moba_creep_data`",
-        "(`CreatureEntry`, `Map`, `Team`, `Role`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `WaypointPathId`, `DespawnMs`)",
+        "(`CreatureEntry`, `Map`, `Team`, `Role`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `WaypointPathId`, `DespawnMs`, `Lane`)",
         "VALUES",
     ]
     data_rows = []
@@ -554,7 +566,8 @@ def emit_sql(roster, column_order, blocks):
             f"-- {creep['key']} ({creep['lane']}/{creep['slot']})\n"
             f"({entry}, {creep['_map']}, {creep['team']}, {ROLE_IDS[creep['role']]}, "
             f"{creep.get('attack_range', 20)}, {creep.get('attack_interval_ms', 2000)}, "
-            f"{creep.get('attack_spell_id', 0)}, {creep['_path_id']}, {creep['despawn_ms']})")
+            f"{creep.get('attack_spell_id', 0)}, {creep['_path_id']}, {creep['despawn_ms']}, "
+            f"{LANE_IDS[creep['lane']]})")
     lines.append(",\n".join(data_rows) + ";")
 
     grant_rows, loot_rows = [], []

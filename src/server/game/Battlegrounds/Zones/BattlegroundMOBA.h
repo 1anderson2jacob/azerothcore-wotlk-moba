@@ -343,10 +343,17 @@ private:
     void BroadcastScoreboard();
     std::string BuildScoreboardBody(Player* player) const;
 
+    // All three derive from _towers on every read rather than caching. With a core gated
+    // on EVERY inhibitor and super minions gated per lane, "unlock what this one guarded"
+    // stopped being a local decision: one inhibitor respawning has to re-lock a core that
+    // a different inhibitor's death opened.
+    bool IsStructureLocked(MobaTowerState const& structure) const;
+    void RefreshStructureLocks();
+    bool SuperMinionsActive(TeamId team, uint8 lane) const;
+
     EventMap _bgEvents;
     std::vector<MobaTowerState> _towers;
     MobaWaveComposition _waveComposition[2];
-    bool _superMinionsActive[2] = {false, false}; // per beneficiary team: enemy inhibitor down
     std::unordered_map<ObjectGuid, TeamId> _spawnedCreeps; // team: a creep's killing blow must name a side
     std::vector<MobaCampState> _camps;
     uint32 _waveCount = 0;

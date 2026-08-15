@@ -15,15 +15,18 @@ enum MobaStructureKind : uint8
     MOBA_STRUCTURE_CORE      = 2,
 };
 
-// Kill-feed wording only -- nothing in the push logic reads it. Mirrored by LANE_IDS in
-// apps/moba/gen_tower_data.py and LANE_NAMES in client/addons/MobaHUD/Feed.lua; all
-// three must agree.
+// Read by the push logic, not just the kill feed: a super minion spawns only while the
+// enemy inhibitor ON ITS OWN LANE is down. Mirrored by LANE_IDS in
+// apps/moba/gen_creep_roster.py and LANE_NAMES in client/addons/MobaHUD/Feed.lua; all
+// three must agree. MOBA_LANE_MAX is a sentinel that sizes arrays, not a lane, so it has
+// no counterpart in either mirror.
 enum MobaLane : uint8
 {
     MOBA_LANE_NONE = 0,
     MOBA_LANE_TOP  = 1,
     MOBA_LANE_MID  = 2,
     MOBA_LANE_BOT  = 3,
+    MOBA_LANE_MAX  = 4,
 };
 
 struct MobaTowerConfig

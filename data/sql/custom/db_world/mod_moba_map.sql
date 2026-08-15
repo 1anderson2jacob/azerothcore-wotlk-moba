@@ -47,3 +47,19 @@ INSERT INTO `wmoareatable_dbc` (`ID`, `WMOID`, `NameSetID`, `WMOGroupID`, `Flags
 -- Leaving MOHD.id at 0 would have collided with stock row 47479 (WMOID 0, group 0).
 (51200,9000,0,-1,16,5000,'Twisted Treeline','Twisted Treeline',16712190),
 (51201,9000,0,0,4,5000,'Twisted Treeline','Twisted Treeline',16712190);
+
+-- Without a MapDifficulty row, ObjectMgr::LoadCreatures computes spawnMasks[900] = 0
+-- (it ORs a bit per difficulty that HAS a row), so every static spawn on the map logs
+-- "wrong spawn mask 1 ... not supported difficulty modes". Log-only -- nothing at spawn
+-- time reads spawnMask, and the shopkeepers were spawning fine -- but it is an ERROR on
+-- every boot, and a real failure hiding in that noise is how this map has bitten before.
+--
+-- Only the fields stock row 69 (map 566) sets are given; the rest take table defaults,
+-- as the areatable/wmoareatable rows above already do. Row 69 carries no message text,
+-- no RaidDuration and no MaxPlayers -- a battleground has nothing to say there.
+--
+-- Id 800: stock MapDifficulty.dbc runs to 753. Small for the same reason as map_dbc and
+-- pvpdifficulty_dbc -- DBCStorage sizes its index table to max(id)+1.
+DELETE FROM `mapdifficulty_dbc` WHERE `ID` BETWEEN 800 AND 809;
+INSERT INTO `mapdifficulty_dbc` (`ID`, `MapID`, `Difficulty`, `Message_Lang_Mask`) VALUES
+(800,900,0,16712188);

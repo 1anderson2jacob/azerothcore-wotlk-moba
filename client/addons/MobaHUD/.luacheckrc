@@ -1,5 +1,4 @@
 -- luacheck config for the MobaHUD addon:  luacheck client/addons/MobaHUD
--- apps/moba/deploy_addon.sh runs it before every copy into the client.
 
 std = "lua51"   -- the client's dialect; 5.4+ accepts syntax 3.3.5 rejects
 
@@ -23,6 +22,7 @@ globals = {
     "MobaHUDDB",
     "MobaHUD_ToggleShop",
     "MobaShopCatalog",
+    "MobaShopCatalogVersion",
     "SLASH_MOBAHUD1",
     "SLASH_MOBAHUD2",
     "SlashCmdList",

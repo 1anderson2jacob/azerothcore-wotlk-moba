@@ -575,6 +575,9 @@ touch one of these areas? Read the named comment first.
 - **`toplevel="true"` raises only the frame that was clicked** → `sellZone`'s `OnUpdate` in `Shop.lua`
 - **A `FontString` wider than its `SetWidth` wraps rather than clipping** → `Bar.lua`, `WidestDigit`
 - **A 3.3.5 addon will have difficulties projecting a world position onto the screen** — corpse gold floats above your own character, not the corpse. → `PlayerPoint` in `Gold.lua`
+- **A core is gated on EVERY inhibitor on its side, not on `guarded_by`** — that column names one structure. Both gates AND. → `IsStructureLocked` in `BattlegroundMOBA.cpp`
+- **Structure locks are derived, never pushed** — with several inhibitors a side, "unlock what this one guarded" stops being a local decision and one respawn must re-lock what another's death opened. → `RefreshStructureLocks`
+- **A creep's `lane` must match an inhibitor's for super minions to field** — a lane name outside `LANE_IDS` silently fields none. → `LANE_IDS` in `gen_creep_roster.py`
 
 ## Traps with no code home
 
@@ -593,8 +596,19 @@ index to somewhere else.
 - **`OnTowerDestroyed` only fires from its two source hooks.** A tower killed by anything
   else — environmental damage, a future non-creep source — wouldn't trigger the win
   condition. Not a real scenario today; flagged if damage sources expand.
-- **`WorldSafeLocs.dbc`** still backs `AllianceStartLoc`/`HordeStartLoc` — the generator
-  writes the `game_graveyard` row, but the DBC id must already exist.
+- **`AllianceStartLoc`/`HordeStartLoc` are `game_graveyard` ids, not `WorldSafeLocs.dbc`
+  ids** — despite what `BattlegroundMgr`'s own error message says on the failure branch.
+  The row must exist before the template loads, and its `Map` must be the BG's map.
+- **`game_graveyard.Map` moves with the coordinates.** `Player::RepopAtGraveyard`
+  teleports to `ClosestGrave->Map` (`Player.cpp:4881`), so a graveyard reused on a new
+  map with only its x/y/z updated throws a releasing player clean out of the
+  battleground onto the old one. `gen_base.py` emits `Map` for exactly this reason.
+- **One battleground slot serves exactly one map.** `battleground_template` is keyed by
+  battleground *type id*, its start locations resolve once at load
+  (`BattlegroundMgr.cpp:527`), and the map comes from `BattlemasterList.dbc` `mapid[0]`.
+  Content tables are all `Map`-keyed and coexist happily; the slot does not. Two maps
+  queueable at once needs a second battleground type id, which needs a client DBC patch.
+  `base_config.yaml`'s `active:` flag is what keeps one bundle owning the slot.
 - **Adding a column to a generated SQL table is a two-part trap.** The C++ store's
   `SELECT` names the new column, so a *stale* generated `.sql` (which recreates the old
   schema on boot) fails the whole query — silently zeroing every field that store feeds.

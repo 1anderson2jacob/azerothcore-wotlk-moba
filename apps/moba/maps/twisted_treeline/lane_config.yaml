@@ -1,0 +1,115 @@
+# Lane centerlines + creep formation for Twisted Treeline. gen_creep_paths.py
+# densifies each lane and generates one offset path per slot per direction.
+# `forward` = the order the points are walked (team 0 uses it); `reverse` is
+# auto-generated for team 1. Walk each lane exactly once.
+#
+# Both lanes run west -> east, so Alliance (west) walks `forward` out of its own
+# base. Centerlines are var/blender/twisted_treeline_layout.json's traced
+# waypoints, checked against the exported mesh: worst clearance is 6.4 yd, at the
+# base-entrance chokes, which is where a choke is supposed to be tight.
+#
+# Two deliberate edits to the traced data:
+#   * top [30] was (120, 52.4) -- 0.2 yd from the face of TT_JWall_12, with both
+#     segments through it clipping the wall. Repaired to 79.8, its own west
+#     mirror's value. The layout JSON still carries the defect.
+#   * both lanes' base endpoint (+-185, -5) split into two nodes 6.7 yd in front
+#     of the core, so the two lanes' waves do not spawn on the same spot.
+
+max_spacing: 5.0             # max yards between generated nodes; KEEP ~5 --
+                            # sparser nodes break creep re-aggro (see README)
+
+# Default formation, one entry per creep path per team. `lateral_offset`: yards
+# sideways from the centerline, positive = the creep's own LEFT (mirrored
+# automatically for the other team). `longitudinal_offset`: yards along travel,
+# positive = ahead (also staggers the formation at spawn).
+slots:
+  - {name: melee_left,  lateral_offset:  3.0, longitudinal_offset:  6.0}
+  - {name: melee_right, lateral_offset: -3.0, longitudinal_offset:  6.0}
+  - {name: caster,      lateral_offset:  0.0, longitudinal_offset:  0.0}
+  - {name: siege,       lateral_offset:  0.0, longitudinal_offset: -6.0}
+  - {name: super,       lateral_offset:  0.0, longitudinal_offset:  12.0}
+
+# One entry per lane: `name`, `points` (walked centerline as [x, y, z] triples in
+# walk order), and optionally its own `slots` overriding the default above.
+# Runs base-to-base: team 0 spawns at the Alliance base (first point) and walks
+# to the Horde base (last point); team 1 walks the reverse.
+lanes:
+  - name: top
+    points:
+      - [-182.0,   1.0, 1.0]   # Alliance nexus plateau
+      - [-172.0,  12.0, 0.0]   # Alliance top inhibitor
+      - [-160.0,  55.0, 0.0]   # base entrance, top choke
+      - [-150.0,  79.6, 0.0]
+      - [-140.0,  79.2, 0.0]
+      - [-130.0,  81.2, 0.0]
+      - [-120.0,  79.8, 0.0]
+      - [-110.0,  74.6, 0.0]
+      - [-100.0,  67.5, 0.0]
+      - [ -90.0,  62.2, 0.0]
+      - [ -80.0,  56.8, 0.0]
+      - [ -70.0,  52.6, 0.0]
+      - [ -60.0,  48.8, 0.0]
+      - [ -50.0,  43.8, 0.0]
+      - [ -40.0,  38.0, 0.0]
+      - [ -30.0,  33.6, 0.0]
+      - [ -20.0,  29.3, 0.0]
+      - [ -10.0,  26.8, 0.0]
+      - [   0.0,  26.7, 0.0]   # dips south under the boss lair
+      - [  10.0,  26.9, 0.0]
+      - [  20.0,  29.6, 0.0]
+      - [  30.0,  33.4, 0.0]
+      - [  40.0,  37.9, 0.0]
+      - [  50.0,  43.9, 0.0]
+      - [  60.0,  50.1, 0.0]
+      - [  70.0,  54.4, 0.0]
+      - [  80.0,  59.0, 0.0]
+      - [  90.0,  63.9, 0.0]
+      - [ 100.0,  68.9, 0.0]
+      - [ 110.0,  75.9, 0.0]
+      - [ 120.0,  79.8, 0.0]   # repaired; the layout JSON has 52.4, inside a wall
+      - [ 130.0,  81.0, 0.0]
+      - [ 140.0,  80.7, 0.0]
+      - [ 150.0,  80.7, 0.0]
+      - [ 160.0,  55.0, 0.0]   # base entrance, top choke
+      - [ 172.0,  12.0, 0.0]   # Horde top inhibitor
+      - [ 182.0,   1.0, 1.0]   # Horde nexus plateau
+
+  - name: bot
+    points:
+      - [-182.0, -11.0, 1.0]   # Alliance nexus plateau
+      - [-172.0, -22.0, 0.0]   # Alliance bot inhibitor
+      - [-162.0, -62.0, 0.0]   # base entrance, bot choke
+      - [-150.0, -89.3, 0.0]
+      - [-140.0, -89.8, 0.0]
+      - [-130.0, -91.2, 0.0]
+      - [-120.0, -91.6, 0.0]
+      - [-110.0, -90.3, 0.0]
+      - [-100.0, -88.3, 0.0]
+      - [ -90.0, -85.9, 0.0]
+      - [ -80.0, -84.6, 0.0]
+      - [ -70.0, -83.2, 0.0]
+      - [ -60.0, -82.7, 0.0]
+      - [ -50.0, -80.5, 0.0]
+      - [ -40.0, -78.8, 0.0]
+      - [ -30.0, -75.3, 0.0]
+      - [ -20.0, -73.5, 0.0]
+      - [ -10.0, -73.4, 0.0]
+      - [   0.0, -73.3, 0.0]
+      - [  10.0, -73.8, 0.0]
+      - [  20.0, -73.9, 0.0]
+      - [  30.0, -75.9, 0.0]
+      - [  40.0, -79.6, 0.0]
+      - [  50.0, -81.4, 0.0]
+      - [  60.0, -83.9, 0.0]
+      - [  70.0, -84.1, 0.0]
+      - [  80.0, -85.1, 0.0]
+      - [  90.0, -87.0, 0.0]
+      - [ 100.0, -89.3, 0.0]
+      - [ 110.0, -91.2, 0.0]
+      - [ 120.0, -92.2, 0.0]
+      - [ 130.0, -92.8, 0.0]
+      - [ 140.0, -92.3, 0.0]
+      - [ 150.0, -92.4, 0.0]
+      - [ 162.0, -62.0, 0.0]   # base entrance, bot choke
+      - [ 172.0, -22.0, 0.0]   # Horde bot inhibitor
+      - [ 182.0, -11.0, 1.0]   # Horde nexus plateau

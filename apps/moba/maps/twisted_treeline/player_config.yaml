@@ -1,0 +1,8 @@
+# Rewards granted directly to a player who lands a killing blow (no corpse loot).
+# Same `drops` schema as the creep/neutral configs; see apps/moba/README.md.
+#   drops[].chance  optional, (0, 1], default 1.0
+
+map: 900
+
+drops:
+  - {type: gold, copper: 10000}   # 10000c = 1g

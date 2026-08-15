@@ -2,9 +2,8 @@
 
 ## Status of this doc
 
-Steps 1 through 6 are complete: the map builds, packs, extracts, has a navmesh,
-and the battleground now runs on it. Steps 7–8 remain — porting the content into
-its coordinate space, then dressing it. Treat each as its own focused session.
+Steps 1 through 7 are complete: the map builds, packs, extracts, has a navmesh,
+runs the battleground, and carries its own content. Step 8 remains — dressing it.
 
 **This file is scheduled for deletion when the map ships.** Anything here that
 is not specific to Twisted Treeline belongs in `apps/moba/wmo/README.md`, which
@@ -491,6 +490,62 @@ allocation and lockfiles, plus map-900 graveyard rows for the two start points
 (`AllianceStartLoc`/`HordeStartLoc` are `game_graveyard` ids, set from
 `base_config.yaml`).
 
+## Step 7 — complete 2026-08-14
+
+`apps/moba/maps/twisted_treeline/` — all seven configs, sourced from
+`var/blender/twisted_treeline_layout.json`, which until now fed nothing.
+
+| | |
+|---|---|
+| structures | 10 — per side: 2 lane towers, 2 inhibitors, 1 core |
+| lane creeps | 20 — 2 lanes x 5 slots x 2 teams |
+| waypoint paths | 30 (2 maps), 3,370 rows |
+| neutral camps | 7 — wolves/wraiths/golems mirrored, plus the boss pit |
+| shopkeepers | 900302 / 900303 |
+| id allocation | towers filled 900000-900009 and the allocator carved 900400-900499 itself; creeps from 900020, neutrals from 900209 |
+
+Verified in-game: `.gps` confirms the coordinate frame, and structures, both lanes,
+camps, base and shop all behave. The inhibitor gating and the per-lane super minions
+were exercised including the respawn re-seal, which had no equivalent code path before.
+
+### Settled here
+
+- **Alliance is WEST (-x), Horde EAST (+x)**, matching the blockout's own
+  `TT_Blue_` / `TT_Red_` naming.
+- **Two inhibitors per side, one per lane.** The core is gated on *every* inhibitor
+  on its side, which `guarded_by` cannot express (one key per row), so that rule is
+  in C++ as a genre invariant. Both gates AND, so a `guarded_by` on a core still applies.
+- **Super minions are lane-local.** This is what forced `mod_moba_creep_data.Lane`
+  and made `MobaLane` load-bearing rather than kill-feed decoration.
+- **One active bundle per battleground slot**, via `active:` in `base_config.yaml`.
+  `eye_of_the_storm` is `active: false` — its content rows stay live and inert, so
+  rolling back to map 566 is a one-line flip plus a regen and restart.
+- **Randomising sides per match is deferred to its own feature**, with its decisions
+  in `.github/MOBA_COINFLIP_PLAN.md`.
+
+### Map facts, measured off the exported mesh
+
+- **The playable floor is flat at z = 0.** `TT_Ground` is a slab spanning z -1 -> 0.
+  The only raised surface is the two nexus plateaus at z 0 -> 1, |x| 172-198,
+  y -18..8 — so cores sit at z 1 and everything else at z 0. Every pad (graveyard,
+  altar, camp, pit) is a render-only decal at z <= 0.5 and carries no collision.
+- **The spawn dome is 15 yd, not EotS's 20.** At 20 the dome stands exactly on the
+  core, which is 20 yd from the spawn point.
+- **`twisted_treeline_layout.json` has a bad waypoint.** Top lane index 30 is
+  (120, 52.4), 0.2 yd from the face of `TT_JWall_12`, with both segments through it
+  clipping the wall. `lane_config.yaml` carries the repair (79.8, its own west
+  mirror's value); the JSON still has the defect. Every other waypoint on both lanes
+  clears by 10+ yd except at the base chokes, which bottom out at 6.4 yd and are
+  meant to be tight.
+
+### What step 8 inherits
+
+A playable map. Dressing is unblocked on tooling (step 5 proved the doodad chain end
+to end) and blocked only on **where placements are stored** — they exist solely in the
+3.4 staging scene and cannot round-trip through the OBJ. See the step 3 notes in
+`apps/moba/wmo/README.md`. Lanes, camps and structures are now visible in-game, which
+was the reason for dressing after the content port rather than before.
+
 ## Pipeline (each step is its own session-sized chunk)
 
 | # | Step | Who | Notes / unknowns |
@@ -501,7 +556,7 @@ allocation and lockfiles, plus map-900 graveyard rows for the two start points
 | 4 | ~~Pack `.wmo` + WDT + DBCs into an MPQ client patch~~ **done 2026-08-13** | — | see *Step 4 — complete* |
 | 5 | ~~Run extractors server-side~~ **done 2026-08-13** | — | see *Step 5 — complete* |
 | 6 | ~~Register the map server-side~~ **done 2026-08-14** | — | see *Step 6 — complete* |
-| 7 | Port the content into Twisted Treeline coordinates | Claude drives, Jacob decides placement | new `apps/moba/maps/twisted_treeline/` bundle. All six configs are still `map: 566` in EotS space; the source is `twisted_treeline_layout.json`, which nothing consumes yet. Needs fresh id allocation and lockfiles |
+| 7 | ~~Port the content into Twisted Treeline coordinates~~ **done 2026-08-14** | — | see *Step 7 — complete* |
 | 8 | Dressing pass — doodads | Jacob authors in Blender, Claude tools it | pipeline proven at step 5; blocked instead on **where placements are stored** (README step 3). Each change costs re-export → re-pack → re-extract → re-mmaps |
 
 ## Division of labor (per CLAUDE.md env rules)
@@ -521,14 +576,5 @@ allocation and lockfiles, plus map-900 graveyard rows for the two start points
 
 ## Next concrete step
 
-Step 7: port the content into Twisted Treeline coordinates — a new
-`apps/moba/maps/twisted_treeline/` bundle sourced from
-`var/blender/twisted_treeline_layout.json`, which nothing consumes yet. See
-*What step 7 inherits*.
-
-Two claims from earlier sessions were wrong and are corrected here:
-`var/extractors/{dbc,maps,mmaps,vmaps}` holds nothing but `.gitkeep` and is
-referenced nowhere, but the extractors **have** run — the data lives in
-`env/dist/bin/` (248 DBCs, 5744 `.map`, 12494 vmap files, 3780 mmap files,
-including 36/11/25 for map 566). The prototype has had full vmaps and mmaps all
-along. New map data has to be installed there, not into `var/extractors/`.
+Step 8: the dressing pass. Decide where doodad placements live before authoring
+hundreds of them — see the step 3 notes in `apps/moba/wmo/README.md`.

@@ -1,0 +1,179 @@
+# Neutral (jungle) camps for Twisted Treeline. Camps own placement + respawn +
+# aggro/leash ranges; mobs own stats/display/drops. A `members` entry references
+# a mob `key`; `pos` is [x, y, z, orientation]. A mob placed in no camp is
+# skipped. Ranges/lockfile rules: apps/moba/README.md.
+#
+#   units                          reusable definitions of what a mob IS. A mob
+#                                  names one with `unit:` and may override any
+#                                  field it sets -- wholesale per field, never
+#                                  merged (a row restating `drops` replaces the
+#                                  list; `drops: []` means none). A unit may not
+#                                  set `key`.
+#   respawn_ms / initial_spawn_ms  milliseconds
+#   tier                           0 = ordinary camp. Nonzero marks a boss, which
+#                                  the kill feed announces (B: payload). It selects
+#                                  nothing else -- stats and drops are the mob's.
+#   spawn_warn_ms                lead time on the "spawning soon" line; 0 = none.
+#                                  Must be < respawn_ms.
+#   aggro_range / leash_range      yards
+#   *_modifier                     multiplier on the source creature's stat
+#   creature_type                  optional; overrides source type (enum
+#                                  CreatureType). The jungle sources are
+#                                  Humanoid (7), so Beast (1) is explicit.
+#   drops[].type                   buff | gold | item | team_gold | team_buff
+#
+# Camp anchors are the layout's; members cluster within 4 yd of them, facing the
+# map centre. Wolves and wraiths spread their smalls outward; GOLEMS SPREAD NORTH
+# instead -- the outward offset put them 3.6 yd from TT_JWall_02/03, and the
+# camp is pinched between the bot lane and the jungle wall there.
+#
+# DISPLAY IDS ARE PLACEHOLDERS carried over from the eye_of_the_storm bundle --
+# proven to render, but wrong for the art direction (Ghostlands/Plaguelands dead
+# elegance). Audition replacements in-game with .morph <id> and swap them here.
+
+map: 900
+initial_spawn_ms: 30000
+
+camps:
+  - key: wolves_west
+    respawn_ms: 30000
+    aggro_range: 8
+    leash_range: 20
+    members:
+      - {mob: wolf_large, pos: [-95.0, -25.0, 0.0, 0.0]}
+      - {mob: wolf_small, pos: [-99.0, -22.0, 0.0, 0.0]}
+      - {mob: wolf_small, pos: [-99.0, -28.0, 0.0, 0.0]}
+
+  - key: wolves_east
+    respawn_ms: 30000
+    aggro_range: 8
+    leash_range: 20
+    members:
+      - {mob: wolf_large, pos: [95.0, -25.0, 0.0, 3.1415927]}
+      - {mob: wolf_small, pos: [99.0, -22.0, 0.0, 3.1415927]}
+      - {mob: wolf_small, pos: [99.0, -28.0, 0.0, 3.1415927]}
+
+  - key: wraiths_west
+    respawn_ms: 30000
+    aggro_range: 8
+    leash_range: 20
+    members:
+      - {mob: wraith_large, pos: [-40.5, 57.0, 0.0, 0.0]}
+      - {mob: wraith_small, pos: [-44.5, 60.0, 0.0, 0.0]}
+      - {mob: wraith_small, pos: [-44.5, 54.0, 0.0, 0.0]}
+
+  - key: wraiths_east
+    respawn_ms: 30000
+    aggro_range: 8
+    leash_range: 20
+    members:
+      - {mob: wraith_large, pos: [40.5, 57.0, 0.0, 3.1415927]}
+      - {mob: wraith_small, pos: [44.5, 60.0, 0.0, 3.1415927]}
+      - {mob: wraith_small, pos: [44.5, 54.0, 0.0, 3.1415927]}
+
+  - key: golems_west
+    respawn_ms: 30000
+    aggro_range: 8
+    leash_range: 20
+    members:
+      - {mob: golem_large, pos: [-55.0, -43.0, 0.0, 0.0]}
+      - {mob: golem_small, pos: [-58.0, -39.5, 0.0, 0.0]}
+      - {mob: golem_small, pos: [-52.0, -39.5, 0.0, 0.0]}
+
+  - key: golems_east
+    respawn_ms: 30000
+    aggro_range: 8
+    leash_range: 20
+    members:
+      - {mob: golem_large, pos: [55.0, -43.0, 0.0, 3.1415927]}
+      - {mob: golem_small, pos: [58.0, -39.5, 0.0, 3.1415927]}
+      - {mob: golem_small, pos: [52.0, -39.5, 0.0, 3.1415927]}
+
+  # Pit at the north wall. The layout says y 94; 92 is the TT_Pit_Pad centre.
+  - key: boss_den
+    tier: 1
+    respawn_ms: 60000
+    initial_spawn_ms: 60000
+    spawn_warn_ms: 15000
+    aggro_range: 12
+    leash_range: 20
+    members:
+      - {mob: rosham_bo, pos: [0.0, 92.0, 0.0, 4.712389]}
+
+units:
+  jungle_large:
+    subname: MOBA Jungle
+    source: apps/moba/sources/creature_template_2279.txt
+    display_scale: 1.5
+    level: 80
+    creature_type: 1
+    health_modifier: 0.6
+    armor_modifier: 0.25
+    drops:
+      - {type: gold, copper: 5000}
+
+  jungle_small:
+    subname: MOBA Jungle
+    source: apps/moba/sources/creature_template_2279.txt
+    display_scale: 1.0
+    level: 80
+    creature_type: 1
+    health_modifier: 0.2
+    armor_modifier: 0.25
+    drops:
+      - {type: gold, copper: 5000}
+
+mobs:
+  - key: wolf_large
+    unit: jungle_large
+    name: Ravenous Worg
+    display_id: 9563
+    display_scale: 1.8
+    drops:
+      - {type: buff, spell: 23505}
+      - {type: gold, copper: 5000}
+
+  - key: wolf_small
+    unit: jungle_small
+    name: Worg Pup
+    display_id: 9572
+
+  - key: wraith_large
+    unit: jungle_large
+    name: Greater Wraith
+    display_id: 19407
+    drops:
+      - {type: buff, spell: 23493}
+      - {type: gold, copper: 5000}
+
+  - key: wraith_small
+    unit: jungle_small
+    name: Lesser Wraith
+    display_id: 19407
+
+  - key: golem_large
+    unit: jungle_large
+    name: Ancient Golem
+    display_id: 16217
+    drops:
+      - {type: buff, spell: 23451}
+      - {type: gold, copper: 5000}
+
+  - key: golem_small
+    unit: jungle_small
+    name: Golem Shard
+    display_id: 16217
+
+  - key: rosham_bo
+    name: Rosham Bo
+    subname: The Terror from Below
+    source: apps/moba/sources/creature_template_2279.txt
+    display_id: 20746
+    display_scale: 1.0
+    level: 85
+    creature_type: 1
+    health_modifier: 4
+    armor_modifier: 2
+    drops:
+      - {type: team_gold, copper: 40000}
+      - {type: team_buff, spell: 48469, duration_ms: 180000}

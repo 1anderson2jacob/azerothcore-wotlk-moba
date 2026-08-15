@@ -43,9 +43,10 @@
     },
     "towers": {
       "blocks": [
-        "900000-900009"
+        "900000-900009",
+        "900400-900499"
       ],
-      "note": "auto-assigned; the record is maps/*/tower_config.lock.json. 6 of 10 used -- map #2 overflows this block, and the right second-block size is knowable then, not now.",
+      "note": "auto-assigned; the record is maps/*/tower_config.lock.json. The second block was carved by id_alloc.py itself when map #2 filled the first -- BLOCK_SIZE is a flat 100, so 'the right second-block size' turned out not to be a decision.",
       "source": "gen_tower_data.py"
     }
   },
@@ -85,6 +86,16 @@
       ],
       "enumerated": false,
       "note": "hand-assigned, nothing allocates here. 200 = map 900's only bracket; stock PvpDifficulty.dbc runs to id 108. Small ids for the same reason as map_dbc: DBCStorage sizes its index table to max(id)+1. RangeIndex is a different id space and is NOT covered by this block -- it is the bracket index, and must stay under MAX_BATTLEGROUND_BRACKETS (16) because BattlegroundQueue arrays are dimensioned by it.",
+      "source": "-"
+    }
+  },
+  "mapdifficulty_dbc": {
+    "twisted_treeline": {
+      "blocks": [
+        "800-809"
+      ],
+      "enumerated": false,
+      "note": "hand-assigned, nothing allocates here. 800 = map 900's only difficulty row; stock MapDifficulty.dbc runs to id 753. Small ids for the same reason as map_dbc: DBCStorage sizes its index table to max(id)+1. Its absence is what made spawnMasks[900] zero, so every static spawn on the map logged a wrong-spawn-mask error.",
       "source": "-"
     }
   },

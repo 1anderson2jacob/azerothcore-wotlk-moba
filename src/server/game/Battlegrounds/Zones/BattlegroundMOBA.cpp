@@ -694,16 +694,13 @@ bool BattlegroundMOBA::SetupBattleground()
         state.lastHitGoldCopper = cfg.lastHitGoldCopper;
 
         if (Creature* creature = GetBGCreature(slot))
-        {
             state.guid = creature->GetGUID();
-
-            // Guarded towers stay unattackable until their guard falls (OnTowerDestroyed).
-            if (cfg.guardedByEntry)
-                creature->SetUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE));
-        }
 
         _towers.push_back(state);
     }
+
+    // Initial lock state, once _towers is complete -- IsStructureLocked reads siblings.
+    RefreshStructureLocks();
 
     for (uint32 i = BG_MOBA_OBJECT_DOOR_A; i < BG_MOBA_OBJECT_MAX; ++i)
         if (!BgObjects[i])
@@ -721,14 +718,14 @@ bool BattlegroundMOBA::SetupBattleground()
 
     // creep wave composition
     sMobaCreepDataStore->LoadIfNeeded();
+    bool superLane[2][MOBA_LANE_MAX] = {};   // [team][lane]: that team fields supers there
     for (MobaCreepConfig const& cfg : sMobaCreepDataStore->GetForMap(GetMapId()))
         if (cfg.role < MOBA_CREEP_ROLE_MAX && cfg.team < 2)
+        {
             _waveComposition[cfg.team].byRole[cfg.role].push_back(cfg.entry);
-
-    bool hasInhibitor[2] = {false, false};
-    for (MobaTowerConfig const& cfg : towerConfigs)
-        if (cfg.kind == MOBA_STRUCTURE_INHIBITOR && cfg.team < 2)
-            hasInhibitor[cfg.team] = true;
+            if (cfg.role == MOBA_CREEP_ROLE_SUPER && cfg.lane < MOBA_LANE_MAX)
+                superLane[cfg.team][cfg.lane] = true;
+        }
 
     for (uint32 team = 0; team < 2; ++team)
     {
@@ -743,9 +740,31 @@ bool BattlegroundMOBA::SetupBattleground()
             LOG_ERROR("sql.sql", "BattlegroundMOBA: map {} team {} has no rows in `mod_moba_creep_data`, battleground not created!", GetMapId(), team);
             return false;
         }
+    }
 
-        if (hasInhibitor[team] && comp.byRole[MOBA_CREEP_ROLE_SUPER].empty())
-            LOG_WARN("sql.sql", "BattlegroundMOBA: map {} team {} has an inhibitor but no super creep (role=super) in `mod_moba_creep_data` -- taking that inhibitor will field no super minions.", GetMapId(), team);
+    for (MobaTowerConfig const& cfg : towerConfigs)
+    {
+        if (cfg.kind == MOBA_STRUCTURE_INHIBITOR && cfg.team < 2 && cfg.lane < MOBA_LANE_MAX)
+        {
+            // The beneficiary is the owner's ENEMY, and the lane must match: a super creep
+            // on another lane will never spawn off this inhibitor.
+            uint32 beneficiary = cfg.team == TEAM_ALLIANCE ? TEAM_HORDE : TEAM_ALLIANCE;
+            if (!superLane[beneficiary][cfg.lane])
+                LOG_WARN("sql.sql", "BattlegroundMOBA: map {} has a team {} inhibitor on lane {}, but team {} has no super creep (role=super) on that lane in `mod_moba_creep_data` -- taking it will field no super minions.",
+                    GetMapId(), uint32(cfg.team), uint32(cfg.lane), beneficiary);
+        }
+
+        if (cfg.kind == MOBA_STRUCTURE_CORE)
+        {
+            bool gated = cfg.guardedByEntry != 0;
+            for (MobaTowerConfig const& other : towerConfigs)
+                if (other.kind == MOBA_STRUCTURE_INHIBITOR && other.team == cfg.team)
+                    gated = true;
+
+            if (!gated)
+                LOG_WARN("sql.sql", "BattlegroundMOBA: map {} team {} core has neither a same-team inhibitor nor a guarded_by -- it is attackable from the first second.",
+                    GetMapId(), uint32(cfg.team));
+        }
     }
 
     // neutral camps -- optional content, so a map with none warns rather than fails
@@ -774,8 +793,6 @@ void BattlegroundMOBA::Init()
 
     _bgEvents.Reset();
     _waveCount = 0;
-    _superMinionsActive[0] = false;
-    _superMinionsActive[1] = false;
     _streaks.clear();
     _firstBlood = false;
     _surrenderVote[0] = MobaSurrenderVote();
@@ -1243,15 +1260,9 @@ void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Pl
     if (lastHitter)
         AddMatchGold(lastHitter, itr->lastHitGoldCopper, MOBA_GOLD_STRUCTURE);
 
-    // Unlock any structures this one was guarding.
-    for (MobaTowerState& other : _towers)
-    {
-        if (other.guardedByEntry != itr->entry || other.destroyed)
-            continue;
-
-        if (Creature* guarded = ObjectAccessor::GetCreature(*tower, other.guid))
-            guarded->RemoveUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE));
-    }
+    // A core is gated on every inhibitor, so what this death opened is not derivable
+    // from this structure alone.
+    RefreshStructureLocks();
 
     m_TeamScores[winnerTeamId]++;
     UpdateWorldState(winnerTeamId == TEAM_ALLIANCE ? WORLD_STATE_BATTLEGROUND_EY_ALLIANCE_RESOURCES : WORLD_STATE_BATTLEGROUND_EY_HORDE_RESOURCES,
@@ -1264,25 +1275,15 @@ void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Pl
         return;
     }
 
-    if (itr->kind == MOBA_STRUCTURE_INHIBITOR)
+    if (itr->kind == MOBA_STRUCTURE_INHIBITOR && itr->respawnMs)
     {
-        // The beneficiary is the enemy of the OWNER, never winnerTeamId (the killer's
-        // team, per npc_moba_tower::JustDied). Those agree in a real push and diverge on
-        // an own-team kill -- and since RespawnInhibitor clears the flag from the owner,
-        // any mismatch here leaks super minions for the rest of the match.
-        TeamId beneficiary = (itr->team == TEAM_ALLIANCE) ? TEAM_HORDE : TEAM_ALLIANCE;
-        _superMinionsActive[beneficiary] = true;
+        uint32 towerIndex = static_cast<uint32>(std::distance(_towers.begin(), itr));
+        _bgEvents.ScheduleEvent(EVENT_MOBA_RESPAWN_INHIB_FIRST + towerIndex, Milliseconds(itr->respawnMs));
 
-        if (itr->respawnMs)
-        {
-            uint32 towerIndex = static_cast<uint32>(std::distance(_towers.begin(), itr));
-            _bgEvents.ScheduleEvent(EVENT_MOBA_RESPAWN_INHIB_FIRST + towerIndex, Milliseconds(itr->respawnMs));
-
-            // A warning that fires at or after the thing it warns about is worse than none.
-            if (itr->respawnMs > MOBA_INHIB_RESPAWN_WARN_MS)
-                _bgEvents.ScheduleEvent(EVENT_MOBA_INHIB_WARN_FIRST + towerIndex,
-                    Milliseconds(itr->respawnMs - MOBA_INHIB_RESPAWN_WARN_MS));
-        }
+        // A warning that fires at or after the thing it warns about is worse than none.
+        if (itr->respawnMs > MOBA_INHIB_RESPAWN_WARN_MS)
+            _bgEvents.ScheduleEvent(EVENT_MOBA_INHIB_WARN_FIRST + towerIndex,
+                Milliseconds(itr->respawnMs - MOBA_INHIB_RESPAWN_WARN_MS));
     }
 }
 
@@ -1315,18 +1316,65 @@ void BattlegroundMOBA::RespawnInhibitor(uint32 towerIndex)
     }
 
     // Re-lock the base behind it: attackable again only after another inhibitor kill.
-    for (MobaTowerState& other : _towers)
+    RefreshStructureLocks();
+
+    BroadcastStructureEvent(inhib, MOBA_STRUCT_EVENT_RESPAWNED, nullptr);
+}
+
+// A tower opens when its own guard falls; a CORE opens only when every inhibitor on its
+// side has. That second rule is the genre invariant rather than a per-map knob, which is
+// why it is not expressed through guarded_by -- that column names one structure, and the
+// core needs all of them. The two gates are ANDed, so a map that also wants a guarded_by
+// on its core still gets it.
+//
+// A map with no inhibitors at all falls straight through to guarded_by, which is what
+// keeps the "every one is down" test from being vacuously true on such a map.
+bool BattlegroundMOBA::IsStructureLocked(MobaTowerState const& structure) const
+{
+    if (structure.kind == MOBA_STRUCTURE_CORE)
+        for (MobaTowerState const& t : _towers)
+            if (t.kind == MOBA_STRUCTURE_INHIBITOR && t.team == structure.team && !t.destroyed)
+                return true;
+
+    if (!structure.guardedByEntry)
+        return false;
+
+    for (MobaTowerState const& t : _towers)
+        if (t.entry == structure.guardedByEntry)
+            return !t.destroyed;
+
+    return false;
+}
+
+void BattlegroundMOBA::RefreshStructureLocks()
+{
+    for (MobaTowerState const& s : _towers)
     {
-        if (other.guardedByEntry != inhib.entry || other.destroyed)
+        if (s.destroyed)
             continue;
 
-        if (Creature* guarded = GetBgMap()->GetCreature(other.guid))
-            guarded->SetUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE));
-    }
+        Creature* creature = GetBgMap()->GetCreature(s.guid);
+        if (!creature)
+            continue;
 
-    TeamId beneficiary = (inhib.team == TEAM_ALLIANCE) ? TEAM_HORDE : TEAM_ALLIANCE;
-    _superMinionsActive[beneficiary] = false;
-    BroadcastStructureEvent(inhib, MOBA_STRUCT_EVENT_RESPAWNED, nullptr);
+        if (IsStructureLocked(s))
+            creature->SetUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE));
+        else
+            creature->RemoveUnitFlag(UnitFlags(UNIT_FLAG_NON_ATTACKABLE | UNIT_FLAG_NOT_SELECTABLE));
+    }
+}
+
+// Super minions are lane-local: team fields them on `lane` while the enemy inhibitor on
+// THAT lane is down. `t.team` is the OWNER, so the enemy test is what makes an own-team
+// kill pay the right side -- the same distinction npc_moba_tower::JustDied forces on
+// OnTowerDestroyed.
+bool BattlegroundMOBA::SuperMinionsActive(TeamId team, uint8 lane) const
+{
+    for (MobaTowerState const& t : _towers)
+        if (t.kind == MOBA_STRUCTURE_INHIBITOR && t.destroyed && t.team != team && t.lane == lane)
+            return true;
+
+    return false;
 }
 
 void BattlegroundMOBA::SpawnWave(TeamId team, bool includeSiege)
@@ -1343,10 +1391,10 @@ void BattlegroundMOBA::SpawnWave(TeamId team, bool includeSiege)
         for (uint32 entry : comp.byRole[MOBA_CREEP_ROLE_SIEGE])
             SpawnCreep(entry);
 
-    // While the enemy inhibitor is down, this team fields its super minions each wave.
-    if (_superMinionsActive[team])
-        for (uint32 entry : comp.byRole[MOBA_CREEP_ROLE_SUPER])
-            SpawnCreep(entry);
+    for (uint32 entry : comp.byRole[MOBA_CREEP_ROLE_SUPER])
+        if (MobaCreepConfig const* cfg = sMobaCreepDataStore->GetConfig(entry))
+            if (SuperMinionsActive(team, cfg->lane))
+                SpawnCreep(entry);
 }
 
 // Creeps are TempSummons, not Battleground::AddCreature/BgCreatures -- that registry is

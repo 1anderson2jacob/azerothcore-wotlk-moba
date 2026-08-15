@@ -1,11 +1,16 @@
-# Base-camp tunables for Eye of the Storm: respawn/recall/fountain timing plus
+# Base-camp tunables for Twisted Treeline: respawn/recall/fountain timing plus
 # the two teams' spawn locations. Tunables land in mod_moba_base; the spawn
 # locations are written into game_graveyard / battleground_template.
 # All *_ms values are milliseconds; *_pct are percent of max (0-100).
+#
+# Alliance is WEST (-x), Horde EAST (+x), matching the blockout's own
+# TT_Blue_/TT_Red_ naming. Randomising sides per match is a later feature: it
+# makes PLACEMENT side-keyed while creature templates stay faction-keyed, so it
+# needs a runtime binding rather than a config field.
 
-map: 566
+map: 900
 battleground_template_id: 7          # EotS slot this mode hijacks
-active: false                        # twisted_treeline owns slot 7; content below stays inert
+active: true                         # owns slot 7; eye_of_the_storm is active: false
 min_players_per_team: 1              # a MOBA keeps playing 4v5 rather than forfeiting
 
 kill_credit_window_ms: 15000         # last-hit window for kill credit
@@ -33,10 +38,18 @@ spawn:
   # radius / 172.4, the GeoBox half-extent of displayId 7203) and writes the same
   # number to mod_moba_base.FountainRadius, so the two cannot drift.
   # Uniform model scale: a wider dome is also a taller one.
-  radius: 20
-  dome: {alliance_entry: 900400, horde_entry: 900401}
-  alliance: {graveyard_id: 1103, x: 2387.529,  y: 1587.426,  z: 1174.763, o: 3.0222116}
-  horde:    {graveyard_id: 1104, x: 1942.9327, y: 1547.6229, z: 1176.458, o: 0.32122585}
+  #
+  # 15, not EotS's 20: the core sits exactly 20 yd from the spawn point, so a 20 yd
+  # dome would stand on top of it. 15 leaves a 5 yd gap in front of the core and
+  # still contains the shopkeeper, 10.3 yd out.
+  radius: 15
+  dome: {alliance_entry: 900402, horde_entry: 900403}
+  # Graveyards 1103/1104 are REUSED, not freshly allocated: BattlegroundMOBA.h
+  # hardcodes those two ids in GetClosestGraveyard. New ids mean making that
+  # per-map data first -- two mod_moba_base columns and a C++ read.
+  # z 0.5: the floor is a flat slab topping out at z = 0 across the whole map.
+  alliance: {graveyard_id: 1103, x: -205.0, y: -5.0, z: 0.5, o: 0.0}
+  horde:    {graveyard_id: 1104, x:  205.0, y: -5.0, z: 0.5, o: 3.1415927}
 
 # Match economy. All copper -- the match wallet mirrors the coin denomination
 # rather than being a separate resource, so these read against store_config
