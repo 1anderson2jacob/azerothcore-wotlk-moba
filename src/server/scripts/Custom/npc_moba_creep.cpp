@@ -5,6 +5,7 @@
 #include "BattlegroundMOBA.h"
 #include "Map.h"
 #include "MobaCreepData.h"
+#include "MobaNeutralData.h"
 #include "MotionMaster.h"
 #include "Spell.h"
 #include "SpellAuraDefines.h"
@@ -97,6 +98,10 @@ struct npc_moba_creep : public ScriptedAI
     // are lane-bound already, and gating them by this rule once blocked a tower push.
     bool CanAIAttack(Unit const* victim) const override
     {
+        // Above the non-player early-out below, which would otherwise wave camps through.
+        if (victim->IsCreature() && sMobaNeutralDataStore->GetConfig(victim->GetEntry()))
+            return false;
+
         if (!victim->GetCharmerOrOwnerPlayerOrPlayerItself())
             return true;
 

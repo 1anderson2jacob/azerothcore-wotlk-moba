@@ -113,6 +113,12 @@ initial delay after doors, whole-camp respawn once the last member dies. Camp st
   "On-death drops" — but with no team guard, since either team may take any camp.
 - **End of match**: frozen by `FreezeAllCreeps()`, and the camp's own entry points are
   status-guarded so a frozen camp cannot be re-activated or farmed.
+- **Camps only fight players** — and their pets/totems. Enforced in three places because
+  the engine has no single one: `CanAIAttack` on the neutral AI and on the creep AI (the
+  engine consults it for both proximity aggro and victim selection), plus an explicit
+  skip in the tower's own target search, which is `REACT_PASSIVE` and never reaches
+  `CanAIAttack`. Both AI halves are mandatory: reject on one side only and the other
+  still opens combat, leaving the rejecting side unable to answer.
 
 ### On-death drops
 

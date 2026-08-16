@@ -8,6 +8,7 @@
 #include "ObjectAccessor.h"
 #include "UnitAI.h"
 #include "MobaCreepData.h"
+#include "MobaNeutralData.h"
 #include "BattlegroundMOBA.h"
 #include "Map.h"
 
@@ -168,6 +169,9 @@ private:
 
             if (sMobaTowerDataStore->GetConfig(creature->GetEntry()))
                 continue; // never target other towers
+
+            if (sMobaNeutralDataStore->GetConfig(creature->GetEntry()))
+                continue; // camps are a player-only objective
 
             float dist = me->GetDistance(creature);
             if (dist <= nearestDist)

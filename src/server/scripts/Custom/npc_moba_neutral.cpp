@@ -46,6 +46,13 @@ struct npc_moba_neutral : public ScriptedAI
         ScriptedAI::UpdateAI(diff);
     }
 
+    // Camps are a player-only objective. Pets, guardians and totems resolve to their
+    // owner and stay allowed.
+    bool CanAIAttack(Unit const* victim) const override
+    {
+        return victim->GetCharmerOrOwnerPlayerOrPlayerItself() != nullptr;
+    }
+
     // Camp-link rides damage, not engagement: a one-shot kills the member before
     // EngagementStart fires, so a JustEngagedWith-only link missed the pull.
     void DamageTaken(Unit* attacker, uint32& /*damage*/, DamageEffectType /*damagetype*/, SpellSchoolMask /*damageSchoolMask*/) override
@@ -71,8 +78,7 @@ struct npc_moba_neutral : public ScriptedAI
         moba->NotifyNeutralDied(me, killer);
 
         // No team guard, unlike npc_moba_creep: either team can take any camp, so the
-        // raw killer is ALWAYS a valid reward source -- which is what lets a boss
-        // finished by a creep or tower still pay that side's team-wide drops.
+        // raw killer is ALWAYS a valid reward source.
         Player* p = killer ? killer->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
         moba->GrantDeathDrops(me, p, killer);
         if (p)
