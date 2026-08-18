@@ -122,8 +122,13 @@ local.properties
 !/data/sql/custom/*
 /apps/moba/local.conf
 /apps/moba/wmo/mpq_pack
+/apps/moba/maps/*/boundary_preview.png
+/apps/moba/maps/*/heights.png
 .github/MOBA_*_PLAN.md
 .clangd
-# fork: track the Blender blockout (overrides /var/* on line 17)
+# fork: track the map's traced source and reference images (overrides /var/* on
+# line 17). The .blend is NOT tracked -- it is a build artifact of the paint,
+# regenerated in seconds by apps/moba/gen_blockout.py.
 !/var/blender/
+/var/blender/*.blend
 /var/blender/*.blend1

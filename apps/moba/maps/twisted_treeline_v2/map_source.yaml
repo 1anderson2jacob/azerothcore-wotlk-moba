@@ -1,0 +1,68 @@
+# Twisted Treeline v2 -- blockout source parameters. gen_blockout.py reads this
+# and drives apps/moba/wmo/blockout_trace.py inside Blender.
+#
+# The painted trace is the geometry source of truth. This file holds only what a
+# flat image cannot carry: the scale it should be read at, what its colours mean,
+# and how high the raised regions sit.
+
+trace: var/blender/tt_v2_trace.png    # repo-relative
+
+# Registration is derived from the paint, not authored -- `cx` from the trace's
+# own mirror symmetry, `cy` from its bbox centre, and the scale from this width.
+# Rescaling the map is a change to this one number: no repaint, no re-trace.
+map_width_yd: 432.0
+
+# Paint key. Each opaque pixel takes the nearest of these in RGB, so an
+# anti-aliased edge splits at the 50% blend point rather than being rejected.
+# Anything below alpha_threshold is not walkable.
+palette:
+  floor: "#00FF00"                   # lanes, jungle, brush, pit
+  base:  "#0000FF"                   # raised base platform
+  ramp:  "#FF8000"                   # slope joining the two
+alpha_threshold: 0.5
+
+elevation:
+  base_yd: 3.0                       # platform height above the lane floor. MUST stay
+                                     # above mmaps' walkableClimb (1.60 yd, Config.h)
+                                     # or the platform edge is climbable from any side
+  ramp_blur_yd: 1.5                  # softens the crease at the top and foot of a ramp
+
+smoothing:
+  # Circular Gaussian low-pass on the arc-length parameterised contour. A wiggle of
+  # wavelength L is attenuated by exp(-2*pi^2*sigma^2/L^2): at sigma 2.0 a 4 yd
+  # stylus tremor is 99% gone while a 32 yd curve keeps 93% of its amplitude.
+  # Douglas-Peucker is NOT usable here -- it preserves maximum-deviation points,
+  # which on a hand trace are precisely the tremor.
+  sigma_yd: 2.0
+  resample_yd: 4.5                   # output spacing; the cutter vertex ceiling
+  min_blob_yd2: 30.0                 # stray paint specks, dropped before tracing
+  min_loop_yd2: 120.0                # islands below this are not worth a wall
+
+blockout:
+  # Floor tessellation. Coarse everywhere, fine only across a slope -- a uniform
+  # target fine enough for a 6 yd ramp puts tens of thousands of vertices on flat
+  # ground, and a WMO group indexes its vertices with 16 bits.
+  floor_edge_yd: 12.0
+  floor_detail_edge_yd: 1.5
+  bottom_yd: -8.0                  # underside of every wall solid
+
+  wall:
+    height_yd: 16.0                # nominal; each segment varies about this
+    variation_yd: 4.0              # so segments land in 12-20
+    segment_yd: 70.0               # how often the height re-rolls along a loop
+    terrace_drop_yd: 8.0           # the two ~8 yd steps
+    terrace_ledge_yd: 2.5          # ledge width between them
+    bevel_yd: 0.75                 # chamfer on the top edge
+    outer_margin_yd: 30.0          # plateau width beyond the map's convex hull
+    outer_step_yd: 15.0            # point spacing on that hull
+
+  scatter:                         # placeholder tree mass, replaced in dressing
+    per_1000_yd2: 5.0
+    radius_yd: [2.5, 5.0]
+    height_yd: [7.0, 15.0]
+    sink_yd: 1.0
+
+  materials: {floor: TT_Floor, wall: TT_Wall, tree: TT_Tree}
+  uv_scale_yd: 8.0
+  export_collection: TT_WMO_Export
+  seed: 20260818                   # height variation and scatter are deterministic

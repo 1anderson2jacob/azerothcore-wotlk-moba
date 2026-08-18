@@ -1,580 +1,212 @@
 # Custom map: Twisted Treeline terrain via WMO
 
-## Status of this doc
+## Status
 
-Steps 1 through 7 are complete: the map builds, packs, extracts, has a navmesh,
-runs the battleground, and carries its own content. Step 8 remains — dressing it.
+**Steps 0 and 1 are done** (2026-08-18). `python3 apps/moba/gen_blockout.py`
+takes the painted trace to a finished blockout `.blend` in about 12 seconds.
 
-**This file is scheduled for deletion when the map ships.** Anything here that
-is not specific to Twisted Treeline belongs in `apps/moba/wmo/README.md`, which
-survives — the procedure, the toolchain, the export traps, the coordinate chain
-and the WDT/DBC mechanics have already moved. As each remaining step is proven,
-move its *how* there and leave only the decisions and results here.
+**Step 2 will abort on its first run** — see *Step 2 is blocked* below. That is
+the next work.
 
-## Context / decision
+The bundle is `apps/moba/maps/twisted_treeline_v2/`. The pass-1 bundle stays in
+place until v2 replaces it — see *Two bundles, one slot*.
 
-The MOBA currently hijacks the Eye of the Storm map (client queues EotS, server
-runs `BattlegroundMOBA`). The plan is to move it onto a custom
-**Twisted Treeline-style** map. Terrain route, **decided 2026-07-12**:
+**Delete this file when the map ships.** Map-agnostic procedure lives in
+`apps/moba/wmo/README.md` and survives; steps 0 and 1 there were rewritten to
+match what actually shipped.
 
-- **WMO route first.** The approved Blender blockout geometry already *is* the
-  walls and collision, so a WMO reuses it directly — no terrain re-sculpting.
-- **ADT route (Noggit re-sculpt) only as fallback**, if the WMO result isn't
-  good enough. The likely reason it wouldn't be: outdoor look — ground-texture
-  blending and fog/lighting are less flexible in a pure-WMO map than in ADT
-  terrain. That is exactly what the ADT fallback would fix.
-- **GameObject kitbash rejected, 2026-08-11.** Assembling the blockout from
-  existing WoW gameobjects placed by SQL on an existing map needs no client
-  patch, so it is the only route playable today. It dies on mmaps: `MMapMgr`
-  loads prebuilt `.mmtile` files and nothing rebuilds them at runtime, while a
-  spawned gameobject reaches only the dynamic VMap tree
-  (`Map::InsertGameObjectModel`) — players would stand on kitbashed platforms,
-  creeps would path over the terrain underneath.
+## Why the restart
 
-Best implemented as a **WMO-only map**: a WDT that references a single global
-map object (the `WDT_USES_GLOBAL_MAP_OBJECT` flag) with no ADT terrain tiles —
-the way arenas / some instances are built. The whole playable space is one WMO.
+Pass 1 produced a playable map that missed on look. Four causes:
 
-## Art direction — decided 2026-08-11
+1. **Traced from a low-res minimap** — pass 1's `layout.json` records
+   `traced_from: Riot Data Dragon 9.22.1 map10.png`, 512x512. Moot in v2: the
+   trace is hand-painted, so source resolution no longer bounds accuracy.
+2. **No dressing.** Step 9 never started; one doodad on the whole map.
+   `TT_Forest` — 198 identical 7-sided frustums wearing a canopy BLP authored
+   for alpha-tested cards — was a placeholder that shipped.
+3. **Scale and proportion wrong.** Lanes too narrow, walls too short, one lane
+   tower per lane where the reference shows two.
+4. **Purple cast.** `dbc_tool.py` clones Eye of the Storm's `Light.dbc` row 591
+   and `AreaTable` row 3820, so map 900 wears Netherstorm's lighting. Real, but
+   **deferred** — not what kept the map from reading right.
 
-**WoW-native, not TT-faithful.** Keep Twisted Treeline's layout; let a dark WoW
-biome carry the look. Primary families: Ghostlands / Plaguelands / Duskwood for
-dead-but-elegant vegetation, Icecrown and the `DUNGEONS/TEXTURES` crypt/bone
-sets for bone and spike work, Duskwood for webbing. Asset paths are enumerable
-from the client MPQs — see *Texture assignment*.
+**Worth separating:** only (3) is a tracing-accuracy failure. Pass 1's contour
+was probably fine — supported in v2, where the painted trace's aspect (2.09)
+landed within 1% of pass 1's `map_bounds` (2.07). Do not re-derive the
+restart's justification from "the trace was wrong."
 
-**Brush is decoration for now.** Two consequences:
-
-- Its M2 must have **zero bounding triangles**, or it silently becomes a
-  collision wall. Check any candidate with `mpq_tool.py probe`.
-- Making brush a real LoL-style feature later is **C++ work in
-  `BattlegroundMOBA`**, not a doodad swap: WoW collision blocks movement and
-  line-of-sight together, so "walkable but vision-blocking" has no static
-  primitive. It needs zone checks plus a stealth-like aura.
+**The source `.blend` never contained step 1's prep** (verified 2026-08-15):
+`TT_WMO_Export` absent, `wmo_collide` on 0 objects, 34 meshes without UVs.
+Step 1's work existed only in an OBJ outside the repo. v2 fixes this
+structurally — there is no hand-authored `.blend`, and `.gitignore` now
+excludes `var/blender/*.blend` because it is a build artifact.
 
 ## Source of truth
 
-The blockout lives in `var/blender/twisted_treeline_blockout.blend`
-(collection `TwistedTreeline`, 132 objects, 1 unit = 1 WoW yard, pixel-traced
-from the real TT minimap). Structure coordinates + lane waypoints export to
-`var/blender/twisted_treeline_layout.json`. The placeholder marker meshes
-(towers, camps, boss, altars) are position anchors only; they do not ship —
-but **do not delete them**: they are what `twisted_treeline_layout.json` is
-generated from. They are kept out of the WMO by absence from `TT_WMO_Export`,
-not by removal.
+`var/blender/tt_v2_trace.png` (hand-painted) + `map_source.yaml`.
 
-### High-res reference + registration (2026-08-11)
+`geometry.json`, `heights.png` and the `.blend` are **derived and regenerable**.
+Nothing hand-authored may live only in a `.blend` again.
 
-`var/blender/tt_topdown.webp` — 1920×1080 orthographic render, Shadow Isles era,
-~4× the linear resolution of the minimap the blockout was traced from.
+### Reference images
+
+| File | What | Use |
+|---|---|---|
+| `var/blender/tt_v2_trace.png` | 752x752 hand paint | **the trace** |
+| `var/blender/tt_minimap.png` | 752x752 LoL wiki minimap | what it was painted over |
+| `var/blender/tt_topdown.webp` | 1920x1080 lit render | art direction only |
+
+`TTmap.jpg` (2048x1068, LoL wiki) is higher-res art reference if wanted.
+CommunityDragon holds raw patch dumps back to 7.1; `/9.22/game/assets/maps/` is
+**not** the right path — it holds only kitpieces, lightmaps, particles, skyboxes.
+
+## Decision ledger — 2026-08-15/18
+
+| What | Value | Why |
+|---|---|---|
+| Scale | **432 yd map width** | gives 431.4 x 187.2 yd. *Smaller* than pass 1's 456 x 220, but the paint's lanes are proportionally wider (9.0% of map width vs 4.8%), so the ledger's original "lanes too narrow" goal is met at a smaller footprint. Comfortably 4 mmaps tiles |
+| Lanes | **25-39 yd** | as painted. Supersedes the earlier 33/36 |
+| Walls | 16 yd ±4 | varies 12-20 per ~70 yd segment, cosine-interpolated so no vertical seam |
+| Wall construction | **extruded rings, no boolean** | islands are solid capped prisms; the outer loop is one ribbon whose outer edge is the convex hull pushed out 30 yd. Deletes the fragile step and the cutter-vertex ceiling with it. Rationale and the alternatives are in README step 1 |
+| Wall silhouette | terraced + bevelled | 8 yd drop, 2.5 yd ledge, 0.75 yd chamfer — arithmetic on rings, not a face selection |
+| Base platform | **3 yd** | must exceed `walkableClimb` 1.60 yd or the edge is climbable from any side, which is what pass 1's 1.0 yd nexus plateau was. Chosen against the painted 6.6 yd ramp run to land near 24 degrees; measured 25.8 |
+| Base entrances | **~36 yd, not chokes** | pass 1's were 26.1-29.2 yd. Accepted as painted; defenders have no pinch point |
+| Symmetry | left-right mirror | 0.9601 IoU on the paint (0.4373 on the render). Not enforced — the paint is taken as drawn |
+| Tree mass | placeholder cones | seeded scatter on wall tops, flat grey, obviously placeholder; replaced by M2 doodads in dressing |
+| Wall texture | off `TILESET/` | `GhostLandsRock01.blp` is a ground texture with no vertical strata. `DUNGEONS\TEXTURES\ROCK\` has 273 authored for vertical faces. Pick deferred — a material path, blocks nothing |
+| Lane towers | 2 per lane per side | up from 1 |
+| Lighting | deferred | real, not the blocker |
+| Content bundle | unchanged design | the config YAMLs are a human-authored designer surface, not generated from geometry |
+
+## What steps 0 and 1 produce
+
+`python3 apps/moba/gen_blockout.py` (add `--stage trace` or `--stage build` to
+run one half). Verified output:
 
 ```
-world_x = (px_x               - 959) * 0.2395
-world_y = (px_row_from_bottom - 525) * 0.2395
+trace   432.0 yd across 767 boundary points
+        mirror IoU 0.9601, 49 ambiguous px, 0 specks dropped
+        smoothing max deviation 0.74 yd, area -0.307%
+        slope 25.8deg peak (limit 60.0)
+build   18 objects, 19813 verts, 16486 faces
+        floor 14565 verts, 10523 faces, 50287 yd2
+        walls 16, 20 offset vertices clamped
+        z range -8.0 .. 33.83 yd
 ```
 
-Fitted by aligning the blockout's traced playable boundary against image
-gradient magnitude (edge ratio 1.44 vs frame average, sharp scale peak; map
-spans 1904 of 1920 px).
+- **Geometry:** 1 outer loop + 15 island loops. Extent x [-216.0, 215.4],
+  y [-93.6, 93.6]. One connected walkable region.
+- **Bases** at (-172.6, -1.4) and (172.0, -1.5), ~9100 yd² each.
+- **Ramps:** four, run 6.0-7.4 yd, mouth 35.6-37.3 yd.
+- **Objects:** `TT_Floor`, `TT_OuterWall`, `TT_JWall_00`…`TT_JWall_14`,
+  `TT_Trees`.
+- `floor_area 50287 yd²` against the loops' 50123 confirms the 15 islands are
+  holes rather than floored over.
 
-**Region/luminance correlation cannot fit scale.** The first attempt was flat
-across ±8% — +8% scored *higher* than its own optimum — and the left-right
-flipped null model scored identically (0.2822 vs 0.2823). Boundaries carry the
-scale information; regions don't. Use an edge objective for this class of
-registration.
+Two islands (~207 yd²) are too small to terrace and build as plain capped
+prisms — reported as `walls_unterraced`, working as intended.
 
-**The wall trace validates against this 4× source — do not re-trace.** The
-authored geometry was resampled at 3 yd and smoothed, so it is already coarser
-than even the old source; and a 2 yd resample is known to break Blender's
-boolean. A re-trace would also discard the hand-authored base geometry and the
-verified entrance widths, neither of which came from tracing.
+### Do not retry: uniform erosion to narrow lanes
 
-TT_Reference in the .blend carries this image, packed and registered to the transform above (459.84 × 258.66 yd). Unhide it to eyeball geometry against the reference.
+Measured. The map's median floor half-width is 9 yd, so half the floor sits in
+corridors 18 yd or narrower. Eroding 10 yd — the depth that hits a 38 yd lane
+target — fragments the map into 5 disconnected regions and halves the ramps.
+Lane width is a repaint or a scale change, never a filter.
 
-## What the layout feeds — and doesn't
+## Step 2 is blocked
 
-**Nothing, yet.** Verified 2026-08-11: nothing under `apps/` or `src/`
-references `twisted_treeline`. The only map bundle is
-`apps/moba/maps/eye_of_the_storm/`, whose configs and `*.lock.json` are
-EotS-prototype placeholders in a *different* coordinate space.
+`blender_staging_setup.py:53` asserts the scene's `TT_*` mesh set matches
+`SHIPPING` exactly and **raises `SystemExit` otherwise**. Its sets are pass 1's
+names, so v2 aborts immediately. Three things need updating, none testable
+without the GUI 3.4 session:
 
-So TT anchors have never been played and cost ~nothing to move. Do not argue
-against moving them on "it's tuned" or "it's in the lock files" grounds — both
-are false, and asserting them once manufactured a decision deadlock. The ~50s
-lane pacing is arithmetic from blockout lane length, not a played-and-tuned
-value.
+1. **`COLLIDE` / `RENDER_ONLY`.** v2 ships 18 objects: `TT_Floor`,
+   `TT_OuterWall` and `TT_JWall_00..14` collide; `TT_Trees` is render-only.
+   Pass 1's sets name `TT_Ground`, `TT_Walls`, `TT_FrontWall_*`, `TT_FWFill_*`,
+   `TT_Patch_*`, the nexus plateaus, `TT_JWall_00..15` (sixteen, not fifteen),
+   and a pile of `_Pad` and `_Camp_` objects that no longer exist.
+2. **`ORIENT_PROBE`** is `TT_AltarEast_Pad` at x = 152.5, which v2 does not
+   have. It exists to verify the server-frame flip, so it needs a v2 object
+   with a known centre x.
+3. **`TEXTURES`** has no entry for `TT_Floor` or `TT_Tree` (v2's material
+   names), so the material check errors. `TT_Wall` already maps.
 
-**Mounts are allowed** (decided 2026-07-11) — players move 1.6–2× creep speed,
-which is what the blockout's lane lengths were sized against.
+**Collide vs render-only travels by object name**, not by property — custom
+properties do not survive OBJ (README step 2). `build_blockout.py` sets a
+`wmo_collide` custom property, but only to drive its own gate; it never reaches
+3.4.
 
-The gate is `Spell.cpp:6673-6678`: battlegrounds allow mounts by default, but a
-matching `instance_template` row **overwrites** that default outright
-(`allowMount = it->AllowMount`, not an `&&`). So mounts in the MOBA hinge on
-whether `instance_template` has a row for map 566 and what its `allowMount`
-says — check with
-`SELECT allowMount FROM instance_template WHERE map = 566;`. If it is 0, a
-one-row custom SQL fixes it; nothing in `BattlegroundMOBA` needs to change.
+## Two bundles, one slot
 
-A dismount-on-tower-hit rule is likely unnecessary: taking damage already
-strips `SPELL_AURA_MOUNTED` through normal interrupt handling. Test before
-building it.
+`apps/moba/maps/twisted_treeline/` (pass 1) and `twisted_treeline_v2` both
+target map 900. Before v2 gains content configs, settle:
 
-What **is** verified is the *wall geometry*: reachability flood-fill, entrance
-widths (29.2 / 26.3 / 28.8 / 26.1 yd), the plugged-mouth isolation proof.
-Anchors sit in open space; moving them disturbs none of it.
+- **`active:` in `base_config.yaml`** — one bundle owns the battleground slot.
+  Two with `active: true` will conflict.
+- **ID allocation.** Pass 1 filled 900000-900009 (towers), 900020+ (creeps),
+  900209+ (neutrals), and the allocator carved 900400-900499. v2 either reuses
+  those keys or needs its own block in `apps/moba/id_blocks.json`.
 
-## Measured structure positions (2026-08-11)
+Neither is decided.
 
-Read off a 20 yd world grid projected onto the reference, ±3 yd, east side:
+## What carries over untouched
 
-| Structure in the render | Measured | Blockout anchor | Δ |
-|---|---|---|---|
-| Large platform, bright core, deepest in base | (192, +2) | `nexus_great_tower` (185, −5) | ~9 yd |
-| Ornate dais wrapped by curved walls | (136, +3) | `altar` (152.5, −5) | ~18 yd |
-| Glowing pad, north | (160, +34) | `nexus_turret` (172, +12) | ~25 yd |
-| Glowing pad, south | (164, −35) | `nexus_turret` (172, −22) | ~15 yd |
-| Dark pad, far north | (155, +60) | — | — |
-| Dark pad, far south | (167, −66) | — | — |
+Steps 3-8 are tooling and none of it cares about the geometry:
+`blender_preflight.py`, `wmo_verify.py`, `gen_wdt.py`, `dbc_tool.py`,
+`mpq_pack`, `mpq_tool.py`, and the extractor procedure. Only
+`blender_staging_setup.py` (step 2/3) carries per-map names and needs the edit
+above.
 
-Mid-map: **TT's real Altars of Harmony sit at (±69, −18)** — the blockout has no
-anchor for them, and `BattlegroundMOBA` has no altar mechanic. Park until the
-feature exists. Central shrine at (0, −18); brush tufts at (±36, −12).
+DBC and ID allocations live in `dbc_tool.py` as constants, reasoning in
+`apps/moba/wmo/README.md` step 6. `mod_moba_bg_map.sql` is unaffected by geometry.
 
-The earlier reading that the minimap's cyan diamonds were the altars was a
-512×512 misread — they are the Nexus daises.
+## Structure positions come from in-game `.gps`, not from geometry
 
-Two caveats: every measured structure reads ~7 yd north of the blockout's
-y = −5, which is far likelier a small `cy` registration bias than six
-independent placement errors — **do not apply it as a correction**. And the role
-labels are interpretation, not measurement; the positions are solid, the names
-are a proposal.
+Lane centrelines, tower and camp positions are **not** derived from the trace,
+and a painted marker layer was designed and rejected:
 
-Lane towers and camps are **not yet measured**.
+- The configs carry z; a flat image cannot.
+- `lane_config.yaml`'s header records a traced waypoint that sat 0.2 yd from
+  `TT_JWall_12`'s face and had to be hand-repaired. A point recorded by standing
+  on it cannot have that defect.
+- You cannot `.gps` a map that does not exist yet, so geometry comes first.
 
-## Doodad placement rule, derived from the reference
+`layout.json` is therefore dead for v2 — it held exactly those positions.
 
-TT keeps the playable floor deliberately clear — all visual mass rides the
-walls. Every zone below is derivable from the existing `TT_JWall_*` / `TT_Walls`
-polygons by inset/outset, so the image supplies character and spacing, not
-positions.
+## Pipeline
 
-| Zone | Derivation | Contents |
+| # | Step | State |
 |---|---|---|
-| Floor interior | >3 yd from any wall | nothing |
-| Wall-base hem | 0–2 yd inward from wall edge | sparse low growth |
-| Wall edge line | wall perimeter, playable side | **lanterns/braziers, ~15–20 yd spacing** |
-| Wall top | wall polygon interior | dead trees, fungus, roots — dense |
-| Outer dead zone | outside the boundary loop | largest backdrop masses |
-| Landmarks | hand-placed | centre shrine, camps, boss mouth, nexus |
-
-Floor exceptions are landmark-anchored only — never free-standing in a lane.
-Nothing gameplay-load-bearing may be a doodad: a doodad's collision depends on
-an asset we don't control, and its group being dropped by `WMOGroup::ShouldSkip`
-takes its collision with it.
-
-**Timing: dressing is step 8, after the content port.** Doodads are polish by the
-rule above, and each change costs a re-export → re-pack → re-extract → re-mmaps
-cycle, so that loop wanted proving first. It is now proven end to end — the test
-lamppost reaches the server's vmaps as its own spawn (see *Step 5 — complete*).
-Dress after step 7, so the lanes, camps and structures are visible before anything
-carrying collision is placed near them.
-
-What blocks authoring at scale is no longer the pipeline but **where placements
-live**: they exist only in the 3.4 staging scene and cannot round-trip through the
-OBJ. See the step 3 notes in `apps/moba/wmo/README.md`.
-
-Check any candidate asset with `mpq_tool.py probe` before authoring with it:
-**0 bounding triangles renders and never collides, anything above 0 always
-collides.** There is no third option, which is why brush cannot be a doodad.
-
-**Dressing is also what ends the staging scene's disposability** — placements
-exist only in the 3.4 file and cannot round-trip through the OBJ. Decide how
-they are stored *before* authoring hundreds of them; see the step 3 notes in
-`apps/moba/wmo/README.md`.
-
-## Editing the blockout — hard-won constraints
-
-Live the moment step 1 touches the scene:
-
-- **Keep the outline cutter resampled at 3.0 yd.** A 2.0 yd resample
-  (~4500-vert cutter) makes Blender's EXACT boolean *silently destroy* the slab
-  — it went to 0 verts once. Sanity-check vertex counts after every apply.
-- **Cap carves must take their lane-side control points FROM the traced wall**
-  (3 anchor points, not raw point splicing), or the union seam forms a bad
-  corner.
-- **Verification kit that works:** 2 yd flood grid (3 yd aliases through
-  diagonal walls and false-fails); plugged-mouth test with plugs spanning the
-  FULL map height (a y−100 plug missed lane floor at y=−102); check the seed
-  cell is actually open; and when a proof fails, BFS-with-parents to print the
-  actual leak path before touching geometry.
-- Verify every terrain change with the ray-cast flood-fill (seed a jungle camp;
-  probe graveyards / nexus / altar / boss / lane mids) **plus** seal probes at
-  the front-wall midpoints. The flood caught 2 disconnections; the seal probes
-  caught a hairpin wall that left flanks open.
-- `TT_Patch_*` (knob patches) and `TT_FWFill_*` (front-wall fillers) are
-  deliberate geometry — don't "clean" them.
-
-## Export mechanics
-
-**Moved to `apps/moba/wmo/README.md`** — the collision chain, the four silent
-export failures, and the doodad rules are map-agnostic and must outlive this
-file. Measured on the real export: 16,476 of 32,620 triangles survive as
-collision, matching the Blender-side collide/render split exactly.
-
-## Toolchain
-
-**Moved to `apps/moba/wmo/README.md`** — the two version traps, the five Apple
-Silicon build patches, and what cannot be automated. None of it is specific to
-this map.
-
-## Step 1 — complete 2026-08-11
-
-### 5.1 blockout prep
-
-- UVs on all 34 terrain meshes (they had none) — cube projection, world-space,
-  1 repeat / 8 yd. Tiling, not a packed 0–1 atlas.
-- `TT_Walls` empty material slot removed (0 faces referenced it; all 1673 on
-  `TT_Wall`). A slot with no material is an export hazard.
-- Collection `TT_WMO_Export`: the 47 shipping objects, **linked** not moved.
-  32 collide + 15 render-only, 32,620 triangles.
-- Custom property `wmo_collide` on each — 1 = collide, 0 = render-only. **Does
-  not survive OBJ**; the names are listed below.
-- Scale applied on `TT_Camp_WraithsE/W` — the only unapplied scale in the set.
-
-Render-only by choice: the 3 path decals + canopy, and the 11 thin pads
-(GY / altar / pit / camp) sitting 0.4–0.5 yd over the floor, where collision
-would stack near-coincident surfaces. Both nexus plateaus collide.
-
-The 32 needing a `"Collision"` vertex group: `TT_Ground`, `TT_Walls`,
-`TT_JWall_00`–`15`, `TT_FrontWall_E/W`, `TT_FrontWall_EPocket/WPocket`,
-`TT_FWFill_EN/ES/WN/WS`, `TT_Patch_EN/ES/WN/WS`, `TT_Blue_NexusPlateau`,
-`TT_Red_NexusPlateau`. Everything else is render-only — the engine default,
-needing no action.
-
-### 3.4 staging scene
-
-`~/tools/tt-transfer/tt_staging_34.blend`, built from
-`~/tools/tt-transfer/tt_blockout.obj` — 47 objects, 8 materials, 32,620 tris,
-bounds byte-exact. Disposable *while it holds no doodads*, and proven so:
-`blender_staging_setup.py` reproduces it from the OBJ (see the README).
-
-WMO root = collection `TwistedTreeline` (`dir_path = World\wmo\TwistedTreeline\`),
-child collection `Outdoor` holds all 47. The `"Collision"` vertex group covers
-every vertex on the 32 collide objects; the 15 render-only ones have it
-removed. All 8 materials carry `diff_texture_1`, pointing at the paths in
-*Texture assignment* below.
-
-The procedure, the axis trap, the save-vs-RAM hazard and the export
-preconditions are in `apps/moba/wmo/README.md`.
-
-### Texture assignment — decided 2026-08-11, all paths verified in-client
-
-Indexed via pywowlib/StormLib against `~/Games/wow335/Data` (7 MPQs, 210,782
-entries — 110,419 BLP, 25,113 M2). The MPQs **do** carry internal listfiles, so
-asset paths are enumerable rather than guesswork. Ghostlands lives under
-`TILESET/EXPANSION01/GHOSTLANDS/`; there is no ICECROWN tileset (WotLK ground is
-`TILESET/EXPANSION02/`). A `_s` suffix is a specular map — never assign one as
-diffuse.
-
-| Material | BLP |
-|---|---|
-| `TT_Wall` | `TILESET/EXPANSION01/GHOSTLANDS/GhostLandsRock01.blp` |
-| `TT_Ground` | `TILESET/EXPANSION01/GHOSTLANDS/GhostLandsGrass01.blp` |
-| `TT_Lane` | `TILESET/EXPANSION01/GHOSTLANDS/GhostlandsPath01.blp` |
-| `TT_JunglePath` | `TILESET/EXPANSION01/GHOSTLANDS/GHOSTLANDSDIRT01.BLP` |
-| `TT_Camp` | `TILESET/EXPANSION01/GHOSTLANDS/GhostlandsCreep01.blp` |
-| `TT_Stone` | `TILESET/DUSKWOOD/DuskwoodCobblestone.blp` |
-| `TT_Pine` | `World/AZEROTH/DUSKWOOD/PASSIVEDOODADS/Trees/DuskTallCanopy_New03.blp` |
-| `TT_PitBoss` | `TILESET/PlagueLands/PlaguedEarthRed01.blp` |
-
-**Naxxramas yields no architecture textures** — all 23 hits are capes, shields
-and weapons. Bone/spike work comes from `DUNGEONS/TEXTURES/` instead:
-`BRICK/JACRYPTBRICK01-08`, `AZJOL/AZJOLBONEPILE`,
-`DECORATION/JLO_UDERCITY_SKULL`, `DALARAN/DAL_ROCK_SPIKE`.
-
-## Step 2 — complete 2026-08-12
-
-`~/tools/wbs-project/World/wmo/TwistedTreeline/TwistedTreeline.wmo` + 47 group
-files, exported from the 3.4 staging scene via File > Export > WMO (Full, not
-"selected"). Checked by `apps/moba/wmo/wmo_verify.py`, which replays the
-extractor's own decisions offline:
-
-| | |
-|---|---|
-| MVER | 17, root and every group — WBS hardcodes it, so format version was never a risk |
-| groups kept by `ShouldSkip` | 47 / 47 |
-| triangles | 32,620 total, **16,476 kept as collision** |
-| materials | 8, every MOTX path resolving in the client MPQs |
-| doodad | 1 emitted through the full `MODN -> MODD -> MODR -> ExtractSet` chain |
-
-The 15 groups contributing no collision are exactly the 15 render-only objects.
-
-**The doodad pipeline works.** `BE_Lamppost_Ghostlands01` (570 bounding
-triangles) exports with its path rewritten `.m2 -> .MDX` by WBS, lands in
-`Set_$DefaultGlobal`, and `find_nearest_object` attached its MODR reference to
-the `TT_Ground` group — which correspondingly gained flag `0x800`. So the
-dressing pass is unblocked on the tooling side.
-
-## Step 3 — complete 2026-08-13
-
-### IDs, decided
-
-| What | Value | Why this one |
-|---|---|---|
-| Map id | **900** | stock Map.dbc tops out at 724. Deliberately not the fork's usual 900000 range: `DBCStorage` sizes its index table to max(id)+1, so a six-digit map id costs ~7 MB of null pointers |
-| Directory | **TwistedTreeline** | must match the WDT folder and filename; the core never reads it (`MapEntryfmt` marks field 1 `x`), the client and both extractors do |
-| rootWMOID | **9000** | stock WMOIDs top out at 5949. Must stay <= 32767: `GetWMOAreaTableEntryByTripple` narrows the key to `int16` |
-| AreaTable id | **5000** | free; AreaBit **3000**, also free — AreaBit indexes the client's exploration bitmask, so reusing a stock one marks another zone explored |
-| WMOAreaTable rows | **51200, 51201** | stock tops out at 51118 |
-| Light id | **3000** | stock tops out at 2538 |
-
-Leaving rootWMOID at 0 would have collided with stock row 47479
-(WMOID 0, NameSet 0, group 0 → AreaTableID 0).
-
-Area flags are `AREA_FLAG_OUTSIDE` (0x04000000), deliberately **not** Eye of the
-Storm's 0x4000 — that is `AREA_FLAG_OUTLAND2`, which no line of the core reads.
-
-### Results
-
-The re-export changed nothing but what it was meant to. Per-group triangle,
-collision, vertex and doodad-reference counts are identical to the pre-rotation
-export; only MOBN/MOBR moved.
-
-| | |
-|---|---|
-| groups kept by `ShouldSkip` | 47 / 47 |
-| triangles | 32,620, **16,476 kept as collision** |
-| rootWMOID | 9000 |
-| orientation | `TT_AltarEast_Pad` at x = −152.5, i.e. the server frame |
-| WDT | 32,954 bytes; MVER 18, MPHD 0x1, MAIN with no exist bits, MODF at (0,0,0) |
-| server extent | X[−245, 245] Y[−130, 130] Z[−1, 16.89] — **4 mmaps tiles** |
-| DBC rows | Map 900, AreaTable 5000, WMOAreaTable 51200/51201, Light 3000 |
-
-**`MOHD.flags = 0x4`** (`UseLiquidTypeDBCId`) is still set — WBS does this
-unconditionally for WotLK when no group carries a liquid mesh. Harmless, since
-`GetLiquidTypeId(0)` returns 0 and `liquflags` stays 0, but it is the first
-thing to look at if water ever appears where it should not.
-
-One export defect, client-side only: **`MOGI[0]` carries the root bounding box**
-instead of its own group's. The group *file* is correct and the server reads
-group files, so the only effect is that one group is never frustum-culled.
-
-## Step 4 — complete 2026-08-13
-
-`~/Games/wow335/Data/enUS/patch-enUS-4.MPQ` — 1,111,788 bytes from 4,965,170 in,
-built by `apps/moba/wmo/mpq_pack`. Why the locale archive rather than
-`Data/patch-4.MPQ` is in `apps/moba/wmo/README.md` step 7; it is map-agnostic and
-not a per-map choice.
-
-| | |
-|---|---|
-| entries | 54 — 53 payload + `(listfile)` |
-| fidelity | 53 / 53 byte-identical to `~/tools/wbs-project` |
-| DBC rows in-archive | Map 900 (`Directory='TwistedTreeline'`, InstanceType 3, Flags 0x1), AreaTable 5000, WMOAreaTable 51200/51201, Light 3000; map 566 still intact |
-| WDT | MVER 18, MPHD 0x1, MAIN 32768, MWMO 46, MODF 64 |
-| MWMO -> WMO | `World\wmo\TwistedTreeline\TwistedTreeline.wmo` resolves in-archive |
-| root MOHD | nTextures 8, nGroups 47, RootWMOID 9000, bbox X[−245, 245] Y[−130, 130] Z[−1, 16.89] |
-| derived groups | 47 / 47 present, `_047` correctly absent |
-
-Both extractors' archive search order was replayed against the real install: all
-six of our files resolve to `patch-enUS-4.MPQ` in each, with no divergence.
-
-## Step 5 — complete 2026-08-13
-
-Tools built with `-DTOOLS_BUILD=maps-only`, then `vmap4_extractor` →
-`vmap4_assembler` in a scratch dir, the two map-900 files copied into
-`env/dist/bin/vmaps/`, then `mmaps_generator 900`. Procedure in
-`apps/moba/wmo/README.md` step 8.
-
-| | |
-|---|---|
-| raw vmap | `Buildings/Twistedtreeline.wmo`, 372,832 bytes, clean EOF |
-| groups | 47 walked — 32 with collision, 15 empty, exactly the render-only set |
-| collision triangles | 16,476, matching `wmo_verify.py`'s offline count exactly |
-| vertices | 22,532 |
-| `900.vmtree` | 248 bytes, 2 spawns |
-| `Twistedtreeline.wmo.vmo` | 777,140 bytes, `VMAP_4.8` + `WMOD` |
-| mmaps | `900.mmap` + 4 tiles — [31,31] [31,32] [32,31] [32,32] |
-| navmesh | 1,790 polygons / 3,296 vertices; `DNAV` v7, `mmapVersion` 19, walkableClimb 1.60 yd |
-| `maps/` | nothing, as expected |
-
-Three things moved from unproven to proven:
-
-- **Recast builds a navmesh from a map with no `.map` files.** `discoverTiles`
-  found map 900 through the `.vmtree` alone and produced exactly the 4 tiles the
-  WDT predicted at step 3.
-- **The doodad chain works end to end.** `900.vmtree` carries a second spawn,
-  `Be_Lamppost_Ghostlands01.m2`, `flags=7` (`M2|WORLDSPAWN|HAS_BOUND`) — so
-  `WDTFile`'s MODF branch really does reach `Doodad::ExtractSet`.
-- **The coordinate chain lands where the README says.** The `GOBJ` spawn is at
-  `(17066.666, 17066.666, 0)` with bounds `X[−245, 245] Y[−130, 130] Z[−1, 16.89]`
-  relative to it — the step 3 server extent to the decimal.
-
-**Confirmed in-game 2026-08-14**, during step 6's first port: the geometry renders
-and the floor is solid where the extractors said it would be. Vmaps and mmaps are
-not merely well-formed, they are correct.
-
-248 bytes is the correct size for a `.vmtree` holding 2 spawns. Stock global-WMO
-maps are larger only because their WMOs carry far more doodads — DeeprunTram
-56,810, StormwindPrison 21,956, AlliancePVPBarracks 4,866.
-
-## Step 6 — complete 2026-08-14
-
-`data/sql/custom/db_world/mod_moba_bg_map.sql`, plus a `pvpdifficulty_dbc`
-namespace (block `200-209`) in `apps/moba/id_blocks.json`. Two rows:
-
-| | |
-|---|---|
-| `battlemasterlist_dbc` row 7 | all 32 columns; `MapID_1` 900, `Name_Lang_enUS` 'Twisted Treeline', every other field stock |
-| `pvpdifficulty_dbc` row 200 | map 900, `RangeIndex` 0, levels 61–85, difficulty 0 |
-
-The queue ports to map 900 and the client loads it. `SetupBattleground` then
-fails finding no map-900 content rows, which is step 7 and not a defect.
-`BattlegroundMgr.cpp` did not change, as predicted.
-
-### Settled here
-
-- **The client's `BattlemasterList.dbc` is not patched, and must not be.** The
-  client is never asked where to go — the map id reaches it from `bg->GetMapId()`
-  in `SMSG_BATTLEFIELD_STATUS` and again in `SMSG_NEW_WORLD`. Its own row 7 drives
-  only the PvP frame, so leaving it at 566 is what keeps the queue window reading
-  "Eye of the Storm" while server-side text says Twisted Treeline. Full reasoning
-  is in the SQL file's header.
-- **Row 32 (Random Battleground) left alone**, so this slot has dropped out of the
-  random rotation: row 32 resolves its map list by map id and still names 566.
-  Deliberate — the real fix is a standalone battleground id, which the step 3–4
-  DBC-patch pipeline has now made cheap.
-
-### Two facts that cost a round
-
-Neither is about a row, so neither fits the SQL header. Both belong in
-`MOBA_GUIDE.md`'s gotcha index when the map ships; the second is also now in
-`apps/moba/wmo/README.md` step 8, being map-agnostic.
-
-- **`GetRandomBG` runs on every queue, not just Random Battleground.**
-  `CreateNewBattleground` calls it first thing, and it keeps a candidate template
-  only while `bg->MinLevel <= bracketEntry->minLevel`. A bracket whose `MinLevel`
-  sits below `battleground_template.MinLvl` empties the candidate list, and the
-  console reports `bg template not found for 0` — naming neither
-  `pvpdifficulty_dbc` nor the level comparison. Lowering the floor for the wanted
-  level 60/50/40/30 testing means lowering `battleground_template.MinLvl` in the
-  same change — and `gen_base.py` does not emit that field today, so it is a
-  `base_config.yaml` plus generator change, not just a new value.
-
-- **`.go` reaches a battleground map only from inside a battleground.**
-  `Player::TeleportTo` returns false silently when `mEntry->IsBattlegroundOrArena()`
-  — `InstanceType` 3 or 4 — and the player is not already in one
-  (`Player.cpp:1375`). No message, no packet, GM level irrelevant. Queue in first
-  and `.go xyz` behaves normally. That is how the geometry was first seen in-game
-  (2026-08-14): ported to map 900, fell, `.go xyz 0 0 20 900` mid-fall, landed on
-  Twisted Treeline. The match ended seconds later only because `SetupBattleground`
-  had already failed. Once step 7 makes setup succeed, `.debug bg` holds the match
-  open and the map is freely walkable — so step 8's dressing pass is not blocked on
-  this.
-
-### What step 7 inherits
-
-A battleground that reaches map 900 and dies there. Every content config is still
-`map: 566` in Eye of the Storm coordinates, so two things are broken by the same
-cause:
-
-- `SetupBattleground` fails at the first store it reads — towers — and
-  `Battleground::_ProcessJoin` turns that into `EndNow()` (`Battleground.cpp:494`).
-- Start positions come from `game_graveyard` 1103/1104 at (2523, 1596, 1269) and
-  (1807, 1539, 1267), while map 900 spans X[−245, 245] Y[−130, 130] Z[−1, 16.9].
-  Players port in ~1250 yd above nothing and fall.
-
-Both are fixed by the same work: a new `apps/moba/maps/twisted_treeline/` bundle
-sourced from `var/blender/twisted_treeline_layout.json`, needing fresh id
-allocation and lockfiles, plus map-900 graveyard rows for the two start points
-(`AllianceStartLoc`/`HordeStartLoc` are `game_graveyard` ids, set from
-`base_config.yaml`).
-
-## Step 7 — complete 2026-08-14
-
-`apps/moba/maps/twisted_treeline/` — all seven configs, sourced from
-`var/blender/twisted_treeline_layout.json`, which until now fed nothing.
-
-| | |
-|---|---|
-| structures | 10 — per side: 2 lane towers, 2 inhibitors, 1 core |
-| lane creeps | 20 — 2 lanes x 5 slots x 2 teams |
-| waypoint paths | 30 (2 maps), 3,370 rows |
-| neutral camps | 7 — wolves/wraiths/golems mirrored, plus the boss pit |
-| shopkeepers | 900302 / 900303 |
-| id allocation | towers filled 900000-900009 and the allocator carved 900400-900499 itself; creeps from 900020, neutrals from 900209 |
-
-Verified in-game: `.gps` confirms the coordinate frame, and structures, both lanes,
-camps, base and shop all behave. The inhibitor gating and the per-lane super minions
-were exercised including the respawn re-seal, which had no equivalent code path before.
-
-### Settled here
-
-- **Alliance is WEST (-x), Horde EAST (+x)**, matching the blockout's own
-  `TT_Blue_` / `TT_Red_` naming.
-- **Two inhibitors per side, one per lane.** The core is gated on *every* inhibitor
-  on its side, which `guarded_by` cannot express (one key per row), so that rule is
-  in C++ as a genre invariant. Both gates AND, so a `guarded_by` on a core still applies.
-- **Super minions are lane-local.** This is what forced `mod_moba_creep_data.Lane`
-  and made `MobaLane` load-bearing rather than kill-feed decoration.
-- **One active bundle per battleground slot**, via `active:` in `base_config.yaml`.
-  `eye_of_the_storm` is `active: false` — its content rows stay live and inert, so
-  rolling back to map 566 is a one-line flip plus a regen and restart.
-- **Randomising sides per match is deferred to its own feature**, with its decisions
-  in `.github/MOBA_COINFLIP_PLAN.md`.
-
-### Map facts, measured off the exported mesh
-
-- **The playable floor is flat at z = 0.** `TT_Ground` is a slab spanning z -1 -> 0.
-  The only raised surface is the two nexus plateaus at z 0 -> 1, |x| 172-198,
-  y -18..8 — so cores sit at z 1 and everything else at z 0. Every pad (graveyard,
-  altar, camp, pit) is a render-only decal at z <= 0.5 and carries no collision.
-- **The spawn dome is 15 yd, not EotS's 20.** At 20 the dome stands exactly on the
-  core, which is 20 yd from the spawn point.
-- **`twisted_treeline_layout.json` has a bad waypoint.** Top lane index 30 is
-  (120, 52.4), 0.2 yd from the face of `TT_JWall_12`, with both segments through it
-  clipping the wall. `lane_config.yaml` carries the repair (79.8, its own west
-  mirror's value); the JSON still has the defect. Every other waypoint on both lanes
-  clears by 10+ yd except at the base chokes, which bottom out at 6.4 yd and are
-  meant to be tight.
-
-### What step 8 inherits
-
-A playable map. Dressing is unblocked on tooling (step 5 proved the doodad chain end
-to end) and blocked only on **where placements are stored** — they exist solely in the
-3.4 staging scene and cannot round-trip through the OBJ. See the step 3 notes in
-`apps/moba/wmo/README.md`. Lanes, camps and structures are now visible in-game, which
-was the reason for dressing after the content port rather than before.
-
-## Pipeline (each step is its own session-sized chunk)
-
-| # | Step | Who | Notes / unknowns |
-|---|------|-----|------------------|
-| 1 | ~~Prep scene for export~~ **done 2026-08-11** | — | see *Step 1 — complete* |
-| 2 | ~~Export to `.wmo`~~ **done 2026-08-12** | — | see *Step 2 — complete* |
-| 3 | ~~WDT + DBC rows~~ **done 2026-08-13** | — | see *Step 3 — complete* |
-| 4 | ~~Pack `.wmo` + WDT + DBCs into an MPQ client patch~~ **done 2026-08-13** | — | see *Step 4 — complete* |
-| 5 | ~~Run extractors server-side~~ **done 2026-08-13** | — | see *Step 5 — complete* |
-| 6 | ~~Register the map server-side~~ **done 2026-08-14** | — | see *Step 6 — complete* |
-| 7 | ~~Port the content into Twisted Treeline coordinates~~ **done 2026-08-14** | — | see *Step 7 — complete* |
-| 8 | Dressing pass — doodads | Jacob authors in Blender, Claude tools it | pipeline proven at step 5; blocked instead on **where placements are stored** (README step 3). Each change costs re-export → re-pack → re-extract → re-mmaps |
-
-## Division of labor (per CLAUDE.md env rules)
-
-- **Claude does:** Blender scene prep, DBC/SQL/C++ authored as files.
-- **Jacob does:** install the exporter addon, MPQ packing, run the extractors,
-  restart servers — everything that operates the environment.
-
-## Loose ends found 2026-08-11
-
-- `TT_Forest` exists at z 8→16.9, 2772 verts, but covers only ~6% of wall area
-  and overhangs 0.28% of playable — a partial canopy pass, already obeying the
-  "props ride the walls" rule.
-- 13 stray open cells at the extreme south row (y = −109.5, x −136..+142) —
-  boolean slivers or genuine pinholes in the outer wall. Worth a look given the
-  flood-fill history.
+| 0 | Trace the boundary | **done** — hand paint, read by `gen_blockout.py` |
+| 1 | Blockout | **done** — `build_blockout.py`, no booleans |
+| 2 | Transfer to 3.4 staging | **blocked** — see *Step 2 is blocked* |
+| 3-8 | staging -> export -> verify -> WDT/DBC -> MPQ -> extractors | proven, unchanged |
+| 9 | Dressing | blocked on where doodad placements are stored (README step 3) |
+
+## Division of labor
+
+- **Claude:** scripts, SQL and C++ authored as files **for Jacob to apply**.
+  Claude does not write files. Steps 0-1 run headless, so no Blender GUI session
+  is needed for them.
+- **Jacob:** applies files, runs the generators, the GUI 3.4 session, MPQ
+  packing, extractors, servers.
+
+## Open items
+
+- **The ribbon walls are untested through the exporter.** Pass 1 only ever
+  pushed boolean output through WBS. Step 4 is the first place the new topology
+  could surprise us.
+- **The WMO 16-bit vertex cap is asserted, not verified.** `wmo_verify.py` does
+  not parse MOVI and the 65535 hits in WBS are Cython boilerplate. The gate in
+  `gen_blockout.py` assumes 65535; nothing local confirms it.
+- **Three failure gates in `gen_blockout.py` are unexercised** —
+  `floor_regions`, slope, and `base_yd` below `walkableClimb`. The happy path is
+  verified end to end; those branches are not.
+- Cones overhang island edges slightly. Placeholder geometry that dressing
+  replaces, so left alone.
 
 ## Next concrete step
 
-Step 8: the dressing pass. Decide where doodad placements live before authoring
-hundreds of them — see the step 3 notes in `apps/moba/wmo/README.md`.
+Update `blender_staging_setup.py`'s `COLLIDE`, `RENDER_ONLY`, `ORIENT_PROBE`
+and `TEXTURES` for v2's 18 objects, then run step 2 in the GUI 3.4 session.

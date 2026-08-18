@@ -16,6 +16,7 @@ the game install or the databases.
 
 | # | Step | Proven |
 |---|---|---|
+| 0 | Trace the boundary from a reference image | partly |
 | 1 | Blockout in Blender 5.1 | yes |
 | 2 | Transfer to a 3.4 staging scene | yes |
 | 3 | Set up the staging scene for WBS | yes |
@@ -25,13 +26,87 @@ the game install or the databases.
 | 7 | Pack the MPQ client patch | yes |
 | 8 | Run the extractors | yes |
 
-All eight steps below are a procedure that has been run start to finish, most
-recently for Twisted Treeline on 2026-08-13.
+Steps 1 through 8 are a procedure that has been run start to finish, most
+recently for Twisted Treeline on 2026-08-18. Step 0 is newer but settled: a
+painted trace is read by a script, and the whole of 0–1 runs headless.
+
+### 0. Trace the boundary from a reference image
+
+Skip this if the blockout is designed rather than traced.
+
+**Paint the trace by hand; do not derive it.** Automated segmentation of art
+was tried twice and abandoned both times, for reasons inherent to the sources:
+
+- **A lit 3D render does not threshold into floor versus wall.** Measured on a
+  1920x1080 orthographic render: an Otsu threshold (0.251 luminance, 23.7% of
+  pixels) recovers real structure, but the mask breaks into 131 components with
+  the top three holding only 71% of the bright area. Floor beside a wall falls
+  into shadow while lit wall tops rise above the threshold, so the mask
+  disagrees with the truth exactly where the boundaries are.
+- **A flat-lit schematic segments on hue where luminance fails** — walls run
+  warm (`R-B > 0`) and floor cool. That recovers the interior cleanly, but it
+  still cannot separate a grey wall ring from a grey base platform, because
+  there is no colour cue between them.
+
+A hand paint sidesteps both, and carries semantics no derivation can: which
+floor is a base, where a ramp is, where an elevation changes.
+
+**Paint over the reference on an opaque black layer**, one flat colour per
+class, exported as PNG. Two things that are *not* required, contrary to
+instinct:
+
+- **Anti-aliasing is fine, and better than a hard edge.** Classify by *nearest*
+  key colour rather than exact match, and a blended edge pixel splits at the 50%
+  point — which is the true sub-pixel boundary. Demanding a hard-edged brush
+  buys nothing and costs accuracy.
+- **Canvas size and framing are free.** Derive the registration from the paint
+  itself rather than fitting it against the reference frame.
+
+**Registration is derived, not fitted:**
+
+```
+world_x = (px_x               - cx) * S
+world_y = (px_row_from_bottom - cy) * S
+```
+
+- `S` = the map's intended width in yards ÷ the painted floor's width in pixels
+- `cx` = the paint's own mirror-symmetry optimum, where the map is symmetric
+- `cy` = the painted floor's bbox centre
+
+Image rows count down from the top while world Y counts up, so the row index
+flips before the multiply. **Rescaling a finished map is a change to the
+intended width alone** — no repaint, no re-trace. Nothing references the
+reference image's frame, so cropping or repainting at another resolution stays
+correct. An earlier attempt to *fit* this transform against a render is worth
+not repeating: correlating region luminance against a traced outline came out
+flat across ±8%, and a left-right flipped null model scored 0.2822 against
+0.2823 — an objective that cannot distinguish a mirrored map from the correct
+one measures nothing.
+
+**Smooth the traced contour with a low-pass filter, not Douglas-Peucker.** DP
+preserves maximum-deviation points, and on a hand trace those are precisely the
+stylus tremor — it keeps the jitter and discards the smooth runs. Use a circular
+Gaussian convolution on the arc-length parameterised loop. A wiggle of
+wavelength `L` is attenuated by `exp(-2*pi^2*sigma^2/L^2)`, so `sigma = 2 yd`
+removes 99% of a 4 yd wobble while keeping 93% of a 32 yd curve. Gaussian
+smoothing shrinks convex curves by roughly `sigma^2 * curvature`; report the
+area change and the max deviation so it stays a measured quantity.
+
+**A uniform offset of a traced contour folds** wherever the curve turns tighter
+than the offset distance, and a fold does not change the loop's total signed
+area — so an area check cannot see it. Guard by testing whether each vertex's
+move reversed one of its own edges, and pull back the offenders.
+
+**Output:** closed polygons in world yards — the outer playable boundary plus
+one loop per interior wall island — plus a grayscale height field if any region
+is raised. Expect hundreds to thousands of points, so they want their own file
+rather than a block inside a config.
 
 ### 1. Blockout — Blender 5.1
 
-1 Blender unit = 1 WoW yard, so build at true scale. The 5.1 file is the source
-of truth and never moves to 3.4 (see *Two version traps*).
+1 Blender unit = 1 WoW yard, so build at true scale. The 5.1 file never moves to
+3.4 (see *Two version traps*). It is **generated from the trace and a config**,
+which are the source; the `.blend` is a build artifact.
 
 Before transferring, the geometry needs:
 
@@ -46,7 +121,24 @@ Before transferring, the geometry needs:
 - **A decision, per object, on collide vs render-only.** This is the single
   most consequential authoring choice — see *Why collision is what goes wrong*.
   Render-only suits thin decorative pads sitting just above the floor, where
-  collision would stack near-coincident surfaces, and overhead canopy.
+  collision would stack near-coincident surfaces, and overhead canopy. **It
+  travels by object name**, because custom properties do not survive OBJ
+  (step 2) — the names must match `blender_staging_setup.py`'s `COLLIDE` and
+  `RENDER_ONLY` sets exactly or step 3 aborts.
+- **Under 65,536 vertices per object.** A WMO group indexes its vertices with
+  16 bits. Tessellate the floor coarsely and refine only where a height field
+  actually varies; a uniform target fine enough for a 6 yd ramp puts tens of
+  thousands of vertices on flat ground for nothing.
+
+**Prefer extruded rings to a slab-and-boolean.** Booleans are the fragile step —
+a cutter of a few thousand near-coplanar faces has destroyed a slab outright —
+and they hand back topology nothing predicts, which then has to be *selected*
+to terrace. Extruding each boundary loop into rings gives quads you placed, so
+terracing and bevelling become arithmetic on a ring rather than a face
+selection. Islands want solid capped prisms; the outer boundary wants one
+ribbon whose outer edge is the **convex hull** pushed outward, since a convex
+loop cannot fold and a bounding rectangle leaves huge flat corners nowhere near
+the play area.
 
 Ngons are fine and need no pre-triangulation; the WBS batcher consumes Blender
 loop triangles. Keep ngons planar.
@@ -127,6 +219,26 @@ filenames by chopping `.wmo` and appending `_000`, `_001`…, and the WDT
 references this exact path.
 
 Output is one root `.wmo` plus one file per group.
+
+**The export is a plain function underneath, so step 4 is scriptable.** The menu
+is a thin wrapper over `io_scene_wmo/wmo/export_wmo.py:12`:
+
+```python
+from io_scene_wmo.wmo.export_wmo import export_wmo_from_blender_scene
+import bpy
+
+export_wmo_from_blender_scene(
+    "/path/to/Root.wmo",
+    int(bpy.context.scene.wow_scene.version),   # WoWVersions.WOTLK == 2
+    False,                                      # export_selected
+    'FULL',                                     # export_method: 'FULL' | 'PARTIAL'
+)
+```
+
+That turns "method Full, export selected off" from two controls to click
+correctly into two arguments. Read the version from the scene rather than
+hardcoding 2, which is what the operator itself does. The session still has to
+be a GUI 3.4 one — see *What cannot be automated*.
 
 ### 5. Verify
 
@@ -587,6 +699,10 @@ on a fresh clone:**
 - **WBS crashes Blender 3.4 under `--background`** (dies in `auto_load` at
   `ui/operators.py:557`). Headless runs need `--factory-startup`, which
   disables the addon — so headless is limited to geometry checks.
+- **That `--background` limit is WBS's, not Blender's.** Blockout work needs no
+  addon, so step 1 runs fully headless under Blender 5.1 —
+  `blender --background --python build.py` — with all of `bpy` and numpy
+  available. Only the 3.4 side, steps 2 through 4, is bound to a GUI session.
 - Launching the binary directly rather than via `open` starts a second
   instance, which is how to test a rebuild against a known-good session.
 - Inspecting a 3.4 `.blend` from a newer Blender works and needs no addon, but
@@ -599,6 +715,13 @@ on a fresh clone:**
 pywowlib's StormLib binding, compiled against Blender 3.4's interpreter
 (`storm.cpython-310-darwin.so`). Any other python fails the import. `mpq_pack` is
 C++ and needs only clang plus `libstorm.a` from that same build.
+
+**The toolchain spans two pythons and neither is sufficient alone.** Blender's
+bundled python has numpy (2.3.4) and reads packed image pixels through
+`Image.pixels.foreach_get`, but has no `yaml`. The system python 3.9 has `yaml`,
+which every generator needs, but no numpy or PIL. That split — not preference —
+is why `gen_blockout.py` resolves config and shells out to Blender-side tools
+that take JSON.
 
 Paths default to `~/Games/wow335/Data` and `~/tools/blender-wow-studio`;
 override with `WOW_DATA`, `WBS_ROOT` and `WOW_LOCALE`.

@@ -584,6 +584,7 @@ touch one of these areas? Read the named comment first.
 - **A core is gated on EVERY inhibitor on its side, not on `guarded_by`** — that column names one structure. Both gates AND. → `IsStructureLocked` in `BattlegroundMOBA.cpp`
 - **Structure locks are derived, never pushed** — with several inhibitors a side, "unlock what this one guarded" stops being a local decision and one respawn must re-lock what another's death opened. → `RefreshStructureLocks`
 - **A creep's `lane` must match an inhibitor's for super minions to field** — a lane name outside `LANE_IDS` silently fields none. → `LANE_IDS` in `gen_creep_roster.py`
+- **`.go` reaches a battleground map only from inside a battleground** — `Player::TeleportTo` returns false silently, no message and no packet, GM level irrelevant. → `apps/moba/wmo/README.md`, *Getting onto the finished map*
 
 ## Traps with no code home
 
@@ -650,6 +651,27 @@ index to somewhere else.
   `MOBA_INHIB_RESPAWN_WARN_MS` into `MOBA_INHIB_spawn_warn_ms`, which still compiled and
   still linked. Confirming the old token is gone proves nothing — count the new one too,
   and a *rise* means something was over-matched.
+- **A matching `instance_template` row overrides the battleground mount default
+  outright.** `Spell.cpp:6673` allows mounts whenever the map
+  `IsBattlegroundOrArena()`, then `:6676` reassigns `allowMount = it->AllowMount` —
+  a plain assignment, not an `&&` — the moment `GetInstanceTemplate` returns a row
+  for that map. So whether the MOBA allows mounts hinges entirely on whether
+  `instance_template` has a row for its map and what that row says; nothing in
+  `BattlegroundMOBA` participates. Check with
+  `SELECT allowMount FROM instance_template WHERE map = <mapid>;` — a 0 is fixed by a
+  one-row custom SQL. Taking damage already strips `SPELL_AURA_MOUNTED` through
+  normal interrupt handling, so a dismount-on-hit rule probably needs no code at all;
+  test before building one.
+- **`GetRandomBG` runs on every queue, not just Random Battleground.**
+  `CreateNewBattleground` calls it first thing (`BattlegroundMgr.cpp:381`) passing
+  `bracketEntry->minLevel`, and it keeps a candidate template only while
+  `bg->MinLevel <= minLevel` (`:931`). A bracket whose floor sits below the slot's
+  `battleground_template.MinLvl` empties the candidate list, and the console reports
+  `bg template not found for 0` (`:390`) — naming neither `pvpdifficulty_dbc` nor the
+  level comparison that actually failed. Testing at a lower level therefore means
+  lowering `battleground_template.MinLvl` in the same change, and `gen_base.py` does
+  not emit that field, so it is a config-plus-generator change rather than a new
+  value.
 
 ## Reference: values that live in code
 
