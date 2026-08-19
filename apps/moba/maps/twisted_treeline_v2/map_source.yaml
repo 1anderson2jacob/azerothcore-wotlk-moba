@@ -62,7 +62,110 @@ blockout:
     height_yd: [7.0, 15.0]
     sink_yd: 1.0
 
-  materials: {floor: TT_Floor, wall: TT_Wall, tree: TT_Tree}
-  uv_scale_yd: 8.0
+  # ---------------------------------------------------------------- surfaces
+  # A registry of every material the map may use, and separately what wears
+  # which. Split because the wall pool has no business knowing how many walls
+  # the trace produced.
+  #
+  # `texture` is an MPQ path and is NOT shipped -- MOTX stores the string, so any
+  # number of stock textures costs zero archive bytes. Enumerate candidates with
+  # `mpq_tool.py find`; gen_blockout rejects a path that is not lowercase (the
+  # BLP->PNG import does a `.replace('.blp', ...)` that misses `.BLP`) or that
+  # ends `_s.blp`, which is a specular map and never a diffuse.
+  #
+  # Single-quoted so YAML leaves the backslashes alone.
+  materials:
+    # lane floor -- one per floor chunk. NOTE the chunks are a batch-budget grid,
+    # not map regions, so these read as rectangles with straight seams. Fine for
+    # comparing six textures; not a shipping look.
+    #
+    # These come from TILESET\ rather than DUNGEONS\TEXTURES\ on purpose: ground
+    # art is authored for a horizontal surface seen from above, which is what a
+    # lane is. The argument against it applies to vertical faces, not this.
+    # All six are 256x256 so resolution is not a variable.
+    lane_ashenvale:      {texture: 'tileset\ashenvale\ashenvalegrass.blp'}
+    lane_darkshore_moss: {texture: 'tileset\darkshore\darkshoremossgrass.blp'}
+    lane_duskwood:       {texture: 'tileset\duskwood\duskwoodgrassbase.blp'}
+    lane_hyjal:          {texture: 'tileset\hyjal\hyjalgrassbase.blp'}
+    lane_grizzly:        {texture: 'tileset\expansion02\grizzlyhills\gh_grassya.blp'}
+    lane_ghostlands:     {texture: 'tileset\expansion01\ghostlands\ghostlandsgrass01.blp'}
+
+    walkway: {texture: 'dungeons\textures\floor\jlo_dmaul_walkway.blp', uv_scale_yd: 6.0}
+    tree:    {texture: 'tileset\expansion01\ghostlands\ghostlandsrock01.blp'}
+
+    # Wall candidates. uv_scale is held at 4.0 across all of them ON PURPOSE:
+    # vary texture and tiling rate together and the comparison decides nothing.
+    # Tune scale in a later build, on the winner.
+    #
+    # Lower band -- floor up to the terrace ledge.
+    ne_01:           {texture: 'dungeons\textures\walls\mm_ne_wall_01.blp',              uv_scale_yd: 4.0}
+    ne_02:           {texture: 'dungeons\textures\walls\mm_ne_wall_02.blp',              uv_scale_yd: 4.0}
+    ne_ds_01:        {texture: 'dungeons\textures\walls\mm_ne_ds_wall_01.blp',           uv_scale_yd: 4.0}
+    ne_tower_01:     {texture: 'dungeons\textures\walls\bh_ne_tower_wall_01.blp',        uv_scale_yd: 4.0}
+    dmaul_01:        {texture: 'dungeons\textures\walls\bm_dmaul_wall01.blp',            uv_scale_yd: 4.0}
+    dmaul_02:        {texture: 'dungeons\textures\walls\bm_dmaul_wall02.blp',            uv_scale_yd: 4.0}
+    barrow_den:      {texture: 'dungeons\textures\walls\bm_barrow_denwall01.blp',        uv_scale_yd: 4.0}
+    barrow_dirt:     {texture: 'dungeons\textures\walls\bm_barrow_dirtwall01.blp',       uv_scale_yd: 4.0}
+    kzn_outer:       {texture: 'dungeons\textures\walls\bm_kzn_outerwall01.blp',         uv_scale_yd: 4.0}
+    kzn_large:       {texture: 'dungeons\textures\walls\bm_kzn_largewall01.blp',         uv_scale_yd: 4.0}
+    kzn_green:       {texture: 'dungeons\textures\walls\jlo_kzn_greenstone.blp',         uv_scale_yd: 4.0}
+    shdwfang_outer:  {texture: 'dungeons\textures\walls\bm_shdwfang_outerwall_01.blp',   uv_scale_yd: 4.0}
+    shdwfang_stones: {texture: 'dungeons\textures\walls\bm_shdwfang_largestones_01.blp', uv_scale_yd: 4.0}
+    mcave_rock:      {texture: 'dungeons\textures\rock\jlo_mcaveexg_rock.blp',           uv_scale_yd: 4.0}
+    mrdn_rockwall:   {texture: 'dungeons\textures\rock\jlo_mrdn_rockwall.blp',           uv_scale_yd: 4.0}
+
+    # Upper band -- ledge, upper riser, chamfer and top surface. Paired with the
+    # lower band's family on each island, so a wall reads as one material with
+    # tier variation rather than two unrelated ones.
+    ne_03:             {texture: 'dungeons\textures\walls\mm_ne_wall_03.blp',              uv_scale_yd: 4.0}
+    ne_ds_02:          {texture: 'dungeons\textures\walls\mm_ne_ds_wall_02.blp',           uv_scale_yd: 4.0}
+    ne_ds_03:          {texture: 'dungeons\textures\walls\mm_ne_ds_wall_03.blp',           uv_scale_yd: 4.0}
+    ne_tower_03:       {texture: 'dungeons\textures\walls\bh_ne_tower_wall_03.blp',        uv_scale_yd: 4.0}
+    dmaul_base:        {texture: 'dungeons\textures\walls\bm_dmaul_wallbase01.blp',        uv_scale_yd: 4.0}
+    dmaul_hall:        {texture: 'dungeons\textures\walls\jlo_dmaul_hallwall.blp',         uv_scale_yd: 4.0}
+    barrow_den02:      {texture: 'dungeons\textures\walls\bm_barrow_denwall02.blp',        uv_scale_yd: 4.0}
+    barrow_stair:      {texture: 'dungeons\textures\walls\bm_barrow_stairwall01.blp',      uv_scale_yd: 4.0}
+    kzn_outer02:       {texture: 'dungeons\textures\walls\bm_kzn_outerwall02.blp',         uv_scale_yd: 4.0}
+    kzn_plain:         {texture: 'dungeons\textures\walls\bm_kzn_plainwall01.blp',         uv_scale_yd: 4.0}
+    kzn_black:         {texture: 'dungeons\textures\walls\jlo_kzn_blackstone.blp',         uv_scale_yd: 4.0}
+    shdwfang_outer03:  {texture: 'dungeons\textures\walls\bm_shdwfang_outerwall_03.blp',   uv_scale_yd: 4.0}
+    shdwfang_stones02: {texture: 'dungeons\textures\walls\bm_shdwfang_largestones_02.blp', uv_scale_yd: 4.0}
+    mcave_crock:       {texture: 'dungeons\textures\rock\jlo_mcaveexg_crock.blp',          uv_scale_yd: 4.0}
+    mrdn_rockwall02:   {texture: 'dungeons\textures\rock\jlo_mrdn_rockwall02.blp',         uv_scale_yd: 4.0}
+
+    # The incumbent, kept as the control on the outer ribbon.
+    ghostlands_rock: {texture: 'tileset\expansion01\ghostlands\ghostlandsrock01.blp', uv_scale_yd: 4.0}
+
+  surfaces:
+    # Every value here is one material key, or a list of them cycled -- over floor
+    # chunks for `floor`, over islands for `island_walls`.
+    #
+    # Floor class is decided by height, not by chunk: lane at z<=0.25,
+    # base at z>=base_yd-0.25, ramp between.
+    floor:
+      lane: [lane_ashenvale, lane_darkshore_moss, lane_duskwood,
+             lane_hyjal, lane_grizzly, lane_ghostlands]
+      base: walkway
+      ramp: walkway
+    trees: tree
+
+    # A bare name means one material on every band.
+    outer_wall: ghostlands_rock
+
+    # One entry per island per band. A shorter list cycles and a longer one
+    # silently drops its tail, so these lengths track the trace's island count.
+    #
+    # Mirror-twin islands number adjacently (descending area), so consecutive
+    # entries land on the same shape in mirrored positions. The three centreline
+    # islands (indices 2, 4, 8) have no twin.
+    island_walls:
+      lower: [ne_01, ne_02, ne_ds_01, dmaul_01, ne_tower_01, dmaul_02,
+              barrow_den, barrow_dirt, kzn_outer, kzn_large, kzn_green,
+              shdwfang_outer, shdwfang_stones, mcave_rock, mrdn_rockwall]
+      upper: [ne_03, ne_ds_02, ne_ds_03, dmaul_base, ne_tower_03, dmaul_hall,
+              barrow_den02, barrow_stair, kzn_outer02, kzn_plain, kzn_black,
+              shdwfang_outer03, shdwfang_stones02, mcave_crock, mrdn_rockwall02]
+
+  uv_scale_yd: 8.0                 # default when a material states none
   export_collection: TT_WMO_Export
   seed: 20260818                   # height variation and scatter are deterministic

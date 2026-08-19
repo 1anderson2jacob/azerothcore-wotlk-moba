@@ -27,12 +27,10 @@ the game install or the databases.
 | 8 | Run the extractors |
 | 9 | Walk it in game |
 
-All ten have been run start to finish, most recently for Twisted Treeline v2 on
-2026-08-18. Steps 0–1 are headless; 3 and 4 need a Blender 3.4 GUI session.
-
-Steps 1 through 8 are a procedure that has been run start to finish, most
-recently for Twisted Treeline on 2026-08-18. Step 0 is newer but settled: a
-painted trace is read by a script, and the whole of 0–1 runs headless.
+Steps 0–1 are headless; 3 and 4 need a Blender 3.4 GUI session. The whole
+sequence has been run start to finish, most recently for Twisted Treeline v2 on
+2026-08-18 — step 0 is the newest of them but settled, a painted trace read by
+a script.
 
 Every check compares against **what the previous step reported** rather than a
 literal. Numbers in brackets are what Twisted Treeline v2 produces today.
@@ -207,6 +205,27 @@ Restart the worldserver, `.debug bg`, queue in. Then `.go xyz <x> <y>` for a
 point step 1's report says is floor -- **omit the z** and let the server resolve
 it, which doubles as a vmap check.
 
+### Rebuilding after a texture-only change
+
+Textures live entirely in the client patch — MOTX ships path strings and the
+server never reads them, so `vmap4_extractor` and `mmaps_generator` consume
+geometry that has not moved.
+
+Run **2, 3, 4, 5, 7**. Skip 6 and 8, and relaunch the client rather than the
+worldserver.
+
+- **6** writes the WDT and patches the DBCs. Neither changes while the WMO path
+  does not, and step 7 packs the copies already sitting in `$PROJECT` anyway.
+- **7 is not optional.** Steps 2–5 only write into `$PROJECT`; nothing reaches
+  the client until the MPQ is packed. Skipping it relaunches to the map you
+  already had.
+- **8** rebuilds vmaps and mmaps. The existing `.vmo` and `.mmtile` still
+  describe the map correctly.
+
+The test for whether this applies is `gen_blockout.py`'s own report: re-run 8
+when the **geometry** numbers change, skip it when only the material legend
+does.
+
 ## Why each step is what it is
 
 The runbook above is the commands. This is the reasoning behind them — read it
@@ -304,6 +323,12 @@ Before transferring, the geometry needs:
 - **UVs on every mesh.** The exporter raises on a group without a UV layer
   named exactly `UVMap`. Cube projection in world space, tiling — not a packed
   0–1 atlas, since these reference tiling terrain textures.
+  **Tiling rate is per material, not global.** A ground texture is
+  scale-agnostic, but a masonry one depicts a known real-world span — stonework
+  at 8 yd/tile renders at twice its intended size. Once any surface wears a
+  `DUNGEONS\TEXTURES\WALLS\` asset, `uv_scale_yd` has to vary per material:
+  `map_source.yaml`'s `materials` block carries the override and
+  `blockout.uv_scale_yd` is only the fallback.
 - **No empty material slots.** A slot with no material assigned is an export
   hazard.
 - **Applied scale and rotation.** Unapplied transforms survive OBJ as baked
@@ -817,6 +842,20 @@ python3.10 mpq_tool.py extract 'World\...\Y.wmo' outdir/
 The MPQs carry internal listfiles, so asset paths are enumerable rather than
 guesswork. A `_s` suffix on a texture is a specular map — never assign one as
 diffuse.
+
+**WMOs shop in `DUNGEONS\TEXTURES\`, not `TILESET\`.** The latter is ADT terrain
+art, authored to be *structureless* so it tiles and alpha-blends without visible
+repetition — which is exactly what makes it read as flat noise stood up a 16 yd
+wall. Blizzard's own outdoor rock WMOs use the dungeon tree:
+`HillsbradTerraceWall.wmo`, an open-world terrace, carries a single texture and
+it is `DUNGEONS\TEXTURES\WALLS\MM_STRMWND_WALL_04.BLP`. `TILESET\` is right for
+the one case it was authored for — a horizontal surface seen from above, so
+floors and nothing else.
+
+Sets are authored as families sharing a prefix with the surface class in the
+name — `JLO_MCAVEG_GROUND` / `_WALL` / `_LEDGE` / `_CEILING`. Picking a *set*
+gets a matched floor-and-wall pair for free; picking individual textures does
+not. Read a reference WMO's MOTX chunk to see what a real one uses.
 
 `probe` answers the one question that decides whether a doodad is decoration or
 a wall: a model with **0 bounding triangles** renders and never collides, and

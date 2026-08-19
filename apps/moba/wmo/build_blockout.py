@@ -12,6 +12,7 @@ boolean output whose topology nothing predicts.
 
 The floor ships as grid chunks rather than one sheet -- see BATCH_TRI_CEILING.
 """
+import colorsys
 import json
 import math
 import os
@@ -35,6 +36,27 @@ BATCH_TRI_CEILING = 65535 // 3
 # Chunks are cut to a quarter of that, so refining the floor tessellation 4x
 # still exports without anyone re-deciding the grid.
 FLOOR_CHUNK_TARGET = BATCH_TRI_CEILING // 4
+
+# Floor material slots, in material-index order. gen_blockout.py holds the same
+# tuple -- the two cannot share a constant across the yaml gap.
+FLOOR_CLASSES = ("lane", "base", "ramp")
+
+# Half-band around each plateau that still counts as flat. Wider than the height
+# field's 0.6 yd pixel and far narrower than the 3 yd platform, so a face has to
+# be genuinely on a slope to read as ramp.
+FLOOR_CLASS_TOL_YD = 0.25
+
+# Blender material name for a config key. The name is the only thing that
+# reaches the staging scene through the OBJ, so it is the sidecar JSON's key.
+MAT_PREFIX = "TT_"
+
+
+# Wall face bands, and the face spans each covers. The ledge sits with `upper` so
+# the whole upper terrace -- shelf, riser, chamfer, top -- reads as one unit; move
+# "ledge" to the other tuple to group it with the lower tier instead. `skirt` is
+# buried below the floor and never seen, so it rides along with `lower`.
+WALL_BANDS = {"lower": ("skirt", "lower"),
+              "upper": ("ledge", "upper", "bevel", "cap")}
 
 
 # ------------------------------------------------------------------ sampling
@@ -219,6 +241,7 @@ class Shell:
     def __init__(self):
         self.verts = []
         self.faces = []
+        self.spans = []                     # (name, first, last) into self.faces
 
     def ring(self, pts):
         base = len(self.verts)
@@ -244,6 +267,12 @@ class Shell:
             f = [(out_base + i) if i < n_out else (in_base + i - n_out) for i in t]
             self.faces.append(f)
 
+    def mark(self, name, start):
+        """Name the faces the last call appended. Caps and annuli tessellate to a
+        count nobody predicts, so the range is measured, never computed."""
+        if len(self.faces) > start:
+            self.spans.append((name, start, len(self.faces)))
+
 
 def ring_at(pts, z_list):
     return [(p[0], p[1], z) for p, z in zip(pts, z_list)]
@@ -255,8 +284,10 @@ CLAMPED = [0]
 def wall_rings(pts, floor_z, top_z, thickness, cfg):
     """Inner-to-outer rings of one wall cross-section, terraced and bevelled.
 
-    Returns None when the inset would consume the loop -- a small island cannot
-    carry a ledge, and forcing one turns it inside out."""
+    Returns None when the inset would consume the loop -- forcing a ledge there
+    turns it inside out. Driven by shape, not size: safe_offset folds wherever
+    the curve turns tighter than the 3.25 yd inset, so a long thin island fails
+    at 336 yd2 while a compact one passes at 202."""
     drop, ledge, bevel = cfg["terrace_drop_yd"], cfg["terrace_ledge_yd"], cfg["bevel_yd"]
     inner = list(pts)
     step1, c1 = safe_offset(inner, ledge)
@@ -280,6 +311,12 @@ def wall_rings(pts, floor_z, top_z, thickness, cfg):
     ]
 
 
+# Which strip each consecutive ring pair produces, in wall_rings' order. Change
+# one and this changes with it -- the names are how a face learns what it is.
+WALL_STRIPS_TERRACED = ("skirt", "lower", "ledge", "upper", "bevel")
+WALL_STRIPS_FLAT = ("skirt", "lower")
+
+
 def build_wall(name, pts, floor_z, top_z, thickness, cfg):
     rings = wall_rings(pts, floor_z, top_z, thickness, cfg)
     flat = rings is None
@@ -290,11 +327,18 @@ def build_wall(name, pts, floor_z, top_z, thickness, cfg):
     shell = Shell()
     n = len(pts)
     bases = [shell.ring(r[1]) for r in rings]
-    for a, b in zip(bases, bases[1:]):
+    for nm, a, b in zip(WALL_STRIPS_FLAT if flat else WALL_STRIPS_TERRACED,
+                        bases, bases[1:]):
+        start = len(shell.faces)
         shell.strip(a, b, n)
+        shell.mark(nm, start)
     if thickness is None:
+        start = len(shell.faces)
         shell.cap(bases[-1], rings[-1][1])
+        shell.mark("cap", start)
+        start = len(shell.faces)
         shell.cap(bases[0], rings[0][1])
+        shell.mark("skirt", start)
     else:
         rim = rings[-1][1]
         plate_z = max(z for _, _, z in rim)
@@ -302,11 +346,16 @@ def build_wall(name, pts, floor_z, top_z, thickness, cfg):
                          cfg.get("outer_step_yd", 15.0))
         top = shell.ring([(x, y, plate_z) for x, y in rect])
         bot = shell.ring([(x, y, cfg["bottom_yd"]) for x, y in rect])
+        start = len(shell.faces)
         shell.annulus(top, rect, plate_z, bases[-1], rim)
+        shell.mark("cap", start)
+        start = len(shell.faces)
         shell.strip(top, bot, len(rect))
         shell.annulus(bot, rect, cfg["bottom_yd"], bases[0], rings[0][1])
+        shell.mark("skirt", start)
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(shell.verts, [], shell.faces)
+    built = len(shell.faces)
     mesh.validate()
     obj = bpy.data.objects.new(name, mesh)
     bm = bmesh.new()
@@ -314,7 +363,10 @@ def build_wall(name, pts, floor_z, top_z, thickness, cfg):
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)   # cheaper than reasoning
     bm.to_mesh(mesh)                                    # about winding per cap
     bm.free()
-    return obj, flat
+    # Spans index the face list AS BUILT. A face dropped by validate() slides
+    # every later face into the wrong band and nothing downstream could tell, so
+    # the shortfall is returned and gated rather than assumed to be zero.
+    return obj, flat, shell.spans, built - len(mesh.polygons)
 
 
 def build_floor(loops, heights, coarse_yd, fine_yd):
@@ -368,6 +420,16 @@ def tri_count(mesh):
     """Triangles WBS will batch. Blender tessellates an n-gon into n-2, and this
     matched len(loop_triangles) exactly on the 28297-triangle floor."""
     return sum(len(p.vertices) - 2 for p in mesh.polygons)
+
+
+def max_batch_tris(mesh):
+    """The count that actually hits the uint16 MOVI ceiling: WBS emits one batch
+    per material per group, so a multi-material group's object total overstates
+    it. Equal to tri_count on a single-material group."""
+    per = {}
+    for p in mesh.polygons:
+        per[p.material_index] = per.get(p.material_index, 0) + len(p.vertices) - 2
+    return max(per.values()) if per else 0
 
 
 def bucket(cells, cols, rows, x0, x1, y0, y1):
@@ -488,8 +550,10 @@ def scatter_cones(loops, tops, cfg, rng):
 
 # --------------------------------------------------------------- finishing
 
-def cube_uv(obj, scale):
-    """World-space cube projection, tiling. WBS wants the layer named UVMap."""
+def cube_uv(obj, scales):
+    """World-space cube projection, tiling at each material's own rate. A
+    masonry texture depicts a known real-world span, so one global rate cannot
+    serve both it and a ground texture. WBS wants the layer named UVMap."""
     mesh = obj.data
     bm = bmesh.new()
     bm.from_mesh(mesh)
@@ -497,6 +561,8 @@ def cube_uv(obj, scale):
     for face in bm.faces:
         n = face.normal
         axis = max(range(3), key=lambda i: abs(n[i]))
+        idx = face.material_index
+        scale = scales[idx] if idx < len(scales) else scales[0]
         for loop in face.loops:
             co = loop.vert.co
             if axis == 0:
@@ -510,6 +576,13 @@ def cube_uv(obj, scale):
     bm.free()
 
 
+def swatch(i, n):
+    """Viewport colour only -- WMO ships the texture path, never this. Spread in
+    hue so the material assignment is checkable by eye in the 5.1 blend, which is
+    the only preview there is: the staging scene never loads a BLP."""
+    return colorsys.hsv_to_rgb(i / max(n, 1), 0.45, 0.55)
+
+
 def material(name, colour):
     mat = bpy.data.materials.get(name)
     if mat is None:
@@ -521,14 +594,80 @@ def material(name, colour):
     return mat
 
 
-def finish(obj, mat, collide, uv_scale, collection):
-    obj.data.materials.append(mat)
-    cube_uv(obj, uv_scale)
+def floor_class_of(mesh, poly, base_yd):
+    """The one place the height bands are decided -- assignment and the report
+    both read it, so they cannot drift apart."""
+    z = sum(mesh.vertices[i].co.z for i in poly.vertices) / len(poly.vertices)
+    if z <= FLOOR_CLASS_TOL_YD:
+        return "lane"
+    if z >= base_yd - FLOOR_CLASS_TOL_YD:
+        return "base"
+    return "ramp"
+
+
+def assign_floor_slots(mesh, base_yd, slot_of):
+    """Material slot per face, by the height it sits at.
+
+    Read off the chunk's own geometry rather than carried through chunk_floor by
+    polygon index -- mesh.validate() may drop a degenerate face, and a shifted
+    index would mis-texture every face after it with nothing to show for it."""
+    for p in mesh.polygons:
+        p.material_index = slot_of[floor_class_of(mesh, p, base_yd)]
+
+
+def assign_wall_bands(mesh, spans, slot_of):
+    """Material slot per face, from build_wall's record of which ring pair made
+    it. Unlike the floor there is no height rule that recovers this -- the ledge
+    z varies per point along the loop, so face order is the only record."""
+    for name, start, end in spans:
+        slot = slot_of.get(name, 0)
+        for i in range(start, min(end, len(mesh.polygons))):
+            mesh.polygons[i].material_index = slot
+
+
+def pick(spec, i):
+    """A surfaces value is one material key, or a list cycled over an index."""
+    return spec if isinstance(spec, str) else spec[i % len(spec)]
+
+
+def wall_spec(spec):
+    """A bare name means that material on every band."""
+    return {b: spec for b in WALL_BANDS} if isinstance(spec, str) else spec
+
+
+def dedupe_slots(chosen, registry):
+    """chosen: class -> material key. Returns the slot list and class -> slot
+    index, with two classes naming the same material sharing one slot -- WBS
+    emits a batch per slot, so a duplicate slot is a duplicate batch for no gain."""
+    slots, seen, index = [], {}, {}
+    for cls, key in chosen.items():
+        if key not in seen:
+            seen[key] = len(slots)
+            slots.append(registry[key])
+        index[cls] = seen[key]
+    return slots, index
+
+
+def finish(obj, slots, collide, collection, classify=None):
+    """slots: [(material, uv_scale)] in material-index order. `classify` runs
+    after the slots exist and before the UVs, which need the indices."""
+    for mat, _ in slots:
+        obj.data.materials.append(mat)
+    if classify is not None:
+        classify(obj.data)
+    cube_uv(obj, [s for _, s in slots])
     # Does NOT reach the staging scene -- custom properties do not survive OBJ
     # (README step 2). The real carrier is the object NAME, matched against
     # blender_staging_setup.py's COLLIDE set. This only drives the gate below.
     obj["wmo_collide"] = bool(collide)
     collection.objects.link(obj)
+
+
+def centroid(pts):
+    """geometry.json's frame is the world frame on map 900 -- no offset, rotation
+    or axis swap -- so this is directly what `.gps` reads back in game."""
+    return [round(sum(p[0] for p in pts) / len(pts), 1),
+            round(sum(p[1] for p in pts) / len(pts), 1)]
 
 
 def nonmanifold(obj):
@@ -553,6 +692,7 @@ def main():
         geom = json.load(fh)
     heights = Heights(cfg["heights"], geom["registration"],
                       geom["elevation"]["height_scale_yd"])
+    base_yd = geom["elevation"]["base_yd"]
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     coll = bpy.data.collections.new(bo["export_collection"])
@@ -564,36 +704,62 @@ def main():
     if len(outer) != 1:
         raise SystemExit(f"expected 1 outer loop, geometry.json has {len(outer)}")
 
-    mats = {k: material(v, c) for (k, v), c in
-            zip(bo["materials"].items(), ((0.32, 0.30, 0.27), (0.38, 0.35, 0.32),
-                                          (0.30, 0.33, 0.28)))}
+    specs = bo["materials"]
+    order = sorted(specs)
+    default_uv = float(bo["uv_scale_yd"])
+    registry = {k: (material(MAT_PREFIX + k, swatch(i, len(order))),
+                    float(specs[k].get("uv_scale_yd", default_uv)))
+                for i, k in enumerate(order)}
+    with open(cfg["out_materials"], "w") as fh:
+        json.dump({MAT_PREFIX + k: specs[k]["texture"] for k in order},
+                  fh, indent=2, sort_keys=True)
+
+    surf = bo["surfaces"]
 
     sheet, seed_tris = build_floor([outer[0]] + holes, heights,
                                    bo["floor_edge_yd"], bo["floor_detail_edge_yd"])
     chunks, grid = chunk_floor(sheet, FLOOR_CHUNK_TARGET)
     bpy.data.meshes.remove(sheet)           # the unsplit sheet is not shipped
-    floors = []
-    for name, chunk in chunks:
+    floors, floor_legend = [], []
+    for i, (name, chunk) in enumerate(chunks):
+        chosen = {c: pick(surf["floor"][c], i) for c in FLOOR_CLASSES}
+        slots, slot_of = dedupe_slots(chosen, registry)
         obj = bpy.data.objects.new(name, chunk)
-        finish(obj, mats["floor"], True, bo["uv_scale_yd"], coll)
+        finish(obj, slots, True, coll,
+               classify=lambda me, m=slot_of: assign_floor_slots(me, base_yd, m))
         floors.append(obj)
+        floor_legend.append({"object": name, "materials": chosen})
 
-    walls, tops, flats = [], [], 0
-    jobs = [("TT_OuterWall", outer[0]["points"], wall_cfg["outer_margin_yd"])]
-    jobs += [("TT_JWall_%02d" % i, h["points"], None) for i, h in enumerate(holes)]
-    for name, pts, thickness in jobs:
+    outer_spec = wall_spec(surf["outer_wall"])
+    island_spec = wall_spec(surf["island_walls"])
+    walls, tops, flats, legend, desync = [], [], 0, [], []
+    jobs = [("TT_OuterWall", outer[0]["points"], wall_cfg["outer_margin_yd"],
+             outer_spec, 0)]
+    jobs += [("TT_JWall_%02d" % i, h["points"], None, island_spec, i)
+             for i, h in enumerate(holes)]
+    for name, pts, thickness, spec, idx in jobs:
         floor_z = [heights.at_max(x, y) for x, y in pts]
         rise = height_profile(pts, wall_cfg, rng)
         top_z = [f + r for f, r in zip(floor_z, rise)]
-        obj, flat = build_wall(name, pts, floor_z, top_z, thickness, wall_cfg)
+        obj, flat, spans, lost = build_wall(name, pts, floor_z, top_z,
+                                            thickness, wall_cfg)
         flats += int(flat)
-        finish(obj, mats["wall"], True, bo["uv_scale_yd"], coll)
+        if lost:
+            desync.append(name)
+        chosen = {b: pick(spec[b], idx) for b in WALL_BANDS}
+        slots, band_slot = dedupe_slots(chosen, registry)
+        span_slot = {nm: band_slot[b]
+                     for b, names in WALL_BANDS.items() for nm in names}
+        finish(obj, slots, True, coll,
+               classify=lambda me, s=spans, m=span_slot: assign_wall_bands(me, s, m))
         walls.append(obj)
         tops.append(sum(top_z) / len(top_z))
+        legend.append({"object": name, "centre_yd": centroid(pts),
+                       "lower": chosen["lower"], "upper": chosen["upper"]})
 
     trees = scatter_cones(holes, tops[1:], bo["scatter"], rng)
     if trees is not None:
-        finish(trees, mats["tree"], False, bo["uv_scale_yd"], coll)
+        finish(trees, [registry[surf["trees"]]], False, coll)
 
     for obj in list(coll.objects):
         obj.data.transform(obj.matrix_world)
@@ -604,13 +770,20 @@ def main():
     objs = list(coll.objects)
     floor_names = {o.name for o in floors}
     zs = [v.co.z for o in objs for v in o.data.vertices]
+    class_faces = {c: 0 for c in FLOOR_CLASSES}
+    for o in floors:
+        for p in o.data.polygons:
+            class_faces[floor_class_of(o.data, p, base_yd)] += 1
     print("BUILD " + json.dumps({
         "objects": len(objs),
         "verts": sum(len(o.data.vertices) for o in objs),
         "faces": sum(len(o.data.polygons) for o in objs),
+        "materials": len(order),
         "floor_chunks": len(floors),
         "floor_grid": [grid[0], grid[1]],
         "floor_chunk_max_tris": max(tri_count(o.data) for o in floors),
+        "floor_class_faces": class_faces,
+        "floor_legend": floor_legend,
         # Higher than the unsplit sheet's: a seam vertex belongs to both chunks.
         "floor_verts": sum(len(o.data.vertices) for o in floors),
         "floor_faces": sum(len(o.data.polygons) for o in floors),
@@ -625,10 +798,13 @@ def main():
             for o in floors for p in o.data.polygons), 1),
         "over_16bit_index": [o.name for o in objs
                              if len(o.data.vertices) > 65535],
+        "max_batch_tris": max(max_batch_tris(o.data) for o in objs),
         "over_batch_tris": [o.name for o in objs
-                            if tri_count(o.data) > BATCH_TRI_CEILING],
+                            if max_batch_tris(o.data) > BATCH_TRI_CEILING],
         "walls": len(walls),
         "walls_unterraced": flats,
+        "wall_legend": legend,
+        "wall_span_desync": desync,
         "offset_vertices_clamped": CLAMPED[0],
         "trees": 0 if trees is None else len(trees.data.polygons),
         "z_range_yd": [round(min(zs), 2), round(max(zs), 2)],

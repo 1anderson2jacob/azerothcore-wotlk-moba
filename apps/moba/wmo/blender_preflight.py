@@ -3,7 +3,7 @@
 # texture assigned, links one of the already-loaded images by path. Never
 # overwrites an existing assignment, never touches geometry or vertex groups.
 
-import bpy, re, bmesh
+import bpy, re, bmesh, os, json
 from mathutils import Vector
 
 ROOT_WMO_ID = 9000              # must match blender_staging_setup.py
@@ -34,11 +34,16 @@ def series(prefix):
 COLLIDE  = SINGLETON | series("TT_Floor_") | series("TT_JWall_")
 SHIPPING = COLLIDE | RENDER_ONLY
 
-TEXTURES = {
-    "TT_Floor": "tileset\\expansion01\\ghostlands\\ghostlandsgrass01.blp",
-    "TT_Wall":  "tileset\\expansion01\\ghostlands\\ghostlandsrock01.blp",
-    "TT_Tree":  "tileset\\expansion01\\ghostlands\\ghostlandsrock01.blp",
-}
+# Written by build_blockout.py; must match blender_staging_setup.py's copy.
+MATERIALS_JSON = os.path.expanduser(
+    "~/code/azerothcore-wotlk/var/blender/twisted_treeline_v2_materials.json")
+
+try:
+    with open(MATERIALS_JSON) as fh:
+        TEXTURES = json.load(fh)
+except OSError as exc:
+    raise SystemExit("ABORT: cannot read %s (%s) -- run gen_blockout.py first"
+                     % (MATERIALS_JSON, exc))
 
 base  = lambda n: re.sub(r"\.\d{3}$", "", n)
 fails, notes = [], []

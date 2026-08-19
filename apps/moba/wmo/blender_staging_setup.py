@@ -2,7 +2,7 @@
 # Run inside Blender 3.4 (Text Editor -> Open -> Run Script) on tt_staging_34.blend.
 # Idempotent: safe to re-run. Prints PASS/FAIL at the end. Save the .blend afterwards.
 
-import bpy, re, bmesh, math
+import bpy, re, bmesh, math, os, json
 from mathutils import Matrix, Vector
 
 ROOT_NAME   = "TwistedTreeline"
@@ -19,11 +19,18 @@ ORIENT_PROBE_Y = 55.46          # its bbox centre y in the blockout; the turn ne
 RENDER_ONLY = {"TT_Trees"}
 SINGLETON   = {"TT_OuterWall"}
 
-TEXTURES = {
-    "TT_Floor": "tileset\\expansion01\\ghostlands\\ghostlandsgrass01.blp",
-    "TT_Wall":  "tileset\\expansion01\\ghostlands\\ghostlandsrock01.blp",
-    "TT_Tree":  "tileset\\expansion01\\ghostlands\\ghostlandsrock01.blp",
-}
+# Written by build_blockout.py beside the blockout .blend. Loaded rather than
+# declared for the same reason series() counts from the scene: the material set
+# follows map_source.yaml, so a copy here goes stale silently.
+MATERIALS_JSON = os.path.expanduser(
+    "~/code/azerothcore-wotlk/var/blender/twisted_treeline_v2_materials.json")
+
+try:
+    with open(MATERIALS_JSON) as fh:
+        TEXTURES = json.load(fh)
+except OSError as exc:
+    raise SystemExit("ABORT: cannot read %s (%s) -- run gen_blockout.py first"
+                     % (MATERIALS_JSON, exc))
 
 errors, notes = [], []
 def base(name):        # strip Blender's .001 copy suffix
@@ -162,7 +169,11 @@ for mat in used.values():
     b = base(mat.name)
     path = TEXTURES.get(b)
     if path is None:
-        errors.append("material %s has no texture mapping" % mat.name)
+        errors.append("material %s has no texture mapping in %s"
+                      % (mat.name, os.path.basename(MATERIALS_JSON)))
+        continue
+    if path != path.lower():
+        errors.append("material %s texture %r is not lowercase" % (mat.name, path))
         continue
     img = bpy.data.images.get(b) or bpy.data.images.new(b, 1, 1)
     img.wow_wmo_texture.path = path

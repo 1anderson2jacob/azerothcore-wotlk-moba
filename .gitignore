@@ -133,3 +133,4 @@ __pycache__/
 !/var/blender/
 /var/blender/*.blend
 /var/blender/*.blend1
+/var/blender/*_materials.json

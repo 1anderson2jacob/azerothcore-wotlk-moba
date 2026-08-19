@@ -87,8 +87,10 @@ Stable against retessellation, so these survive a rebuild:
   One connected walkable region.
 - **Bases** at (-172.6, -1.4) and (172.0, -1.5), ~9100 yd² each.
 - **Ramps:** four, run 6.0-7.4 yd, mouth 35.6-37.3 yd.
-- Two islands (~207 yd²) are too small to terrace and build as plain capped
-  prisms — reported as `walls_unterraced`, working as intended.
+- Two islands build as plain capped prisms rather than terraced —
+  `TT_JWall_11` (335.9 yd²) and `TT_JWall_12` (314.3 yd²), reported as
+  `walls_unterraced`, working as intended. It is **shape, not size**: the 207.0
+  and 202.4 yd² islands terrace fine, and these two do not.
 
 Object and triangle counts are *not* here: they move with the tessellation and
 the floor's batch-ceiling grid. The current ones are in `gen_blockout.py`'s
@@ -162,11 +164,81 @@ also needs a dump-the-scene-to-YAML direction.
 Map 900 wears Netherstorm's via the cloned `Light.dbc` row. Real, and not what
 kept the map from reading right.
 
-### Wall texture — deferred pick
+### Surface texturing — pipeline built, art decision parked
 
-`GhostLandsRock01.blp` is a ground texture with no vertical strata.
-`DUNGEONS\TEXTURES\ROCK\` has 273 authored for vertical faces. A material path
-in `blender_staging_setup.py`'s `TEXTURES`; blocks nothing.
+**The pipeline expresses it now** (2026-08-19): per-material texture path and UV
+scale, floor material per height class, wall material per island and per band.
+The config surface is `map_source.yaml`'s `materials` + `surfaces` blocks, whose
+own header carries the per-field semantics.
+
+**Nothing about the look is decided.** Jacob parked the call pending two things
+that change what any texture looks like:
+
+- **Dressing** — canopy and overgrowth occlude much of what is being judged.
+  Blocked; see below.
+- **Lighting** — map 900 still wears Netherstorm's cloned `Light.dbc` row, so
+  every colour judgement made now is made under the wrong light. Deferred rather
+  than blocked, and cheaper than dressing.
+
+**What is on the map is a comparison build, not a chosen look.** A future session
+must not read it as one:
+
+| | |
+|---|---|
+| 15 island walls | a distinct texture per island per band — 30 in all, lower and upper paired within a family |
+| outer wall | `ghostlands_rock`, the incumbent, as a constant control |
+| 6 floor chunks | one grass candidate each; `lane_ghostlands` is the control |
+| bases + ramps | `walkway`, shared |
+
+`TT_JWall_11` and `TT_JWall_12` are the unterraced prisms, so they carry no upper
+band on any vertical face and their `upper` texture lands only on the top cap.
+Not a fault.
+
+**You still cannot preview a texture in Blender** — `blender_staging_setup.py`
+stamps `wow_wmo_texture.path` and never loads the BLP. What the 5.1 blend *does*
+show is the assignment: every material gets a distinct viewport hue, so a
+top-down look catches a wall wearing the wrong candidate before a pack-and-relaunch.
+
+**Walking it.** Geometry has not moved across any texture build, so these hold.
+`.go xyz` with z omitted, ordered as a loop; the nearest wall face is always the
+target, with at least 20 yd to the next island.
+
+| # | `.go xyz` | lower / upper |
+|---|---|---|
+| 1 | `-207.9 -30.7` | shdwfang_outer / shdwfang_outer03 — **prism** |
+| 2 | `-158.8 -57.0` | ne_01 / ne_03 |
+| 3 | `-97.3 -82.9` | kzn_green / kzn_black |
+| 4 | `-46.5 -74.6` | barrow_dirt / barrow_stair |
+| 5 | `5.1 -66.5` | kzn_outer / kzn_outer02 |
+| 6 | `46.6 -72.2` | barrow_den / barrow_den02 |
+| 7 | `98.0 -83.0` | kzn_large / kzn_plain |
+| 8 | `209.2 -30.5` | shdwfang_stones / shdwfang_stones02 — **prism** |
+| 9 | `158.5 58.5` | ne_02 / ne_ds_02 |
+| 10 | `105.5 78.9` | mrdn_rockwall / mrdn_rockwall02 |
+| 11 | `61.8 55.1` | dmaul_01 / dmaul_base |
+| 12 | `-0.5 73.0` | ne_tower_01 / ne_tower_03 |
+| 13 | `-59.8 51.4` | dmaul_02 / dmaul_hall |
+| 14 | `-89.9 74.0` | mcave_rock / mcave_crock |
+| 15 | `-60.6 -16.4` | ne_ds_01 / ne_ds_03 |
+
+Twins sit 130–360 yd apart, so a within-family A/B is sequential, judged across a
+walk. What you get simultaneously is the *neighbour* comparison, which is
+cross-family — cheaper for eliminating whole families first.
+
+**Still open, all Jacob's:**
+
+- What the surfaces should look like at all.
+- **Lane floor vs jungle floor cannot be distinguished today.** Both are
+  `#00FF00` at z=0, and `heights.png` is the only raster surviving the trace, so
+  the height rule that separates base from ramp cannot separate these. Costed
+  2026-08-19 and declined: the cheap route is a second `regions.png` on the same
+  registration, kept *separate from* `tt_v2_trace.png` because that file is
+  load-bearing for ~120 derived content coordinates and repainting it risks
+  moving them. `classify()` is already N-way over palette names; what is missing
+  is any per-pixel class output.
+- Whether wall `lower` and `upper` should differ once a family is chosen, and
+  whether the horizontal surfaces — ledge and cap — want terrain rather than wall
+  texture. The face spans already exist; only the config shape is missing.
 
 ### Housekeeping
 

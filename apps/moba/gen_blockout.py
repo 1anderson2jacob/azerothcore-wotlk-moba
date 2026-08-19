@@ -23,6 +23,7 @@ See apps/moba/README.md for the full workflow and config field reference.
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -48,6 +49,17 @@ VERTEX_CEILING = 65535
 # floor hit this at 47% of the vertex cap. Over it, the client draws a wrapped
 # fraction of the group and nothing anywhere reports a problem.
 BATCH_TRI_CEILING = 65535 // 3
+
+# Floor material slots, in material-index order. build_blockout.py assigns the
+# same order; the two files cannot share a constant across the yaml gap.
+FLOOR_CLASSES = ("lane", "base", "ramp")
+
+# Blender material names travel to the 3.4 staging scene through the OBJ's .mtl,
+# so a key that is not plain identifier text may not survive the round trip.
+MATERIAL_NAME = re.compile(r"^[A-Za-z0-9_]+$")
+
+# Wall face bands. build_blockout.py maps each to a set of named face spans.
+WALL_BANDS = ("lower", "upper")
 
 MIRROR_IOU_WARN = 0.90
 STAGES = ("trace", "build", "all")
@@ -83,6 +95,68 @@ def require(block, keys, path, prefix):
             fail(f'{path}: missing "{prefix}{key}"')
 
 
+def material_refs(spec):
+    """A surfaces value is one material key or a list of them, cycled."""
+    return [spec] if isinstance(spec, str) else list(spec)
+
+
+def validate_materials(bo, path):
+    mats = bo["materials"]
+    if not isinstance(mats, dict) or not mats:
+        fail(f'{path}: "blockout.materials" must be a non-empty mapping')
+    for key, spec in mats.items():
+        if not MATERIAL_NAME.match(str(key)):
+            fail(f'{path}: material name {key!r} must be letters, digits and '
+                 "underscores -- it becomes a Blender material name and crosses "
+                 "into the staging scene through the OBJ's .mtl")
+        if not isinstance(spec, dict) or "texture" not in spec:
+            fail(f'{path}: material {key!r} needs a "texture"')
+        tex = str(spec["texture"])
+        if tex != tex.lower():
+            fail(f'{path}: material {key!r} texture must be lowercase -- the '
+                 "BLP->PNG import does a .replace('.blp', ...) that misses .BLP")
+        if not tex.endswith(".blp"):
+            fail(f'{path}: material {key!r} texture must end .blp, got {tex!r}')
+        if tex.endswith("_s.blp"):
+            fail(f'{path}: material {key!r} points at {tex!r} -- a _s suffix is a '
+                 "specular map and is never a diffuse texture")
+        if "uv_scale_yd" in spec:
+            scale = spec["uv_scale_yd"]
+            if not isinstance(scale, (int, float)) or scale <= 0:
+                fail(f'{path}: material {key!r} "uv_scale_yd" must be positive')
+
+    surf = bo["surfaces"]
+    require(surf, ("floor", "trees", "outer_wall", "island_walls"),
+            path, "blockout.surfaces.")
+    if set(surf["floor"]) != set(FLOOR_CLASSES):
+        fail(f'{path}: "blockout.surfaces.floor" must name exactly '
+             + ", ".join(FLOOR_CLASSES))
+
+    refs = []
+    for cls in FLOOR_CLASSES:
+        got = material_refs(surf["floor"][cls])
+        if not got:
+            fail(f'{path}: "blockout.surfaces.floor.{cls}" must not be empty')
+        refs += got
+    refs += material_refs(surf["trees"])
+    for which in ("outer_wall", "island_walls"):
+        spec = surf[which]
+        if isinstance(spec, str):
+            refs.append(spec)
+            continue
+        if set(spec) != set(WALL_BANDS):
+            fail(f'{path}: "blockout.surfaces.{which}" must be one material name, '
+                 f'or a mapping of exactly {", ".join(WALL_BANDS)}')
+        for band in WALL_BANDS:
+            got = material_refs(spec[band])
+            if not got:
+                fail(f'{path}: "blockout.surfaces.{which}.{band}" must not be empty')
+            refs += got
+    for name in refs:
+        if name not in mats:
+            fail(f'{path}: "blockout.surfaces" references unknown material {name!r}')
+
+
 def validate(cfg, path):
     require(cfg, REQUIRED, path, "")
 
@@ -103,7 +177,8 @@ def validate(cfg, path):
 
     bo = cfg["blockout"]
     require(bo, ("floor_edge_yd", "floor_detail_edge_yd", "bottom_yd", "wall",
-                 "scatter", "materials", "uv_scale_yd", "export_collection", "seed"),
+                 "scatter", "materials", "surfaces", "uv_scale_yd",
+                 "export_collection", "seed"),
             path, "blockout.")
     if bo["floor_detail_edge_yd"] >= bo["floor_edge_yd"]:
         fail(f'{path}: "blockout.floor_detail_edge_yd" must be finer than '
@@ -125,8 +200,7 @@ def validate(cfg, path):
              f"must be less than the shortest wall ({shortest} yd), or the ledge "
              "drops below the floor it stands on")
 
-    if set(bo["materials"]) != {"floor", "wall", "tree"}:
-        fail(f'{path}: "blockout.materials" must name exactly floor, wall and tree')
+    validate_materials(bo, path)
 
 
 # ------------------------------------------------------------------- running
@@ -182,14 +256,19 @@ def run_build(cfg, path, out_dir, blender):
             fail(f"{path}: {needed} missing -- run the trace stage first")
     BLEND_DIR.mkdir(parents=True, exist_ok=True)
     blend = (BLEND_DIR / f"{out_dir.name}_blockout.blend").resolve()
+    # Texture paths cannot reach the 3.4 staging scene any other way: custom
+    # properties do not survive the OBJ, and 3.4's python has no yaml.
+    materials = (BLEND_DIR / f"{out_dir.name}_materials.json").resolve()
     params = {
         "geometry": str(geometry.resolve()),
         "heights": str(heights.resolve()),
         "out_blend": str(blend),
+        "out_materials": str(materials),
         "blockout": cfg["blockout"],
     }
     report = run_tool(BUILD_TOOL, params, blender, "BUILD", path)
     report["_blend"] = str(blend)
+    report["_materials"] = str(materials)
     return report
 
 
@@ -223,10 +302,10 @@ def gate_build(report):
                " raise blockout.floor_edge_yd")
     if report["over_batch_tris"]:
         ok = False
-        note("FAIL  over " + str(BATCH_TRI_CEILING) + " triangles: "
+        note("FAIL  over " + str(BATCH_TRI_CEILING) + " triangles in one batch: "
              + ", ".join(report["over_batch_tris"])
-             + " -- one WMO render batch cannot index more; the client would"
-               " draw only part of the group")
+             + " -- WBS emits one batch per material per group and a batch cannot"
+               " index more; the client would draw only part of the group")
     if report["no_uv"]:
         ok = False
         note("FAIL  no UVMap layer on " + ", ".join(report["no_uv"])
@@ -242,6 +321,12 @@ def gate_build(report):
     if report["walls_unterraced"]:
         note(f'warn  {report["walls_unterraced"]} wall(s) too small to terrace,'
              " built as plain prisms")
+    if report["wall_span_desync"]:
+        ok = False
+        note("FAIL  mesh.validate() dropped faces on "
+             + ", ".join(report["wall_span_desync"])
+             + " -- band spans index the face list as built, so every face after"
+               " the drop now carries the wrong material")
     if report["floor_max_face_verts"] > 3:
         ok = False
         note(f'FAIL  floor carries a {report["floor_max_face_verts"]}-vertex face'
@@ -297,21 +382,32 @@ def main():
         if stage in ("build", "all"):
             report = run_build(cfg, path, out_dir, blender)
             note(f'build        {report["objects"]} objects,'
-                 f' {report["verts"]} verts, {report["faces"]} faces')
+                 f' {report["verts"]} verts, {report["faces"]} faces,'
+                 f' {report["materials"]} materials')
             note(f'  floor      {report["floor_chunks"]} chunks'
                  f' {report["floor_grid"][0]}x{report["floor_grid"][1]},'
                  f' {report["floor_verts"]} verts, {report["floor_faces"]} faces,'
                  f' {report["floor_area_yd2"]} yd2')
-            note(f'  batches    largest chunk'
-                 f' {report["floor_chunk_max_tris"]} tris'
+            note('  classes    ' + ", ".join(
+                f'{k} {report["floor_class_faces"].get(k, 0)}'
+                for k in FLOOR_CLASSES))
+            for f in report["floor_legend"]:
+                note("    %-14s %s" % (f["object"], "  ".join(
+                    "%s=%s" % (k, f["materials"][k]) for k in FLOOR_CLASSES)))
+            note(f'  batches    largest {report["max_batch_tris"]} tris'
                  f' (ceiling {BATCH_TRI_CEILING})')
             note(f'  walls      {report["walls"]},'
                  f' {report["offset_vertices_clamped"]} offset vertices clamped')
+            for w in report["wall_legend"]:
+                note("    %-14s (%7.1f, %7.1f)  lower=%-17s upper=%s"
+                     % (w["object"], w["centre_yd"][0], w["centre_yd"][1],
+                        w["lower"], w["upper"]))
             note(f'  faces      max span {report["floor_max_face_span_yd"]} yd,'
                  f' {report["floor_max_face_verts"]} verts')
             note(f'  z range    {report["z_range_yd"][0]} .. '
                  f'{report["z_range_yd"][1]} yd')
             note(f'  wrote      {report["_blend"]}')
+            note(f'             {report["_materials"]}  (key -> texture path)')
             if not gate_build(report):
                 failed = True
 
