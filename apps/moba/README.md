@@ -20,9 +20,11 @@ moving a tower. **Per-field semantics live in each config's own YAML header**, n
 the values they describe. This file holds what no single config can say: the pipeline,
 the policies spanning configs, and the ID rules.
 
-**Client-side map authoring lives in `apps/moba/wmo/`** — the WMO export and
-verification toolchain for the custom-terrain route. It emits no SQL and is not
-part of `gen_all.sh`.
+**Client-side map authoring lives in `apps/moba/wmo/`** — the blockout builder
+plus the WMO export and verification toolchain for the custom-terrain route,
+driven from `apps/moba/gen_blockout.py` off each bundle's `map_source.yaml`. It
+emits a `.blend` and a client patch rather than SQL, is not part of
+`gen_all.sh`, and carries its own README.
 
 | Generator | Reads | Writes |
 |---|---|---|

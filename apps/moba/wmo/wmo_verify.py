@@ -20,8 +20,8 @@ F_DETAIL, F_COLLISION, F_RENDER = 0x04, 0x08, 0x20
 MOGP_UNREACHABLE, MOGP_ANTIPORTAL, MOGP_OUTDOOR, MOGP_HASCOLLISION = 0x80, 0x4000000, 0x8, 0x1
 
 ROOT_WMO_ID    = 9000              # must match blender_staging_setup.py
-ORIENT_PROBE   = "TT_AltarEast_Pad"
-ORIENT_PROBE_X = -152.5            # its centre x once the scene is in the server frame
+ORIENT_PROBE   = "TT_JWall_14"
+ORIENT_PROBE_Y = -55.46            # its centre y once the scene is in the server frame
 
 fails, warns = [], []
 def fail(m): fails.append(m); print("  FAIL  " + m)
@@ -196,7 +196,7 @@ def main(root_path):
     # -- groups -------------------------------------------------------------
     stem = root_path[:-4]
     total_tris = total_coll = kept_groups = 0
-    probe_cx = None
+    probe_c = None
     references = set()
     print("\n-- groups --")
     for gi in range(nGroups):
@@ -215,7 +215,7 @@ def main(root_path):
         gflags, = struct.unpack_from("<I", g["MOGP"], 8)
         if names[gi] == ORIENT_PROBE:
             gbb = struct.unpack_from("<6f", g["MOGP"], 12)
-            probe_cx = (gbb[0] + gbb[3]) / 2.0
+            probe_c = tuple((gbb[i] + gbb[i + 3]) / 2.0 for i in range(3))
 
         mopy = g.get("MOPY", b"")
         n_tri = len(mopy) // 2
@@ -228,6 +228,23 @@ def main(root_path):
         n_vert = len(g.get("MOVT", b"")) // 12
         modr = g.get("MODR", b"")
         refs = list(struct.unpack("<%dH" % (len(modr) // 2), modr)) if modr else []
+
+        # The two 16-bit limits a group can silently exceed. MOVI indexes
+        # vertices in uint16; a MOBA batch counts MOVI indices in uint16 and WBS
+        # emits one batch per material, so an oversized group ships a wrapped
+        # count and the client draws the remainder of it. Neither shows up
+        # anywhere else -- the geometry and the collision BSP are complete.
+        moba = g.get("MOBA", b"")
+        n_idx = len(g.get("MOVI", b"")) // 2
+        batched = sum(struct.unpack_from("<H", moba, i * 24 + 16)[0]
+                      for i in range(len(moba) // 24))
+        if n_idx and batched != n_idx:
+            fail("group %d %r: batches cover %d of %d MOVI indices, so the client"
+                 " draws %.0f%% of it" % (gi, names[gi], batched, n_idx,
+                                          100.0 * batched / n_idx))
+        if n_vert > 65535:
+            fail("group %d %r has %d vertices; MOVI indexes them in uint16"
+                 % (gi, names[gi], n_vert))
 
         if not gflags & MOGP_HASCOLLISION:
             fail("group %d %r MOGP flags=0x%X: no HASCOLLISION(0x1), the client crashes"
@@ -270,11 +287,15 @@ def main(root_path):
     print("  triangles total           : %d" % total_tris)
     print("  triangles kept as COLLISION: %d" % total_coll)
     print("  doodads emitted to vmaps  : %d" % emitted)
-    if probe_cx is None:
+    if probe_c is None:
         warn("orientation probe %r not among the groups" % ORIENT_PROBE)
     else:
-        print("  %-26s: x=%+.1f (want %+.1f)" % (ORIENT_PROBE, probe_cx, ORIENT_PROBE_X))
-        if abs(probe_cx - ORIENT_PROBE_X) > 1.0:
+        # All three centres printed because only [0]/[3] were ever confirmed to
+        # be x. TT_JWall_14 is (-106.8, -55.5, +3.0) -- distinct enough that a
+        # permuted box shows up as y reading one of the other two.
+        print("  %-26s: centre (%+.1f, %+.1f, %+.1f), y wants %+.1f"
+              % (ORIENT_PROBE, probe_c[0], probe_c[1], probe_c[2], ORIENT_PROBE_Y))
+        if abs(probe_c[1] - ORIENT_PROBE_Y) > 1.0:
             fail("model is not in the server frame; the map lands rotated 180 deg")
     if total_coll == 0:
         fail("ZERO collision triangles - the map would look perfect and be unwalkable")

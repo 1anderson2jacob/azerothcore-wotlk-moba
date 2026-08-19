@@ -9,6 +9,8 @@ No booleans anywhere. Island loops become solid extruded prisms; the outer loop
 becomes one thick ribbon. Every face is a quad or a cap triangle placed
 deliberately, so terracing is arithmetic on rings rather than a selection over
 boolean output whose topology nothing predicts.
+
+The floor ships as grid chunks rather than one sheet -- see BATCH_TRI_CEILING.
 """
 import json
 import math
@@ -21,6 +23,18 @@ import bpy
 import numpy as np
 from mathutils import Vector
 from mathutils.geometry import tessellate_polygon
+
+
+# A WMO render batch counts MOVI indices in uint16, and WBS emits one batch per
+# material per group -- so a group over this many triangles ships a batch whose
+# count has WRAPPED, and the client draws only the remainder. Nothing warns: the
+# geometry is all in the file and the collision BSP is complete, so the map is
+# solid where it is invisible. A 28k-triangle floor drew 23% of itself.
+BATCH_TRI_CEILING = 65535 // 3
+
+# Chunks are cut to a quarter of that, so refining the floor tessellation 4x
+# still exports without anyone re-deciding the grid.
+FLOOR_CHUNK_TARGET = BATCH_TRI_CEILING // 4
 
 
 # ------------------------------------------------------------------ sampling
@@ -40,9 +54,21 @@ class Heights:
         self.cx, self.cy, self.s = reg["cx_px"], reg["cy_px"], reg["scale_yd_per_px"]
 
     def at(self, x, y):
-        """Max over a 3x3 neighbourhood. A wall foot sampled exactly on the
-        platform rim must take the platform's height, not the average with the
-        lane outside it, or the wall sinks into the floor it stands on."""
+        """Bilinear. Nearest-pixel sampling quantises a slope to the 0.6 yd pixel
+        grid, and floor vertices landing on different plateaus then make the
+        surface locally non-monotonic -- a ramp you catch on running across."""
+        fc = min(max(x / self.s + self.cx, 0.0), self.w - 1.001)
+        fr = min(max(y / self.s + self.cy, 0.0), self.h - 1.001)
+        c, r = int(fc), int(fr)
+        tc, tr = fc - c, fr - r
+        g = self.a[r:r + 2, c:c + 2]
+        return float((g[0, 0] * (1 - tc) + g[0, 1] * tc) * (1 - tr)
+                     + (g[1, 0] * (1 - tc) + g[1, 1] * tc) * tr)
+
+    def at_max(self, x, y):
+        """Max over a 3x3 neighbourhood, for wall feet only. A wall foot sampled
+        exactly on the platform rim must take the platform's height, not a blend
+        with the lane outside it, or the wall sinks into the floor it stands on."""
         c = int(round(x / self.s + self.cx))
         r = int(round(y / self.s + self.cy))
         r0, r1 = max(r - 1, 0), min(r + 2, self.h)
@@ -295,11 +321,13 @@ def build_floor(loops, heights, coarse_yd, fine_yd):
     """Coarse everywhere, fine only across a slope.
 
     A uniform target fine enough for a 6 yd ramp puts tens of thousands of
-    vertices on flat ground, and a WMO group indexes its vertices with 16 bits."""
+    vertices on flat ground, and a WMO group indexes its vertices with 16 bits.
+
+    Returns the unsplit sheet; chunk_floor cuts it into shippable groups."""
     polys = [[Vector((x, y, 0.0)) for x, y in lp["points"]] for lp in loops]
     tris = tessellate_polygon(polys)
     flat = [v for poly in polys for v in poly]
-    mesh = bpy.data.meshes.new("TT_Floor")
+    mesh = bpy.data.meshes.new("TT_Floor_whole")
     mesh.from_pydata([(v.x, v.y, 0.0) for v in flat], [], [list(t) for t in tris])
     mesh.validate()
     seed_tris = len(mesh.polygons)
@@ -321,11 +349,89 @@ def build_floor(loops, heights, coarse_yd, fine_yd):
         if not todo:
             break
         bmesh.ops.subdivide_edges(bm, edges=todo, cuts=1, use_grid_fill=True)
+    # subdivide_edges splits edges, never the face they belong to, so the seed's
+    # long thin triangles accumulate boundary vertices without ever being cut --
+    # one reached 105 verts spanning 350 yd. Flat now and non-planar the moment z
+    # lands, and then whoever tessellates it may join a 3 yd vertex to a 0 yd one.
+    bmesh.ops.triangulate(bm, faces=bm.faces[:],
+                          quad_method="BEAUTY", ngon_method="BEAUTY")
     for v in bm.verts:
         v.co.z = heights.at(v.co.x, v.co.y)
     bm.to_mesh(mesh)
     bm.free()
-    return bpy.data.objects.new("TT_Floor", mesh), seed_tris
+    return mesh, seed_tris
+
+
+# --------------------------------------------------------------- chunking
+
+def tri_count(mesh):
+    """Triangles WBS will batch. Blender tessellates an n-gon into n-2, and this
+    matched len(loop_triangles) exactly on the 28297-triangle floor."""
+    return sum(len(p.vertices) - 2 for p in mesh.polygons)
+
+
+def bucket(cells, cols, rows, x0, x1, y0, y1):
+    """Grid cell -> indices into `cells`, by polygon centre."""
+    out = {}
+    for k, (cx, cy, _tris, _pi) in enumerate(cells):
+        i = min(int((cx - x0) / (x1 - x0) * cols), cols - 1)
+        j = min(int((cy - y0) / (y1 - y0) * rows), rows - 1)
+        out.setdefault((i, j), []).append(k)
+    return out
+
+
+def choose_grid(cells, x0, x1, y0, y1, target):
+    """Smallest grid whose fullest cell fits `target` triangles.
+
+    Grows whichever axis currently has the longer cells, so chunks stay
+    square-ish at any map aspect -- a long thin group culls badly and its
+    bounding box overlaps most of the map."""
+    cols = rows = 1
+    while True:
+        grid = bucket(cells, cols, rows, x0, x1, y0, y1)
+        worst = max(sum(cells[k][2] for k in members) for members in grid.values())
+        if worst <= target:
+            return cols, rows
+        if cols * rows > 4096:
+            raise SystemExit("floor will not chunk under %d triangles per group" % target)
+        if (x1 - x0) / cols >= (y1 - y0) / rows:
+            cols += 1
+        else:
+            rows += 1
+
+
+def chunk_floor(mesh, target):
+    """Split the floor sheet into grid chunks, each small enough for one batch.
+
+    Cuts on polygon boundaries, so chunks share vertex positions along a seam
+    and neither the render nor the collision has a crack; world-space UVs run
+    continuously across one too. Recast rasterises the chunks together, so the
+    navmesh does not see a seam either."""
+    cells = [(p.center.x, p.center.y, len(p.vertices) - 2, p.index)
+             for p in mesh.polygons]
+    xs = [v.co.x for v in mesh.vertices]
+    ys = [v.co.y for v in mesh.vertices]
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    cols, rows = choose_grid(cells, x0, x1, y0, y1, target)
+    grid = bucket(cells, cols, rows, x0, x1, y0, y1)
+
+    out = []
+    for key in sorted(grid):
+        name = "TT_Floor_%02d" % len(out)
+        remap, verts, faces = {}, [], []
+        for k in grid[key]:
+            face = []
+            for vi in mesh.polygons[cells[k][3]].vertices:
+                if vi not in remap:
+                    remap[vi] = len(verts)
+                    verts.append(tuple(mesh.vertices[vi].co))
+                face.append(remap[vi])
+            faces.append(face)
+        chunk = bpy.data.meshes.new(name)
+        chunk.from_pydata(verts, [], faces)
+        chunk.validate()
+        out.append((name, chunk))
+    return out, (cols, rows)
 
 
 # ----------------------------------------------------------------- dressing
@@ -462,15 +568,21 @@ def main():
             zip(bo["materials"].items(), ((0.32, 0.30, 0.27), (0.38, 0.35, 0.32),
                                           (0.30, 0.33, 0.28)))}
 
-    floor, seed_tris = build_floor([outer[0]] + holes, heights,
+    sheet, seed_tris = build_floor([outer[0]] + holes, heights,
                                    bo["floor_edge_yd"], bo["floor_detail_edge_yd"])
-    finish(floor, mats["floor"], True, bo["uv_scale_yd"], coll)
+    chunks, grid = chunk_floor(sheet, FLOOR_CHUNK_TARGET)
+    bpy.data.meshes.remove(sheet)           # the unsplit sheet is not shipped
+    floors = []
+    for name, chunk in chunks:
+        obj = bpy.data.objects.new(name, chunk)
+        finish(obj, mats["floor"], True, bo["uv_scale_yd"], coll)
+        floors.append(obj)
 
     walls, tops, flats = [], [], 0
     jobs = [("TT_OuterWall", outer[0]["points"], wall_cfg["outer_margin_yd"])]
     jobs += [("TT_JWall_%02d" % i, h["points"], None) for i, h in enumerate(holes)]
     for name, pts, thickness in jobs:
-        floor_z = [heights.at(x, y) for x, y in pts]
+        floor_z = [heights.at_max(x, y) for x, y in pts]
         rise = height_profile(pts, wall_cfg, rng)
         top_z = [f + r for f, r in zip(floor_z, rise)]
         obj, flat = build_wall(name, pts, floor_z, top_z, thickness, wall_cfg)
@@ -490,26 +602,41 @@ def main():
     bpy.ops.wm.save_as_mainfile(filepath=cfg["out_blend"])
 
     objs = list(coll.objects)
+    floor_names = {o.name for o in floors}
     zs = [v.co.z for o in objs for v in o.data.vertices]
     print("BUILD " + json.dumps({
         "objects": len(objs),
         "verts": sum(len(o.data.vertices) for o in objs),
         "faces": sum(len(o.data.polygons) for o in objs),
-        "floor_verts": len(floor.data.vertices),
-        "floor_faces": len(floor.data.polygons),
+        "floor_chunks": len(floors),
+        "floor_grid": [grid[0], grid[1]],
+        "floor_chunk_max_tris": max(tri_count(o.data) for o in floors),
+        # Higher than the unsplit sheet's: a seam vertex belongs to both chunks.
+        "floor_verts": sum(len(o.data.vertices) for o in floors),
+        "floor_faces": sum(len(o.data.polygons) for o in floors),
         "floor_seed_tris": seed_tris,
-        "floor_area_yd2": round(sum(p.area for p in floor.data.polygons)),
+        "floor_area_yd2": round(sum(p.area for o in floors for p in o.data.polygons)),
+        "floor_max_face_verts": max(len(p.vertices)
+                                    for o in floors for p in o.data.polygons),
+        "floor_max_face_span_yd": round(max(
+            max(max(o.data.vertices[i].co[ax] for i in p.vertices)
+                - min(o.data.vertices[i].co[ax] for i in p.vertices)
+                for ax in (0, 1))
+            for o in floors for p in o.data.polygons), 1),
         "over_16bit_index": [o.name for o in objs
                              if len(o.data.vertices) > 65535],
+        "over_batch_tris": [o.name for o in objs
+                            if tri_count(o.data) > BATCH_TRI_CEILING],
         "walls": len(walls),
         "walls_unterraced": flats,
         "offset_vertices_clamped": CLAMPED[0],
         "trees": 0 if trees is None else len(trees.data.polygons),
         "z_range_yd": [round(min(zs), 2), round(max(zs), 2)],
-        # Render-only geometry is allowed to be open; the floor is a sheet by
-        # construction. Only sealed collision solids are worth gating on.
+        # Render-only geometry is allowed to be open; the floor chunks are sheets
+        # by construction. Only sealed collision solids are worth gating on.
         "nonmanifold_collide": {o.name: nonmanifold(o) for o in objs
-                                if o.get("wmo_collide") and o is not floor
+                                if o.get("wmo_collide")
+                                and o.name not in floor_names
                                 and nonmanifold(o)},
         "no_uv": [o.name for o in objs if "UVMap" not in o.data.uv_layers],
         "empty_material_slots": [o.name for o in objs

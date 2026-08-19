@@ -18,6 +18,7 @@ import sys
 import bpy
 import numpy as np
 
+EDGE_EXTEND_PX = 4              # how far the height field carries past the paint
 AMBIGUOUS_MARGIN = 0.15         # RGB distance; a pixel this close to two keys is a blend
 UNIFORM_STEP = 1.0              # yd; arc-length parameterisation for the low-pass
 
@@ -214,6 +215,25 @@ def height_field(cls, base_yd, blur_px):
     return z, solid
 
 
+def extend_past_edge(z, solid, steps):
+    """Carry the field a few pixels beyond the painted edge.
+
+    The traced boundary is a SMOOTHED contour, so half the floor's rim vertices
+    land outside the paint -- 2 px at worst, measured. Out there the field is 0,
+    and a bilinear sample blends the platform against nothing, dropping the
+    floor's edge away from the wall it meets by the full platform height.
+    Interior pixels are never touched, so nothing inside the map moves."""
+    out = z.copy()
+    known = solid.copy()
+    for _ in range(steps):
+        nxt = _dilate(known) & ~known
+        if not nxt.any():
+            break
+        out = np.where(nxt, _stack(np.where(known, out, 0.0), 0.0).max(axis=0), out)
+        known |= nxt
+    return out
+
+
 def max_slope_deg(z, solid, scale):
     """Excludes pixels touching the boundary -- the platform's outer edge is meant
     to be a cliff, and its gradient would drown out every real slope."""
@@ -352,6 +372,7 @@ def main():
 
     z, solid_z = height_field(cls, cfg["base_yd"], cfg["ramp_blur_yd"] / scale)
     slope = max_slope_deg(z, solid_z, scale)
+    z = extend_past_edge(z, solid_z, EDGE_EXTEND_PX)
     save_gray(z / max(cfg["base_yd"], 1e-9),
               os.path.join(out_dir, "heights.png"), "blockout_heights")
     save_preview(cls, [(l["points"], l["kind"]) for l in loops],

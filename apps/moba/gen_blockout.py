@@ -44,6 +44,11 @@ WALKABLE_CLIMB_YD = 1.60
 # A WMO group indexes its vertices with 16 bits, so a group cannot carry more.
 VERTEX_CEILING = 65535
 
+# ...and its render batch counts MOVI indices in 16 bits, which binds first: the
+# floor hit this at 47% of the vertex cap. Over it, the client draws a wrapped
+# fraction of the group and nothing anywhere reports a problem.
+BATCH_TRI_CEILING = 65535 // 3
+
 MIRROR_IOU_WARN = 0.90
 STAGES = ("trace", "build", "all")
 
@@ -216,6 +221,12 @@ def gate_build(report):
              + ", ".join(report["over_16bit_index"])
              + " -- a WMO group indexes vertices with 16 bits;"
                " raise blockout.floor_edge_yd")
+    if report["over_batch_tris"]:
+        ok = False
+        note("FAIL  over " + str(BATCH_TRI_CEILING) + " triangles: "
+             + ", ".join(report["over_batch_tris"])
+             + " -- one WMO render batch cannot index more; the client would"
+               " draw only part of the group")
     if report["no_uv"]:
         ok = False
         note("FAIL  no UVMap layer on " + ", ".join(report["no_uv"])
@@ -231,6 +242,10 @@ def gate_build(report):
     if report["walls_unterraced"]:
         note(f'warn  {report["walls_unterraced"]} wall(s) too small to terrace,'
              " built as plain prisms")
+    if report["floor_max_face_verts"] > 3:
+        ok = False
+        note(f'FAIL  floor carries a {report["floor_max_face_verts"]}-vertex face'
+             " -- it is non-planar once z lands and tessellates arbitrarily")
     return ok
 
 
@@ -283,11 +298,17 @@ def main():
             report = run_build(cfg, path, out_dir, blender)
             note(f'build        {report["objects"]} objects,'
                  f' {report["verts"]} verts, {report["faces"]} faces')
-            note(f'  floor      {report["floor_verts"]} verts,'
-                 f' {report["floor_faces"]} faces,'
+            note(f'  floor      {report["floor_chunks"]} chunks'
+                 f' {report["floor_grid"][0]}x{report["floor_grid"][1]},'
+                 f' {report["floor_verts"]} verts, {report["floor_faces"]} faces,'
                  f' {report["floor_area_yd2"]} yd2')
+            note(f'  batches    largest chunk'
+                 f' {report["floor_chunk_max_tris"]} tris'
+                 f' (ceiling {BATCH_TRI_CEILING})')
             note(f'  walls      {report["walls"]},'
                  f' {report["offset_vertices_clamped"]} offset vertices clamped')
+            note(f'  faces      max span {report["floor_max_face_span_yd"]} yd,'
+                 f' {report["floor_max_face_verts"]} verts')
             note(f'  z range    {report["z_range_yd"][0]} .. '
                  f'{report["z_range_yd"][1]} yd')
             note(f'  wrote      {report["_blend"]}')

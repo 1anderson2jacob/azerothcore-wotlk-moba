@@ -126,6 +126,7 @@ local.properties
 /apps/moba/maps/*/heights.png
 .github/MOBA_*_PLAN.md
 .clangd
+__pycache__/
 # fork: track the map's traced source and reference images (overrides /var/* on
 # line 17). The .blend is NOT tracked -- it is a build artifact of the paint,
 # regenerated in seconds by apps/moba/gen_blockout.py.

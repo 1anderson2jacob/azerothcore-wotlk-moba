@@ -10,26 +10,34 @@ ROOT_WMO_ID = 9000              # must match blender_staging_setup.py
 SET_NAME   = "Set_$DefaultGlobal"
 DOODAD_OBJ = "TT_TestDoodad_Lamppost"
 DOODAD_M2  = "World\\EXPANSION01\\DOODADS\\GHOSTLANDS\\Lampposts\\BE_Lamppost_Ghostlands01.m2"
-DOODAD_LOC = (0.0, 0.0, 0.0)
+DOODAD_SERVER_LOC = (0.0, 70.0, 0.0)
 
-ORIENT_PROBE   = "TT_AltarEast_Pad"
-ORIENT_PROBE_X = 152.5
+ORIENT_PROBE   = "TT_JWall_14"
+ORIENT_PROBE_Y = 55.46          # its bbox centre y in the blockout; the turn negates it
 
-COLLIDE = {"TT_Ground", "TT_Walls", "TT_FrontWall_E", "TT_FrontWall_W",
-           "TT_FrontWall_EPocket", "TT_FrontWall_WPocket",
-           "TT_FWFill_EN", "TT_FWFill_ES", "TT_FWFill_WN", "TT_FWFill_WS",
-           "TT_Patch_EN", "TT_Patch_ES", "TT_Patch_WN", "TT_Patch_WS",
-           "TT_Blue_NexusPlateau", "TT_Red_NexusPlateau"} | {"TT_JWall_%02d" % i for i in range(16)}
+RENDER_ONLY = {"TT_Trees"}
+SINGLETON   = {"TT_OuterWall"}
+
+PRESENT = {o.name for o in bpy.data.objects if o.type == 'MESH' and o.name.startswith("TT_")}
+PRESENT.discard(DOODAD_OBJ)
+
+
+def series(prefix):
+    """The 00..N-1 run of a numbered group, counted from the scene rather than
+    declared -- both counts are trace-derived and a constant here goes stale."""
+    n = 0
+    while "%s%02d" % (prefix, n) in PRESENT:
+        n += 1
+    return {"%s%02d" % (prefix, i) for i in range(n)}
+
+
+COLLIDE  = SINGLETON | series("TT_Floor_") | series("TT_JWall_")
+SHIPPING = COLLIDE | RENDER_ONLY
 
 TEXTURES = {
-    "TT_Wall":       "tileset\\expansion01\\ghostlands\\ghostlandsrock01.blp",
-    "TT_Ground":     "tileset\\expansion01\\ghostlands\\ghostlandsgrass01.blp",
-    "TT_Lane":       "tileset\\expansion01\\ghostlands\\ghostlandspath01.blp",
-    "TT_JunglePath": "tileset\\expansion01\\ghostlands\\ghostlandsdirt01.blp",
-    "TT_Camp":       "tileset\\expansion01\\ghostlands\\ghostlandscreep01.blp",
-    "TT_Stone":      "tileset\\duskwood\\duskwoodcobblestone.blp",
-    "TT_Pine":       "world\\azeroth\\duskwood\\passivedoodads\\trees\\dusktallcanopy_new03.blp",
-    "TT_PitBoss":    "tileset\\plaguelands\\plaguedearthred01.blp",
+    "TT_Floor": "tileset\\expansion01\\ghostlands\\ghostlandsgrass01.blp",
+    "TT_Wall":  "tileset\\expansion01\\ghostlands\\ghostlandsrock01.blp",
+    "TT_Tree":  "tileset\\expansion01\\ghostlands\\ghostlandsrock01.blp",
 }
 
 base  = lambda n: re.sub(r"\.\d{3}$", "", n)
@@ -85,15 +93,17 @@ if doodads is None:
 # -- 2b. server frame -------------------------------------------------------
 # Checked, never repaired: turning the scene is blender_staging_setup.py's job,
 # and doing it here would silently rotate a scene that already carries doodads.
+# On Y because the map is a left-right mirror -- an island renamed onto its own
+# mirror twin reads like the turn in x, but twins share their y.
 probe = bpy.data.objects.get(ORIENT_PROBE)
 if probe is None:
     fails.append("orientation probe %s is missing" % ORIENT_PROBE)
 else:
-    xs = [(probe.matrix_world @ Vector(c)).x for c in probe.bound_box]
-    cx = (min(xs) + max(xs)) / 2.0
-    print("\n== ORIENTATION ==\n  %s centres on x=%+.1f (server frame wants %+.1f)"
-          % (ORIENT_PROBE, cx, -ORIENT_PROBE_X))
-    if abs(cx + ORIENT_PROBE_X) > 1.0:
+    ys = [(probe.matrix_world @ Vector(c)).y for c in probe.bound_box]
+    cy = (min(ys) + max(ys)) / 2.0
+    print("\n== ORIENTATION ==\n  %s centres on y=%+.2f (server frame wants %+.2f)"
+          % (ORIENT_PROBE, cy, -ORIENT_PROBE_Y))
+    if abs(cy + ORIENT_PROBE_Y) > 1.0:
         fails.append("scene is not in the server frame; re-run blender_staging_setup.py")
 
 # -- 3. materials: report, and only fill in what is missing -----------------
@@ -146,10 +156,12 @@ if outdoor:
         if o.hide_get():
             o.hide_set(False)
             notes.append("unhid %s (build_references skips hidden objects)" % o.name)
-print("  %d objects: collide=%d (want 32) render-only=%d (want 15)"
-      % (len(outdoor.objects) if outdoor else 0, n_c, n_r))
-if n_c != 32 or n_r != 15:
-    fails.append("group split is %d/%d, expected 32/15" % (n_c, n_r))
+shipped = {o.name for o in outdoor.objects} if outdoor else set()
+print("  %d objects: collide=%d (want %d) render-only=%d (want %d)"
+      % (len(shipped), n_c, len(COLLIDE), n_r, len(RENDER_ONLY)))
+if shipped != SHIPPING:
+    fails.append("Outdoor set mismatch; missing=%s extra=%s"
+                 % (sorted(SHIPPING - shipped), sorted(shipped - SHIPPING)))
 
 # -- 5. test doodad ---------------------------------------------------------
 print("\n== DOODAD ==")
@@ -183,13 +195,17 @@ if doodads is not None:
 
     ob.wow_wmo_doodad.enabled = True             # or WBS's handler evicts it
     ob.wow_wmo_doodad.path    = DOODAD_M2
-    ob.location = DOODAD_LOC
+    # The scene is the server frame turned 180 deg about Z, and this object was
+    # not part of that turn -- so a server position is negated in x and y here.
+    ob.location = (-DOODAD_SERVER_LOC[0], -DOODAD_SERVER_LOC[1], DOODAD_SERVER_LOC[2])
     ob.rotation_mode = 'QUATERNION'
     ob.rotation_quaternion = (1.0, 0.0, 0.0, 0.0)
     ob.scale = (1.0, 1.0, 1.0)
     ob.hide_viewport = ob.hide_render = False
     ob.hide_set(False)
     print("  %s in %r enabled=%s scale=%.2f" % (ob.name, dset.name, ob.wow_wmo_doodad.enabled, ob.scale[0]))
+    print("  model loc = %s (server %s)"
+          % (tuple(round(v, 2) for v in ob.location), DOODAD_SERVER_LOC))
     print("  path = %s" % ob.wow_wmo_doodad.path)
 
 # -- 6. report --------------------------------------------------------------

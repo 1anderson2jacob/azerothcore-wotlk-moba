@@ -14,21 +14,204 @@ the game install or the databases.
 
 ## Making a map, end to end
 
-| # | Step | Proven |
-|---|---|---|
-| 0 | Trace the boundary from a reference image | partly |
-| 1 | Blockout in Blender 5.1 | yes |
-| 2 | Transfer to a 3.4 staging scene | yes |
-| 3 | Set up the staging scene for WBS | yes |
-| 4 | Export to `.wmo` | yes |
-| 5 | Verify offline | yes |
-| 6 | WDT + DBC rows | yes |
-| 7 | Pack the MPQ client patch | yes |
-| 8 | Run the extractors | yes |
+| # | Step |
+|---|---|
+| 0 | Trace the boundary from a reference image |
+| 1 | Blockout in Blender 5.1 |
+| 2 | Transfer to a 3.4 staging scene |
+| 3 | Set up the staging scene for WBS |
+| 4 | Export to `.wmo` |
+| 5 | Verify offline |
+| 6 | WDT + DBC rows |
+| 7 | Pack the MPQ client patch |
+| 8 | Run the extractors |
+| 9 | Walk it in game |
+
+All ten have been run start to finish, most recently for Twisted Treeline v2 on
+2026-08-18. Steps 0–1 are headless; 3 and 4 need a Blender 3.4 GUI session.
 
 Steps 1 through 8 are a procedure that has been run start to finish, most
 recently for Twisted Treeline on 2026-08-18. Step 0 is newer but settled: a
 painted trace is read by a script, and the whole of 0–1 runs headless.
+
+Every check compares against **what the previous step reported** rather than a
+literal. Numbers in brackets are what Twisted Treeline v2 produces today.
+
+### Set these once
+
+Paste into the shell you run steps 2–8 from. This block is the whole per-map
+part of the runbook; everything below reads from it.
+
+```bash
+BUNDLE=twisted_treeline_v2                       # apps/moba/maps/<bundle>/
+MAP=TwistedTreeline                              # gen_wdt.py / dbc_tool.py MAP_DIR
+MAPID=900                                        # dbc_tool.py MAP_ID
+PROJECT=~/tools/wbs-project                      # dbc_tool.py WBS_PROJECT
+BLEND=var/blender/${BUNDLE}_blockout.blend       # gen_blockout.py writes this
+XFER=$PROJECT/${BUNDLE}.obj                      # the 5.1 -> 3.4 handoff
+STAGING=~/tools/tt-transfer/${BUNDLE}_34.blend   # the 3.4 scene, saved by hand
+WMODIR=$PROJECT/World/wmo/$MAP
+EXTRACT=~/tools/wmo-extract                      # scratch, wiped every step 8
+```
+
+`MAP`, `MAPID` and `PROJECT` are not free choices — they must equal the
+constants of the same name in `gen_wdt.py` and `dbc_tool.py`, which are what the
+WDT filename, the MWMO path and the DBC rows actually ship. Change one there and
+re-run `dbc_tool.py patch`.
+
+The two Blender scripts carry their own per-map constants block —
+`RENDER_ONLY`, `SINGLETON`, `ORIENT_PROBE`, `TEXTURES`, `DOODAD_*`. A new map
+edits those before step 3, and so does a repaint that renames or removes the
+orientation probe. Object *counts* are not in that block: both scripts count the
+numbered series out of the scene.
+
+Blender 5.1, Blender 3.4 and the client install are machine setup rather than
+per-map; their paths are in *Toolchain setup*.
+
+### 0-1. Blockout
+
+```bash
+python3 apps/moba/gen_blockout.py
+```
+
+Builds every bundle under `apps/moba/maps/*/map_source.yaml`. `--stage build` is
+enough when only `build_blockout.py` or the `blockout:` block of
+`map_source.yaml` changed. Anything touching the paint, `blockout_trace.py`, or
+the trace-side keys needs both stages.
+
+Read off `$BUNDLE`'s report and carry them forward: **objects** [23], **floor
+chunks** [6, 3x2], **largest chunk tris** [under 21845], **max face span**
+[12.0 yd, 3 verts], **z range** [-8.0 .. 33.83].
+
+### 2. OBJ to the staging side
+
+```bash
+/Applications/Blender.app/Contents/MacOS/Blender --background "$BLEND" \
+  --python-expr "import bpy; bpy.ops.wm.obj_export(filepath='$XFER', forward_axis='Y', up_axis='Z')"
+```
+
+Leave `export_materials` at its default -- the `.mtl` carries the material names
+and must stay beside the `.obj`.
+
+### 3. Staging scene, Blender 3.4
+
+```bash
+/Applications/Blender-3.4.app/Contents/MacOS/Blender
+```
+
+Foreground, so `print()` lands in that terminal.
+
+1. Delete Cube, Camera, Light.
+2. Outliner -> right-click Scene Collection -> **New Collection**, rename it to
+   `$MAP`'s value, **left-click it** so it is active. Not `M > New Collection`,
+   which moves the selection into it.
+3. File > Import > **Wavefront (.obj)** -- not legacy -- pick `$XFER`,
+   **Forward Y, Up Z**.
+4. Python Console:
+
+   ```python
+   import bpy; print(len([o for o in bpy.data.objects if o.type=='MESH']),
+                     sorted(m.name for m in bpy.data.materials))
+   ```
+
+   The object count must equal step 1's. Then the axis check:
+
+   ```python
+   from mathutils import Vector
+   ws = [o.matrix_world @ Vector(c) for o in bpy.data.objects
+         if o.type == 'MESH' for c in o.bound_box]
+   print("z %.1f..%.1f" % (min(v.z for v in ws), max(v.z for v in ws)))
+   ```
+
+   Must match step 1's reported z range. A z instead spanning about half the
+   map's width is the -90 deg about X import bug; undo and redo the import
+   rather than rotating after.
+5. Text Editor -> **Open** `apps/moba/wmo/blender_staging_setup.py` -> Run
+   Script. Wants `PASS`, `Outdoor holds N` equal to step 1's object count, and
+   `derived: N floor chunks, N island walls` equal to step 1's grid.
+6. **File > Save As** -> `$STAGING`. The setup exists only in RAM until you do.
+
+### 4. Export
+
+1. Text Editor -> Open `blender_preflight.py` -> Run Script -> `PASS`.
+2. Clear the export directory. A leftover group file from a longer export is
+   invisible to the client -- MOHD caps how many are read -- and rides into the
+   MPQ anyway:
+
+   ```bash
+   rm $WMODIR/*.wmo
+   ```
+3. `File > Export > WMO (.wmo)`, method **Full**, *Export selected objects*
+   **off**, to `$WMODIR/$MAP.wmo`.
+4. ```bash
+   ls $WMODIR | wc -l
+   ```
+
+   Must be step 1's object count **+ 1**.
+
+### 5. Verify
+
+```bash
+python3.10 apps/moba/wmo/wmo_verify.py $WMODIR/$MAP.wmo
+```
+
+`PASS`, `MOHD groups` matching step 4, and a nonzero **triangles kept as
+COLLISION**. A render-only object reported as contributing no collision is
+working as intended, not a fault.
+
+### 6. WDT
+
+```bash
+python3.10 apps/moba/wmo/gen_wdt.py --dump
+```
+
+`dbc_tool.py patch` only on a first build, or if the DBC constants change -- the
+rows are already in the staging tree.
+
+### 7. Pack
+
+Client closed on that install.
+
+```bash
+apps/moba/wmo/mpq_pack ~/Games/wow335/Data/enUS/patch-enUS-4.MPQ \
+                       $PROJECT World DBFilesClient
+```
+
+File count = groups + root + WDT + 4 DBCs.
+
+### 8. Extract
+
+```bash
+rm -rf $EXTRACT && mkdir -p $EXTRACT && cd $EXTRACT
+~/code/azerothcore-wotlk/env/dist/bin/vmap4_extractor -d ~/Games/wow335/Data/
+~/code/azerothcore-wotlk/env/dist/bin/vmap4_assembler Buildings vmaps
+cp vmaps/${MAPID}.vmtree vmaps/*.wmo.vmo ~/code/azerothcore-wotlk/env/dist/bin/vmaps/
+rm ~/code/azerothcore-wotlk/env/dist/bin/mmaps/${MAPID}*.mmtile
+cd ~/code/azerothcore-wotlk/env/dist/bin && ./mmaps_generator $MAPID
+```
+
+The `.wmo.vmo` is globbed rather than named: the extractor recases it its own
+way (`Twistedtreeline.wmo.vmo`, not `$MAP`), and a WMO-only map has exactly one.
+
+Both `rm`s are load-bearing: `vmap4_extractor` refuses a non-empty output
+directory, and `mmaps_generator` skips any tile whose existing `.mmtile` matches
+the current config, without ever looking at the geometry.
+
+The four tools are already built and installed and `TOOLS_BUILD=maps-only` is in
+the CMake cache, so the `cmake` / `make` / `make install` block in step 8 below
+applies only to a fresh checkout.
+
+### 9. In game
+
+Restart the worldserver, `.debug bg`, queue in. Then `.go xyz <x> <y>` for a
+point step 1's report says is floor -- **omit the z** and let the server resolve
+it, which doubles as a vmap check.
+
+## Why each step is what it is
+
+The runbook above is the commands. This is the reasoning behind them — read it
+when a step fails, when you are adapting the pipeline, or before changing any of
+the scripts.
 
 ### 0. Trace the boundary from a reference image
 
@@ -97,6 +280,14 @@ than the offset distance, and a fold does not change the loop's total signed
 area — so an area check cannot see it. Guard by testing whether each vertex's
 move reversed one of its own edges, and pull back the offenders.
 
+**Extend the height field past its own mask before writing it.** The field is
+zero outside the paint, but the traced contour is smoothed afterwards, so rim
+vertices land slightly *outside* the mask and sample that zero. A base platform
+then blends from its real height down to nothing across its last few yards and
+meets the wall across a gap. Dilate the field a few pixels into the empty region
+first (`blockout_trace.py`'s `extend_past_edge`) — the smoothing's reported max
+deviation is what sets how many.
+
 **Output:** closed polygons in world yards — the outer playable boundary plus
 one loop per interior wall island — plus a grayscale height field if any region
 is raised. Expect hundreds to thousands of points, so they want their own file
@@ -140,8 +331,23 @@ ribbon whose outer edge is the **convex hull** pushed outward, since a convex
 loop cannot fold and a bounding rectangle leaves huge flat corners nowhere near
 the play area.
 
-Ngons are fine and need no pre-triangulation; the WBS batcher consumes Blender
-loop triangles. Keep ngons planar.
+**Triangulate the floor explicitly before assigning heights.** WBS consumes
+Blender loop triangles, so a planar ngon exports fine — but
+`bmesh.ops.subdivide_edges` splits edges without re-triangulating the faces
+around them, so refining a tessellation *grows* ngons instead of dividing quads.
+One floor reached 105-vertex faces spanning 365 yd. Loop triangulation fans a
+face that large from a single corner, and once the vertices carry per-vertex
+heights the fan's long edges cut across the slope instead of along it: a ridge
+you have to climb, running the length of the lane. Call `bmesh.ops.triangulate`
+after the last subdivision and before z is assigned; `gen_blockout.py` gates on
+`floor_max_face_verts > 3`.
+
+**Sample the height field bilinearly for floor vertices, not nearest-pixel.**
+Nearest-pixel quantises a slope to the field's pixel size, so two vertices a
+yard apart on the same ramp can land on different plateaus and leave the surface
+locally non-monotonic — a ramp that catches you when you run across it. Wall
+*feet* still want a max filter over a 3x3 neighbourhood: there the goal is to
+sit no lower than any nearby floor, not to follow it.
 
 ### 2. Transfer to a 3.4 staging scene
 
@@ -151,19 +357,6 @@ Export the shipping objects as OBJ from 5.1, import into an empty 3.4 file.
 *different* defaults, and the importer's (−Z forward, Y up) silently rotates
 everything −90° about X. Nothing downstream complains; the map is simply
 sideways.
-
-Check it immediately, against bounds you know:
-
-```python
-import bpy
-from mathutils import Vector
-o = bpy.data.objects["<a large object>"]
-ws = [o.matrix_world @ Vector(c) for c in o.bound_box]
-print("x %.1f..%.1f  y %.1f..%.1f  z %.1f..%.1f"
-      % (min(v.x for v in ws), max(v.x for v in ws),
-         min(v.y for v in ws), max(v.y for v in ws),
-         min(v.z for v in ws), max(v.z for v in ws)))
-```
 
 A wall reading its height in Y instead of Z is the axis bug. Undo and redo the
 import rather than rotating after the fact.
@@ -242,10 +435,6 @@ be a GUI 3.4 one — see *What cannot be automated*.
 
 ### 5. Verify
 
-```bash
-python3.10 wmo_verify.py path/to/Root.wmo
-```
-
 Do this before packing anything. It replays what `vmap4_extractor` will decide,
 so a dead map is caught here instead of after a pack-and-extract round trip.
 
@@ -253,11 +442,6 @@ The number that decides whether the map is playable is **`triangles kept as
 COLLISION`**. Zero means terrain that looks perfect and cannot be stood on.
 
 ### 6. WDT + DBC rows
-
-```bash
-python3.10 gen_wdt.py --dump
-python3.10 dbc_tool.py patch
-```
 
 `gen_wdt.py` writes `World/Maps/<Dir>/<Dir>.wdt`: MVER **18** — the WMO's own
 MVER is 17, they are different formats — MPHD flags `0x1` for the global map
@@ -301,11 +485,6 @@ it is an ERROR on every boot, and a real failure hiding in that noise is expensi
 Stock battleground rows carry nothing but ID, MapID, Difficulty and the locale mask.
 
 ### 7. Pack the client patch
-
-```bash
-apps/moba/wmo/mpq_pack ~/Games/wow335/Data/enUS/patch-enUS-4.MPQ \
-                       ~/tools/wbs-project World DBFilesClient
-```
 
 One archive holds the whole patch: the `.wmo` set, the WDT, and the patched DBCs.
 No textures — MOTX ships paths, and everything referenced is a stock asset.
@@ -365,14 +544,6 @@ That whitelists the four needed and installs them, plus `mmaps-config.yaml`, int
 `map_extractor`, `vmap4_extractor`, `vmap4_assembler`, `mmaps_generator` — not the
 un-underscored spellings upstream uses for its release archives.
 
-```bash
-cd <empty scratch dir>
-vmap4_extractor -d <wow>/Data/          # -> ./Buildings
-vmap4_assembler Buildings vmaps         # -> ./vmaps
-cp vmaps/<id>.vmtree vmaps/<Model>.wmo.vmo <install>/vmaps/
-cd <install> && ./mmaps_generator <id>
-```
-
 Into `env/dist/bin/`, not `var/extractors/` — those five `.gitkeep` directories are
 upstream's Docker layout and nothing in a local build reads them.
 
@@ -393,6 +564,13 @@ tiles to extract.
   `discoverTiles` finds a tile-less map only through it
   (`MapBuilder.cpp:116-125`) — with no `.map` files that is the sole discovery
   path.
+- **`mmaps_generator` skips a tile it has already built.** `shouldSkipTile`
+  compares the existing `.mmtile`'s magic, `dtVersion`, `mmapVersion` and the
+  serialised recast config and returns true on a match
+  (`MapBuilder.cpp:1035-1061`) — it never looks at the geometry. New terrain
+  under an unchanged config is silently ignored, and the fresh `.mmap` written
+  beside the stale tiles makes it look like a rebuild happened. Delete
+  `mmaps/<id>*.mmtile` before every re-run.
 - `checkDirectories` wants `maps/` non-empty *globally* and `vmaps/` holding at
   least one `.vmtree`, so `mmaps_generator` runs from the install directory, not
   the scratch dir. It needs `mmaps-config.yaml` in the CWD, or `--config`.
@@ -488,9 +666,11 @@ For reference, mmaps' `walkableClimb: 6` cells is about 1.6 yd
 (`mmaps-config.yaml:50`), so a 1 yd plateau is climbable as collision.
 `skipBattlegrounds` defaults to false.
 
-## Four ways the export fails that the file won't show you
+## Five ways the export fails that the file won't show you
 
-Each of these was hit for real. `blender_preflight.py` checks all four.
+Each of these was hit for real. `blender_preflight.py` checks the first four;
+the fifth is upstream of the export, gated in `gen_blockout.py` and caught again
+by `wmo_verify.py`.
 
 - **A material with no `diff_texture_1` raises** `ReferenceError` in
   `save_materials`. Loading a BLP into the scene does *not* assign it — that is
@@ -507,6 +687,16 @@ Each of these was hit for real. `blender_preflight.py` checks all four.
   hidden group silently does not ship, taking its collision with it.
 - **Every group mesh needs a UV layer named exactly `UVMap`**, or
   `create_batching_parameters` raises.
+- **A group over 21,845 triangles draws only part of itself.** WBS emits one
+  MOBA render batch per material per group, and a batch counts MOVI *indices* in
+  a `uint16` (`wmo_format_group.py:169`). Three indices per triangle puts the
+  wrap at 21,845, and past it the client draws only the remainder — 84,891
+  indices became 19,355, a floor 77% transparent. Nothing else notices: the file
+  parses clean and MOPY and MOBN are untouched, so collision is complete and you
+  fall through nothing. This ceiling binds well before the 65,535-vertex one in
+  step 1. `build_blockout.py` splits the floor into a grid sized to stay under
+  it, and `wmo_verify.py` fails any group whose batches do not cover its whole
+  MOVI.
 
 Two more, specific to doodads: a doodad needs `wow_wmo_doodad.enabled = True`
 or WBS's depsgraph handler evicts it from the set collection, and setting its
@@ -524,21 +714,34 @@ only, so the client patch carries geometry and DBCs but no textures.
 
 | Script | Where it runs | Proven |
 |---|---|---|
-| `blender_staging_setup.py` | Blender 3.4 Text Editor | yes, 2026-08-13 |
-| `blender_preflight.py` | Blender 3.4 Text Editor | yes, 2026-08-13 |
-| `wmo_verify.py` | `python3.10`, standalone | yes, 2026-08-13 |
-| `gen_wdt.py` | `python3.10`, standalone | yes, 2026-08-13 |
-| `dbc_tool.py` | `python3.10`, standalone | yes, 2026-08-13 |
+| `blender_staging_setup.py` | Blender 3.4 Text Editor | yes, 2026-08-18 |
+| `blender_preflight.py` | Blender 3.4 Text Editor | yes, 2026-08-18 |
+| `wmo_verify.py` | `python3.10`, standalone | yes, 2026-08-18 |
+| `gen_wdt.py` | `python3.10`, standalone | yes, 2026-08-18 |
+| `dbc_tool.py` | `python3.10`, standalone | yes, 2026-08-18 |
 | `mpq_tool.py` | `python3.10`, standalone | yes, 2026-08-12 |
-| `mpq_pack.cpp` | compiled, standalone | yes, 2026-08-13 |
+| `mpq_pack.cpp` | compiled, standalone | yes, 2026-08-18 |
 
-All four map-specific scripts — the two Blender ones plus `gen_wdt.py` and
-`dbc_tool.py` — hardcode Twisted Treeline's names, ids and paths in a constants
-block at the top. **That block is the per-map part**; a second map edits it and
-leaves the rest alone. If a third map turns up, that is the point to move the
-block into a YAML config the way the SQL generators do; two maps do not justify
-it yet. `mpq_tool.py` and `mpq_pack` are not in that set: both take what they
-operate on as arguments, so neither has a per-map part at all.
+Five of these carry a per-map constants block at the top — the two Blender
+scripts, `wmo_verify.py`, `gen_wdt.py` and `dbc_tool.py`. **That block is the
+per-map part**; a second map edits it and leaves the rest alone. If a third map
+turns up, that is the point to move the block into a YAML config the way the SQL
+generators do; two maps do not justify it yet. `mpq_tool.py` and `mpq_pack` are
+not in that set: both take what they operate on as arguments, so neither has a
+per-map part at all.
+
+**A constant belongs in the block only if a human chose it.** Anything the
+blockout derives is counted at runtime instead: the two Blender scripts walk
+their numbered object series out of the scene, because island walls follow the
+paint and floor chunks follow `gen_blockout.py`'s batch-ceiling grid. A declared
+count would be a copy of a number neither file can see, and it would go stale
+silently — the loud failure it produces is an object-set mismatch that reads
+like a bad import.
+
+`ORIENT_PROBE_Y` is stored in the *blockout* frame by the two Blender scripts
+and in the *server* frame by `wmo_verify.py` — the same measurement with
+opposite signs. Copy one into the other and the check inverts: a correct export
+fails, an unturned scene passes.
 
 ### `blender_staging_setup.py` — build a staging scene from a bare OBJ import
 
