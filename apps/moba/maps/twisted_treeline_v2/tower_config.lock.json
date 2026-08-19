@@ -5,11 +5,15 @@
     "alliance_inhibitor_bot": 900009,
     "alliance_inhibitor_top": 900008,
     "alliance_tower_bot": 900007,
+    "alliance_tower_bot_inner": 900407,
     "alliance_tower_top": 900006,
+    "alliance_tower_top_inner": 900406,
     "horde_core": 900405,
     "horde_inhibitor_bot": 900404,
     "horde_inhibitor_top": 900403,
     "horde_tower_bot": 900402,
-    "horde_tower_top": 900401
+    "horde_tower_bot_inner": 900409,
+    "horde_tower_top": 900401,
+    "horde_tower_top_inner": 900408
   }
 }

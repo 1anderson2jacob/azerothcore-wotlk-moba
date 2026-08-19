@@ -30,10 +30,11 @@
 #   attack_interval_ms  ms between shots  (inert for passive kinds)
 #   attack_spell_id     projectile spell  (0 / inert for passive kinds)
 #
-# Positions come from var/blender/twisted_treeline_layout.json, verified against
-# the exported mesh: every anchor sits in open floor with 6.5+ yd of wall
-# clearance. z is 0 everywhere except the nexus plateaus (|x| 172-198, y -18..8),
-# which top out at z = 1.
+# Positions are derived from geometry.json + heights.png rather than walked: x/y
+# from the walkable region's distance transform, z sampled off the height field, o
+# facing down-lane toward the enemy. Worst wall clearance is 12.0 yd against a 4.0
+# yd core footprint and under 3.4 yd for everything else. z is 3.0 on the base
+# platforms and 0.0 on lane floor; nothing sits on a ramp.
 #
 # `guarded_by` names exactly ONE structure and means "unattackable until that one dies".
 # A CORE needs no guarded_by: it is gated on every inhibitor on its own side, in C++,
@@ -43,20 +44,41 @@
 map: 900
 
 towers:
-  # --- Alliance side (WEST, -x; spawn at -205) ---
+  # --- Alliance side (WEST, -x; spawn at -196.8) ---
+  # Chain per lane: outer tower (always vulnerable) -> inner tower -> inhibitor.
   - key: alliance_tower_top
     team: 0
     kind: tower
     tier: 0
     lane: top
-    name: Alliance Tower
+    name: Alliance Outer Tower
     display_id: 27101
     display_scale: 3.0
     health_modifier: 8
-    x: -75.0
-    y: 66.0
+    x: -50.83
+    y: 50.63
     z: 0.0
-    o: 0.0
+    o: 5.8423
+    attack_range: 40
+    attack_interval_ms: 1500
+    attack_spell_id: 9053
+    gold: 3000
+    gold_last_hit: 1500
+
+  - key: alliance_tower_top_inner
+    team: 0
+    kind: tower
+    tier: 0
+    lane: top
+    guarded_by: alliance_tower_top
+    name: Alliance Inner Tower
+    display_id: 27101
+    display_scale: 3.0
+    health_modifier: 8
+    x: -112.57
+    y: 76.65
+    z: 0.0
+    o: 6.0756
     attack_range: 40
     attack_interval_ms: 1500
     attack_spell_id: 9053
@@ -68,14 +90,34 @@ towers:
     kind: tower
     tier: 0
     lane: bot
-    name: Alliance Tower
+    name: Alliance Outer Tower
     display_id: 27101
     display_scale: 3.0
     health_modifier: 8
-    x: -75.0
-    y: -79.0
+    x: -55.60
+    y: -73.50
     z: 0.0
-    o: 0.0
+    o: 0.2628
+    attack_range: 40
+    attack_interval_ms: 1500
+    attack_spell_id: 9053
+    gold: 3000
+    gold_last_hit: 1500
+
+  - key: alliance_tower_bot_inner
+    team: 0
+    kind: tower
+    tier: 0
+    lane: bot
+    guarded_by: alliance_tower_bot
+    name: Alliance Inner Tower
+    display_id: 27101
+    display_scale: 3.0
+    health_modifier: 8
+    x: -107.07
+    y: -79.51
+    z: 0.0
+    o: 0.0368
     attack_range: 40
     attack_interval_ms: 1500
     attack_spell_id: 9053
@@ -87,16 +129,16 @@ towers:
     kind: inhibitor
     tier: 1
     lane: top
-    guarded_by: alliance_tower_top
+    guarded_by: alliance_tower_top_inner
     respawn_ms: 120000
     name: Alliance Inhibitor
     display_id: 1460
     display_scale: 0.75
     health_modifier: 10
-    x: -172.0
-    y: 12.0
-    z: 0.0
-    o: 0.0
+    x: -160.20
+    y: 60.19
+    z: 3.0
+    o: 0.6884
     attack_range: 0
     attack_interval_ms: 1500
     attack_spell_id: 0
@@ -108,16 +150,16 @@ towers:
     kind: inhibitor
     tier: 1
     lane: bot
-    guarded_by: alliance_tower_bot
+    guarded_by: alliance_tower_bot_inner
     respawn_ms: 120000
     name: Alliance Inhibitor
     display_id: 1460
     display_scale: 0.75
     health_modifier: 10
-    x: -172.0
-    y: -22.0
-    z: 0.0
-    o: 0.0
+    x: -161.53
+    y: -61.42
+    z: 3.0
+    o: 5.5360
     attack_range: 0
     attack_interval_ms: 1500
     attack_spell_id: 0
@@ -132,30 +174,50 @@ towers:
     display_id: 11659
     display_scale: 2.0
     health_modifier: 15
-    x: -185.0
-    y: -5.0
-    z: 1.0
-    o: 0.0
+    x: -132.84
+    y: -0.26
+    z: 3.0
+    o: 0.0000
     attack_range: 0
     attack_interval_ms: 1500
     attack_spell_id: 0
     gold: 0
     gold_last_hit: 0
 
-  # --- Horde side (EAST, +x; spawn at 205) ---
+  # --- Horde side (EAST, +x; spawn at 197.6). Mirror: x -> -x, o -> pi - o ---
   - key: horde_tower_top
     team: 1
     kind: tower
     tier: 0
     lane: top
-    name: Horde Tower
+    name: Horde Outer Tower
     display_id: 18505
     display_scale: 2.0
     health_modifier: 8
-    x: 75.0
-    y: 66.0
+    x: 50.83
+    y: 50.63
     z: 0.0
-    o: 3.1415927
+    o: 3.5825
+    attack_range: 40
+    attack_interval_ms: 1500
+    attack_spell_id: 9053
+    gold: 3000
+    gold_last_hit: 1500
+
+  - key: horde_tower_top_inner
+    team: 1
+    kind: tower
+    tier: 0
+    lane: top
+    guarded_by: horde_tower_top
+    name: Horde Inner Tower
+    display_id: 18505
+    display_scale: 2.0
+    health_modifier: 8
+    x: 112.57
+    y: 76.65
+    z: 0.0
+    o: 3.3492
     attack_range: 40
     attack_interval_ms: 1500
     attack_spell_id: 9053
@@ -167,14 +229,34 @@ towers:
     kind: tower
     tier: 0
     lane: bot
-    name: Horde Tower
+    name: Horde Outer Tower
     display_id: 18505
     display_scale: 2.0
     health_modifier: 8
-    x: 75.0
-    y: -79.0
+    x: 55.60
+    y: -73.50
     z: 0.0
-    o: 3.1415927
+    o: 2.8788
+    attack_range: 40
+    attack_interval_ms: 1500
+    attack_spell_id: 9053
+    gold: 3000
+    gold_last_hit: 1500
+
+  - key: horde_tower_bot_inner
+    team: 1
+    kind: tower
+    tier: 0
+    lane: bot
+    guarded_by: horde_tower_bot
+    name: Horde Inner Tower
+    display_id: 18505
+    display_scale: 2.0
+    health_modifier: 8
+    x: 107.07
+    y: -79.51
+    z: 0.0
+    o: 3.1048
     attack_range: 40
     attack_interval_ms: 1500
     attack_spell_id: 9053
@@ -186,16 +268,16 @@ towers:
     kind: inhibitor
     tier: 1
     lane: top
-    guarded_by: horde_tower_top
+    guarded_by: horde_tower_top_inner
     respawn_ms: 120000
     name: Horde Inhibitor
     display_id: 1461
     display_scale: 0.75
     health_modifier: 10
-    x: 172.0
-    y: 12.0
-    z: 0.0
-    o: 3.1415927
+    x: 160.20
+    y: 60.19
+    z: 3.0
+    o: 2.4532
     attack_range: 0
     attack_interval_ms: 1500
     attack_spell_id: 0
@@ -207,16 +289,16 @@ towers:
     kind: inhibitor
     tier: 1
     lane: bot
-    guarded_by: horde_tower_bot
+    guarded_by: horde_tower_bot_inner
     respawn_ms: 120000
     name: Horde Inhibitor
     display_id: 1461
     display_scale: 0.75
     health_modifier: 10
-    x: 172.0
-    y: -22.0
-    z: 0.0
-    o: 3.1415927
+    x: 161.53
+    y: -61.42
+    z: 3.0
+    o: 3.8888
     attack_range: 0
     attack_interval_ms: 1500
     attack_spell_id: 0
@@ -231,10 +313,10 @@ towers:
     display_id: 11659
     display_scale: 2.0
     health_modifier: 15
-    x: 185.0
-    y: -5.0
-    z: 1.0
-    o: 3.1415927
+    x: 132.84
+    y: -0.26
+    z: 3.0
+    o: 3.1416
     attack_range: 0
     attack_interval_ms: 1500
     attack_spell_id: 0

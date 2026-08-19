@@ -384,6 +384,10 @@ def main():
             "generated_by": "apps/moba/wmo/blockout_trace.py",
             "units": "1 unit = 1 WoW yard, origin at map centre, +x = east, +y = north",
         },
+        # cy_px indexes the numpy array, NOT heights.png: save_gray writes through
+        # Blender's bottom-row-first pixel buffer, so the PNG is stored vertically
+        # flipped and sampling it needs (h - 1 - cy_px). cx_px is unaffected. Getting
+        # this wrong reads ~51 px off and still returns plausible values.
         "registration": {"scale_yd_per_px": round(scale, 6), "cx_px": cx, "cy_px": cy,
                          "image_size_px": [w, h]},
         "extent_yd": {"x": [round((x0 - cx) * scale, 2), round((x1 - cx) * scale, 2)],

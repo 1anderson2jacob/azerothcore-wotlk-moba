@@ -63,9 +63,9 @@ shopkeeper:
   display_id: 3275
   teams:
     - { team: 0, entry: 900302, display_id: 3275, name: 'Dkeka',
-        x: -200.0, y: 4.0, z: 0.0, o: 4.2 }   # Alliance (west), 10.3 yd from spawn
+        x: -193.75, y: 7.83, z: 3.0, o: 4.3253 }   # Alliance (west), 8.1 yd from spawn
     - { team: 1, entry: 900303, display_id: 1879, name: 'Tojakk',
-        x: 200.0, y: 4.0, z: 0.0, o: 5.2 }   # Horde (east), 10.3 yd from spawn
+        x: 193.75, y: 7.83, z: 3.0, o: 5.0995 }   # Horde (east), 9.1 yd from spawn
 
 tabs:
   # -------------------------------------------------------------------------

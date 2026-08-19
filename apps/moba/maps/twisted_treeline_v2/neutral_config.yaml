@@ -22,10 +22,11 @@
 #                                  Humanoid (7), so Beast (1) is explicit.
 #   drops[].type                   buff | gold | item | team_gold | team_buff
 #
-# Camp anchors are the layout's; members cluster within 4 yd of them, facing the
-# map centre. Wolves and wraiths spread their smalls outward; GOLEMS SPREAD NORTH
-# instead -- the outward offset put them 3.6 yd from TT_JWall_02/03, and the
-# camp is pinched between the bot lane and the jungle wall there.
+# Camp anchors are derived: the nearest point to each pass-1 anchor with 7.5+ yd of
+# wall clearance that stays 18+ yd off both lane centrelines. Members cluster within
+# 4 yd, facing the map centre, each snapped individually to hold 5.5 yd. Wolves and
+# wraiths spread outward from centre; GOLEMS SPREAD NORTH -- outward puts them into
+# the jungle wall the camp is pinched against.
 #
 # DISPLAY IDS ARE PLACEHOLDERS carried over from the eye_of_the_storm bundle --
 # proven to render, but wrong for the art direction (Ghostlands/Plaguelands dead
@@ -40,56 +41,57 @@ camps:
     aggro_range: 8
     leash_range: 20
     members:
-      - {mob: wolf_large, pos: [-95.0, -25.0, 0.0, 0.0]}
-      - {mob: wolf_small, pos: [-99.0, -22.0, 0.0, 0.0]}
-      - {mob: wolf_small, pos: [-99.0, -28.0, 0.0, 0.0]}
+      - {mob: wolf_large, pos: [-89.83, -23.12, 0.0, 0.2519]}
+      - {mob: wolf_small, pos: [-92.23, -26.63, 0.0, 0.2519]}
+      - {mob: wolf_small, pos: [-91.63, -21.21, 0.0, 0.2519]}
 
   - key: wolves_east
     respawn_ms: 30000
     aggro_range: 8
     leash_range: 20
     members:
-      - {mob: wolf_large, pos: [95.0, -25.0, 0.0, 3.1415927]}
-      - {mob: wolf_small, pos: [99.0, -22.0, 0.0, 3.1415927]}
-      - {mob: wolf_small, pos: [99.0, -28.0, 0.0, 3.1415927]}
+      - {mob: wolf_large, pos: [89.83, -23.12, 0.0, 2.8897]}
+      - {mob: wolf_small, pos: [92.23, -26.63, 0.0, 2.8897]}
+      - {mob: wolf_small, pos: [91.63, -21.21, 0.0, 2.8897]}
 
   - key: wraiths_west
     respawn_ms: 30000
     aggro_range: 8
     leash_range: 20
     members:
-      - {mob: wraith_large, pos: [-40.5, 57.0, 0.0, 0.0]}
-      - {mob: wraith_small, pos: [-44.5, 60.0, 0.0, 0.0]}
-      - {mob: wraith_small, pos: [-44.5, 54.0, 0.0, 0.0]}
+      - {mob: wraith_large, pos: [-35.36, 63.13, 0.0, 5.2230]}
+      - {mob: wraith_small, pos: [-39.37, 64.55, 0.0, 5.2230]}
+      - {mob: wraith_small, pos: [-34.88, 66.60, 0.0, 5.2230]}
 
   - key: wraiths_east
     respawn_ms: 30000
     aggro_range: 8
     leash_range: 20
     members:
-      - {mob: wraith_large, pos: [40.5, 57.0, 0.0, 3.1415927]}
-      - {mob: wraith_small, pos: [44.5, 60.0, 0.0, 3.1415927]}
-      - {mob: wraith_small, pos: [44.5, 54.0, 0.0, 3.1415927]}
+      - {mob: wraith_large, pos: [35.36, 63.13, 0.0, 4.2018]}
+      - {mob: wraith_small, pos: [39.37, 64.55, 0.0, 4.2018]}
+      - {mob: wraith_small, pos: [34.88, 66.60, 0.0, 4.2018]}
 
   - key: golems_west
     respawn_ms: 30000
     aggro_range: 8
     leash_range: 20
     members:
-      - {mob: golem_large, pos: [-55.0, -43.0, 0.0, 0.0]}
-      - {mob: golem_small, pos: [-58.0, -39.5, 0.0, 0.0]}
-      - {mob: golem_small, pos: [-52.0, -39.5, 0.0, 0.0]}
+      - {mob: golem_large, pos: [-47.93, -34.57, 0.0, 0.6249]}
+      - {mob: golem_small, pos: [-50.73, -31.37, 0.0, 0.6249]}
+      - {mob: golem_small, pos: [-45.37, -31.05, 0.0, 0.6249]}
 
   - key: golems_east
     respawn_ms: 30000
     aggro_range: 8
     leash_range: 20
     members:
-      - {mob: golem_large, pos: [55.0, -43.0, 0.0, 3.1415927]}
-      - {mob: golem_small, pos: [58.0, -39.5, 0.0, 3.1415927]}
-      - {mob: golem_small, pos: [52.0, -39.5, 0.0, 3.1415927]}
+      - {mob: golem_large, pos: [47.93, -34.57, 0.0, 2.5167]}
+      - {mob: golem_small, pos: [50.73, -31.37, 0.0, 2.5167]}
+      - {mob: golem_small, pos: [45.37, -31.05, 0.0, 2.5167]}
 
-  # Pit at the north wall. The layout says y 94; 92 is the TT_Pit_Pad centre.
+  # North jungle, 56 yd off the top lane and 47 yd behind it -- the outer branch the
+  # lane declines to take. Not against the north wall: 83.5 is the clearance peak.
   - key: boss_den
     tier: 1
     respawn_ms: 60000
@@ -98,7 +100,7 @@ camps:
     aggro_range: 12
     leash_range: 20
     members:
-      - {mob: rosham_bo, pos: [0.0, 92.0, 0.0, 4.712389]}
+      - {mob: rosham_bo, pos: [0.0, 83.5, 0.0, 4.7124]}
 
 units:
   jungle_large:

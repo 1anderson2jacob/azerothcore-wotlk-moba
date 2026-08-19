@@ -2,11 +2,14 @@
 
 ## Status
 
-**Steps 0–9 are done** (2026-08-18). The v2 map is traced, built, exported,
-packed, extracted and walkable on map 900. The bundle is
-`apps/moba/maps/twisted_treeline_v2/`.
+**The map is done** (2026-08-18). Steps 0–9 all run: v2 is traced, built,
+exported, packed, extracted and walkable on map 900, from
+`apps/moba/maps/twisted_treeline_v2/`. The map-agnostic procedure is in
+`apps/moba/wmo/README.md`.
 
-What remains is dressing, two undecided bundle questions, and lighting.
+**The content on it is placed** (2026-08-19) — every coordinate in all four
+positional configs is derived and mirror-symmetric. Dressing, lighting and the
+wall-texture pick are still open behind it, plus the tower model asymmetry below.
 
 **Delete this file when those land.** The procedure itself is not here — it
 lives in `apps/moba/wmo/README.md`, which is map-agnostic and survives.
@@ -91,32 +94,58 @@ Object and triangle counts are *not* here: they move with the tessellation and
 the floor's batch-ceiling grid. The current ones are in `gen_blockout.py`'s
 report, bracketed in README step 0-1.
 
-## Structure positions come from in-game `.gps`, not from geometry
+## Structure positions are derived from geometry, validated by `.gps`
 
-Lane centrelines, tower and camp positions are **not** derived from the trace,
-and a painted marker layer was designed and rejected:
+Pass 1 rejected deriving positions, on the grounds that a flat image cannot carry
+z. That reasoning was sound about the *trace* and wrong about the *build outputs*:
+`geometry.json` carries the loops and `heights.png` carries the height field, and
+between them every coordinate a config needs is computable.
 
-- The configs carry z; a flat image cannot.
-- `lane_config.yaml`'s header records a traced waypoint that sat 0.2 yd from
-  `TT_JWall_12`'s face and had to be hand-repaired. A point recorded by standing
-  on it cannot have that defect.
-- You cannot `.gps` a map that does not exist yet, so geometry comes first.
+`geometry.json`'s frame **is** the world frame on map 900 — no offset, rotation or
+axis swap. Confirmed against three `.gps` readings: two base platforms (predicted
+3.000000, read 3.000014 / 3.000007) and one lane floor (predicted 0.000000, read
+0.000483). So `.gps` is what *validates* the frame, not what supplies the points —
+two readings were enough to license deriving the other ~120 coordinates.
 
-`layout.json` is therefore dead for v2 — it held exactly those positions. The
-map now exists, so this pass is unblocked.
+`layout.json` is dead for v2 and nothing replaces it; the configs are the only
+home for placement.
 
 ## Outstanding
 
-### Two bundles, one slot — undecided
+### The content pass — positions derived 2026-08-19
 
-`apps/moba/maps/twisted_treeline/` (pass 1) and `twisted_treeline_v2` both
-target map 900. Before v2 gains content configs, settle:
+All four positional configs carry derived x/y/z/o. `creep_config.yaml` and
+`player_config.yaml` needed nothing — they reference lanes and slots by name.
+Creeps are still downstream of the lanes though: `gen_creep_roster.py` resolves
+each `WaypointPathId` from the lane lockfile, so `gen_all.sh` (never a hand-picked
+subset) is what regenerates this bundle.
 
-- **`active:` in `base_config.yaml`** — one bundle owns the battleground slot.
-  Two with `active: true` will conflict.
-- **ID allocation.** Pass 1 filled 900000-900009 (towers), 900020+ (creeps),
-  900209+ (neutrals), and the allocator carved 900400-900499. v2 either reuses
-  those keys or needs its own block in `apps/moba/id_blocks.json`.
+What was derived, and how:
+
+- **Lanes** — corridor-hugging path search over the walkable mask, smoothed onto
+  the local clearance maximum, mirrored about x=0. Worst clearance 11.3 / 12.0 yd
+  against pass 1's 14 bad points on bot alone, 4 of them inside walls.
+- **Structures** — 14, up from 10. The ledger's second lane tower per lane per
+  side landed as new `*_inner` keys from 900406+; the **existing keys stayed on
+  the outer towers** so 900006/900007/900401/900402 keep their assignments.
+- **Camps** — nearest point to each pass-1 anchor with 7.5+ yd clearance holding
+  18+ yd off both lanes, members snapped individually.
+
+Two traps found, both of which cost a wrong result before being caught:
+
+- **`geometry.json`'s `bases[].centre_yd` is a centroid, and each base is a ring
+  around a central island** — so the centroid lands *on* the island. (-172.62,
+  -1.44) reads as the obvious core spot and has 0.5 yd of wall clearance.
+- **`heights.png` is stored vertically flipped** relative to what `cy_px` indexes.
+  Recorded where it bites, on the registration dict in `blockout_trace.py`.
+
+### Tower models are not equivalent between the two teams
+
+`combat_reach` x `display_scale` is 21.0 for the Alliance tower (27101 x3.0) and
+2.0 for the Horde tower (18505 x2.0) — a 10x difference in the range a melee
+player can attack one from. Inhibitors (5.625) and cores (5.46) are symmetric;
+only the towers are off. Not a placement problem: it needs two display ids with
+comparable `combat_reach`. Jacob parked this on 2026-08-19.
 
 ### Dressing — blocked on where placements are stored
 
@@ -141,10 +170,6 @@ in `blender_staging_setup.py`'s `TEXTURES`; blocks nothing.
 
 ### Housekeeping
 
-- **Nine orphan `_023.wmo`…`_031.wmo` are in the MPQ**, left from a 15-chunk
-  export that preceded the 23-group one. MOHD says 23 groups so the map works
-  and nothing reads them. Fix is `rm` + re-pack; no re-extract, since the
-  extractor never saw them either.
 - Cones overhang island edges slightly. Placeholder geometry that dressing
   replaces, so left alone.
 

@@ -42,7 +42,7 @@ CREATE TABLE `mod_moba_base` (
 INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`, `StartingGold`, `PassiveTickMs`, `PassiveCopper`, `FirstBloodGold`, `ShutdownPerStreak`, `ShutdownCapGold`, `MultiKillWindowMs`, `SpreeMin`, `AceMinTeam`, `SurrenderMinMs`, `SurrenderVoteMs`, `SurrenderCooldownMs`)
 VALUES
 (566, 10000, 1500, 60000, 9000, 4500, 1000, 10, 10, 20, 15000, 10000, 60000, 900400, 900401, 15000, 5000, 100, 5000, 5000, 40000, 10000, 3, 2, 60000, 15000, 60000),
-(900, 10000, 1500, 60000, 9000, 4500, 1000, 10, 10, 15, 15000, 10000, 60000, 900402, 900403, 15000, 5000, 100, 5000, 5000, 40000, 10000, 3, 2, 60000, 15000, 60000);
+(900, 10000, 1500, 60000, 9000, 4500, 1000, 10, 10, 20, 15000, 10000, 60000, 900402, 900403, 15000, 5000, 100, 5000, 5000, 40000, 10000, 3, 2, 60000, 15000, 60000);
 
 -- Spawn dome gameobjects. The whole block is cleared, not just the entries
 -- being inserted, so a dome dropped from a config is dropped from the DB too.
@@ -55,8 +55,8 @@ INSERT INTO `gameobject_template`
 VALUES
 (900400, 0, 7203, 'eye_of_the_storm spawn dome (Alliance)', '', '', '', 0.116009, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0),
 (900401, 0, 7203, 'eye_of_the_storm spawn dome (Horde)', '', '', '', 0.116009, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0),
-(900402, 0, 7203, 'twisted_treeline_v2 spawn dome (Alliance)', '', '', '', 0.087007, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0),
-(900403, 0, 7203, 'twisted_treeline_v2 spawn dome (Horde)', '', '', '', 0.087007, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0);
+(900402, 0, 7203, 'twisted_treeline_v2 spawn dome (Alliance)', '', '', '', 0.116009, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0),
+(900403, 0, 7203, 'twisted_treeline_v2 spawn dome (Horde)', '', '', '', 0.116009, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0);
 
 -- Dome faction/flags. GameObject reads both ONLY from this table, so a template
 -- copy with no row here is selectable and clickable -- and clicking a DOOR opens it.
@@ -79,9 +79,9 @@ VALUES
 -- players in; the radius lives in mod_moba_base.FountainRadius.
 -- MinPlayersPerTeam is 1 ON PURPOSE: Battleground::GetPrematureWinner forfeits a
 -- team that drops below it, and a MOBA keeps playing 4v5. Stock EotS ships 8.
-UPDATE battleground_template SET AllianceStartLoc = 1103, AllianceStartO = 0.0, HordeStartLoc = 1104, HordeStartO = 3.1415927, StartMaxDist = 0, MinPlayersPerTeam = 1 WHERE ID = 7;
+UPDATE battleground_template SET AllianceStartLoc = 1103, AllianceStartO = 6.2737, HordeStartLoc = 1104, HordeStartO = 3.1396, StartMaxDist = 0, MinPlayersPerTeam = 1 WHERE ID = 7;
 -- Map moves with the coordinates. Player::RepopAtGraveyard teleports to
 -- ClosestGrave->Map, so a graveyard left on the old map throws a releasing
 -- player clean out of the battleground.
-UPDATE game_graveyard SET Map = 900, x = -205.0, y = -5.0, z = 0.5 WHERE ID = 1103;
-UPDATE game_graveyard SET Map = 900, x = 205.0, y = -5.0, z = 0.5 WHERE ID = 1104;
+UPDATE game_graveyard SET Map = 900, x = -196.80025, y = 0.3477315, z = 3.5 WHERE ID = 1103;
+UPDATE game_graveyard SET Map = 900, x = 197.60576, y = -0.386557, z = 3.5 WHERE ID = 1104;
