@@ -55,8 +55,8 @@ INSERT INTO `gameobject_template`
 VALUES
 (900400, 0, 7203, 'eye_of_the_storm spawn dome (Alliance)', '', '', '', 0.116009, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0),
 (900401, 0, 7203, 'eye_of_the_storm spawn dome (Horde)', '', '', '', 0.116009, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0),
-(900402, 0, 7203, 'twisted_treeline spawn dome (Alliance)', '', '', '', 0.087007, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0),
-(900403, 0, 7203, 'twisted_treeline spawn dome (Horde)', '', '', '', 0.087007, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0);
+(900402, 0, 7203, 'twisted_treeline_v2 spawn dome (Alliance)', '', '', '', 0.087007, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0),
+(900403, 0, 7203, 'twisted_treeline_v2 spawn dome (Horde)', '', '', '', 0.087007, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0);
 
 -- Dome faction/flags. GameObject reads both ONLY from this table, so a template
 -- copy with no row here is selectable and clickable -- and clicking a DOOR opens it.
@@ -72,7 +72,7 @@ VALUES
 -- Spawn wiring for map 566 (eye_of_the_storm) SKIPPED -- active: false.
 -- Its content rows above stay live and inert; battleground_template 7 belongs to the active bundle.
 
--- Spawn wiring for map 900 (twisted_treeline)
+-- Spawn wiring for map 900 (twisted_treeline_v2)
 -- StartMaxDist stays 0 ON PURPOSE. It is the core's prep-phase leash
 -- (Battleground::_CheckSafePositions), which teleports players back to spawn
 -- every 9s -- wrong for a base you are meant to walk around in. The dome holds
