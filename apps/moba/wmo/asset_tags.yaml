@@ -1,0 +1,44 @@
+# Role tags for the asset browser. Hand-curated on purpose: a wall texture lives
+# under DUNGEONS\TEXTURES\WALLS, DUNGEONS\TEXTURES\ROCK and TILESET\ alike, so
+# the folder tree cannot answer "show me walls" and only keywords can.
+#
+# role -> substrings matched against the whole lowercased archive path.
+# FIRST MATCHING ROLE WINS, so the order of this block is significant: put the
+# specific ahead of the generic. `stonetreelog` is a tree, not a rock, which is
+# why `tree` sits above `rock`.
+#
+# Themes are NOT here -- they are derived from the path, which is reliable for
+# place. See DROP_SEGMENTS in asset_server.py.
+#
+# READ BY python3.10, WHICH HAS NO yaml MODULE. asset_server.py parses a strict
+# subset: `key:` at column 0, `  key: [a, b, c]` indented two, # comments, blank
+# lines. Anything else RAISES rather than being skipped -- a silently ignored
+# rule would read as a bad tagging job.
+
+roles:
+  # These two are anchored on a directory, not a word, so they cannot be stolen
+  # by a name: creature\icetroll is a creature, not "ice". They sit FIRST for
+  # the same reason -- first match wins, and what a thing IS outranks what it is
+  # made of. Neither tree is in MAP_TOPS, so this only changes the "all assets"
+  # scope and leaves map dressing untouched.
+  creature:  [creature\]
+  character: [character\]
+  light:    [lamppost, lantern, torch, brazier, candle, chandelier, lamp]
+  banner:   [banner, tapestry, flag, curtain, drape]
+  door:     [door, gate, portcullis]
+  stair:    [stair, steps]
+  roof:     [roof, shingle, thatch]
+  fence:    [fence, railing, picket]
+  mushroom: [mushroom, shroom, fungus]
+  bone:     [bone, skull, skeleton, ribcage]
+  crystal:  [crystal, gem, shard, geode]
+  ice:      [ice, frost, icicle, snowdrift]
+  lava:     [lava, magma, ember]
+  water:    [water, ocean, river, lake, pond, waterfall]
+  tree:     [tree, canopy, trunk, pine, oak, birch, willow, palm]
+  plant:    [bush, fern, vine, flower, ivy, weed, shrub, moss, grass, reed]
+  wall:     [wall, brick, masonry]
+  rock:     [rock, cliff, boulder, stone, crag]
+  ground:   [dirt, sand, snow, gravel, mud, floor, ground, terrain, path, road]
+  prop:     [barrel, crate, chair, table, bench, chest, cart, wagon, anvil,
+             tent, statue, urn, pot, sack, bucket, ladder, sign]

@@ -134,3 +134,8 @@ __pycache__/
 /var/blender/*.blend
 /var/blender/*.blend1
 /var/blender/*_materials.json
+/var/blender/*_doodads.json
+/var/blender/texcache/
+/var/blender/m2cache/
+/var/blender/*.html
+/var/blender/assetmeta.json

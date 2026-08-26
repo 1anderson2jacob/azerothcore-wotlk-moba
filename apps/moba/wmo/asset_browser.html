@@ -1,0 +1,1085 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WoW asset browser</title>
+<style>
+:root { color-scheme:dark; --bg:#151518; --pane:#1c1c20; --line:#2e2e34;
+        --fg:#e8e8ea; --dim:#8b8b94; --acc:#7aa7ff; --star:#ffc857;
+        --pad:14px; --gap:8px; }
+* { box-sizing:border-box; }
+body { margin:0; height:100vh; display:grid; grid-template-columns:260px 1fr;
+       background:var(--bg); color:var(--fg); overflow:hidden;
+       font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; }
+aside { background:var(--pane); border-right:1px solid var(--line);
+        display:flex; flex-direction:column; min-height:0; }
+aside h2 { font-size:11px; text-transform:uppercase; letter-spacing:.08em;
+           color:var(--dim); margin:0 0 6px; padding:0 var(--pad); }
+.kinds { display:flex; gap:var(--gap); padding:var(--pad) var(--pad) var(--gap); }
+.views { display:flex; gap:6px; padding:0 var(--pad) var(--pad);
+         border-bottom:1px solid var(--line); }
+.srch { padding:var(--pad) var(--pad) 10px; }
+.lists { display:flex; gap:5px; padding:var(--pad) var(--pad) 0; }
+.lists select { flex:1; min-width:0; background:#26262c; color:var(--fg);
+                border:1px solid var(--line); border-radius:5px;
+                padding:5px 6px; font:inherit; }
+/* flex:1 alone leaves min-width:auto, so a button cannot shrink below its own
+   text: the widest label takes more than its share (unequal widths) and the row
+   overruns the aside. min-width:0 is what actually lets them share evenly. */
+.kinds button, .views button { flex:1 1 0; min-width:0; }
+.views button { font-size:11px; padding:5px 4px; letter-spacing:-.01em; }
+.facets { display:flex; flex-direction:column; gap:7px;
+          padding:0 var(--pad) var(--pad); }
+.facets select { background:#26262c; color:var(--fg); border:1px solid var(--line);
+                 border-radius:5px; padding:5px 6px; font:inherit; flex:1;
+                 min-width:0; }
+.frow { display:flex; gap:5px; }
+.frow2 { display:flex; gap:6px; align-items:center; justify-content:space-between; }
+.xb { padding:2px 8px; line-height:1.2; }
+.facets[disabled] { opacity:.35; pointer-events:none; }
+.facets label { color:var(--dim); display:flex; gap:6px; align-items:center;
+                font-size:12px; }
+button { background:#26262c; color:var(--fg); border:1px solid var(--line);
+         border-radius:5px; padding:5px 9px; font:inherit; cursor:pointer;
+         white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+button:hover:not(:disabled) { border-color:#4a4a55; }
+button:disabled { opacity:.35; cursor:default; }
+select:disabled { opacity:.35; cursor:default; }
+button.on { background:var(--acc); border-color:var(--acc); color:#10131a; font-weight:600; }
+button.on.starred { background:var(--star); border-color:var(--star); }
+input[type=search] { width:100%; padding:7px 9px;
+       background:#26262c; border:1px solid var(--line); border-radius:5px;
+       color:var(--fg); font:inherit; }
+#tree { overflow-y:auto; flex:1; min-height:0;
+        padding:0 calc(var(--pad) - 6px) var(--pad); }
+#tree.off { opacity:.35; pointer-events:none; }
+#tree div { padding:4px 6px; border-radius:4px; cursor:pointer;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+            direction:rtl; text-align:left; }
+#tree div:hover { background:#26262c; }
+#tree .all { position:sticky; top:0; z-index:1; background:var(--pane);
+             border-bottom:1px solid var(--line); margin-bottom:4px;
+             border-radius:0; direction:ltr; }
+#tree div.on::after { content:' ×'; opacity:.7; }
+#tree .all.on::after { content:''; }
+#tree div.on { background:var(--acc); color:#10131a; }
+#tree i { color:var(--dim); font-style:normal; }
+#tree div.on i { color:#10131a; }
+main { display:flex; flex-direction:column; min-height:0; min-width:0; }
+.bar { display:flex; gap:16px; align-items:center; flex-wrap:wrap;
+       padding:10px var(--pad); border-bottom:1px solid var(--line);
+       background:var(--pane); }
+.bar label { color:var(--dim); display:flex; gap:6px; align-items:center; }
+.grid { flex:1; overflow-y:auto; padding:var(--pad); display:grid; gap:12px;
+        grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+        align-content:start; min-height:0; }
+/* No overflow:hidden. It was only ever clipping the swatch to the card's
+   corner radius, and it collapsed the cards; the children round themselves
+   instead, so nothing needs clipping. */
+.card { border:1px solid var(--line); border-radius:6px; background:#202026;
+        position:relative; display:flex; flex-direction:column; cursor:pointer;
+        min-width:0; }
+.card.star { border-color:var(--star); }
+.card[hidden] { display:none; }
+/* A ratio, not a fixed height. With a fixed 150px the view box changed SHAPE
+   with the column count -- wide and letterboxed at 2 columns, tall and narrow
+   at 10 -- which is what stretched the thumbnails. 3/2 is the old 220x150. */
+.view { aspect-ratio:3/2; width:100%; height:auto; flex:none; display:block;
+        border-radius:5px 5px 0 0; background:#5a5a5f;
+        background-repeat:repeat; background-position:0 0; }
+canvas.view { background:#101014; }
+.meta { padding:7px 9px; font-size:11px; color:var(--dim); word-break:break-all;
+        border-radius:0 0 5px 5px; line-height:1.5; }
+.meta b { color:var(--fg); font-weight:600; display:block; }
+.tag { position:absolute; top:5px; left:5px; padding:1px 5px; border-radius:4px;
+       background:#000b; color:var(--dim); font-size:10px; }
+.pin { position:absolute; top:5px; right:5px; width:22px; height:22px;
+       border-radius:4px; background:#000a; border:1px solid var(--line);
+       color:var(--dim); cursor:pointer; line-height:20px; text-align:center; }
+.card.star .pin { color:var(--star); border-color:var(--star); }
+#out { position:fixed; inset:auto 0 0 260px; max-height:55vh; overflow:auto;
+       background:#101014; border-top:1px solid var(--acc); padding:var(--pad);
+       display:none; }
+#out.show { display:block; }
+#out pre { margin:8px 0 0; white-space:pre-wrap; color:#cfe0ff; font-size:12px; }
+.err { color:#ff8f8f; padding:6px; font-size:11px; }
+.nocol { color:#ff9b9b; font-weight:600; }
+.count { color:var(--dim); margin-left:auto; }
+.empty { color:var(--dim); padding:40px; grid-column:1/-1; text-align:center; }
+#modal { position:fixed; inset:0; background:#000c; display:none;
+         align-items:center; justify-content:center; z-index:10; }
+#modal.show { display:flex; }
+.mbox { background:var(--pane); border:1px solid var(--line); border-radius:8px;
+        width:min(90vw,900px); max-height:90vh; display:flex; flex-direction:column; }
+/* The view grows by FLEX rather than a calc() against the header and footer
+   heights, which would go wrong the moment a row is added to either. */
+.mbox.full { width:100vw; max-width:none; height:100vh; max-height:none;
+             border-radius:0; border:0; }
+.mbox.full .mbody { flex:1; display:flex; flex-direction:column; min-height:0; }
+.mbox.full #mviewwrap { flex:1; min-height:0; }
+.mbox.full #mview { height:100%; }
+.mhead { display:flex; gap:14px; align-items:center; padding:12px var(--pad);
+         border-bottom:1px solid var(--line); }
+/* align-items centres each CHILD BOX, but inside those children the layout is
+   inline: a checkbox sits on its label's text baseline and the buttons sit on
+   their span's. Making the inner containers flex too is what actually centres
+   the contents -- and it also drops the whitespace between the two buttons. */
+.mhead span, .mhead label { display:flex; align-items:center; gap:6px; }
+.mhead .count { margin-left:auto; gap:8px; }
+.mhead input[type=checkbox] { margin:0; flex:none; }
+.mhead button { flex:none; }
+/* the title is the only elastic item, so it is the one that must be able to
+   shrink -- a long model name would otherwise wrap and make the row two lines
+   tall, which reads as "not centred" more than any baseline does */
+.mhead b { font-size:14px; min-width:0; white-space:nowrap;
+           overflow:hidden; text-overflow:ellipsis; }
+.mbody { padding:var(--pad); overflow:auto; }
+#mview { width:100%; height:min(60vh,520px); border-radius:6px; background:#5a5a5f;
+         background-repeat:repeat; background-position:0 0; display:block; }
+canvas#mview { background:#101014; }
+.mfoot { padding:0 var(--pad) var(--pad); color:var(--dim); font-size:12px;
+         word-break:break-all; }
+#mctl { display:flex; gap:12px; align-items:center; padding:12px 2px 0;
+        font-size:12px; color:var(--dim); flex-wrap:wrap; }
+#mctl label { display:flex; align-items:center; gap:6px; }
+#mctl input[type=checkbox] { margin:0; }
+#mctl input[type=range] { width:130px; }
+#mctl b { color:var(--fg); min-width:52px; }
+#mdims { display:flex; gap:16px; padding:10px 2px 0; font-size:12px;
+         color:var(--dim); flex-wrap:wrap; }
+#mdims b { font-weight:600; }
+#mdims .x { color:#ff6b6b; } #mdims .y { color:#7ddc7d; } #mdims .z { color:#6bb6ff; }
+</style>
+
+<aside>
+  <div class=kinds>
+    <button id=kt class=on>textures</button>
+    <button id=km>models</button>
+  </div>
+  <div class=views>
+    <button id=vb class=on>browse</button>
+    <button id=vf>list</button>
+    <button id=vh>history</button>
+  </div>
+  <div class=lists>
+    <select id=lsel title="active list"></select>
+    <button id=lnew class=xb title="new list">+</button>
+    <button id=lren class=xb title="rename list">&#9998;</button>
+    <button id=ldel class=xb title="delete list">&times;</button>
+  </div>
+  <div class=srch><input type=search id=q placeholder="filter by path..."></div>
+  <div class=facets id=facets>
+    <div class=frow><select id=frole><option value="">any role</option></select>
+      <button id=xrole class=xb title="clear role">&times;</button></div>
+    <div class=frow><select id=ftheme><option value="">any theme</option></select>
+      <button id=xtheme class=xb title="clear theme">&times;</button></div>
+    <label class=frow2>include<select id=fscope>
+      <option value=map>map assets only</option>
+      <option value=all>all assets (UI, items, NPCs)</option></select></label>
+    <label class=frow2>list facets by<select id=fsort>
+      <option value=count>quantity</option>
+      <option value=name>A &ndash; Z</option></select></label>
+  </div>
+  <h2>folders</h2>
+  <div id=tree></div>
+</aside>
+
+<main>
+  <div class=bar>
+    <label id=uvwrap>uv_scale_yd
+      <input id=uv type=range min=0.5 max=16 step=0.5 value=4><b id=uvv>4</b>
+    </label>
+    <label id=projwrap style="display:none">view
+      <select id=proj><option value=angled>angled</option>
+        <option value=front>front</option>
+        <option value=side>side</option><option value=top>top</option></select>
+    </label>
+    <label>columns
+      <select id=cols>
+        <option value=auto>auto</option>
+        <option value=2>2</option><option value=3>3</option>
+        <option value=4>4</option><option value=5>5</option>
+        <option value=6>6</option><option value=8>8</option>
+        <option value=10>10</option></select>
+    </label>
+    <label id=sortwrap style="display:none">sort
+      <select id=sort><option value=path>path</option>
+        <option value=height>height</option><option value=aspect>aspect</option>
+        <option value=tris>bound_tris</option></select>
+    </label>
+    <button id=prev>&larr;</button><span id=pg class=count></span><button id=next>&rarr;</button>
+    <span class=count><b id=nstar>0</b> starred</span>
+    <button id=exp>export yaml</button>
+    <button id=clr>clear ★</button>
+  </div>
+  <div class=grid id=grid></div>
+</main>
+
+<div id=out><b>paste into map_source.yaml</b><pre id=yaml></pre></div>
+
+<div id=modal>
+  <div class=mbox>
+    <div class=mhead>
+      <b id=mname></b>
+      <span id=mtiled style="display:none">
+        <label><input type=checkbox id=mtile checked> tiled</label></span>
+      <span id=mdimwrap style="display:none">
+        <label><input type=checkbox id=mdim> dimensions</label></span>
+      <span class=count>
+        <button id=mfull title="fullscreen (f)">&#9974;</button>
+        <button id=mstar>★</button><button id=mclose>close</button></span>
+    </div>
+    <div class=mbody><div id=mviewwrap></div>
+      <div id=mctl style="display:none">
+        <label><input type=checkbox id=mspin> spin</label>
+        <input id=mspeed type=range min=5 max=180 step=5 value=40>
+        <b id=mspeedv>40&deg;/s</b>
+        <button id=mrev title="reverse direction">&#8635;</button>
+        <button id=mreset>reset view</button>
+      </div>
+      <div id=mdims style="display:none"></div></div>
+    <div class=mfoot id=mfoot></div>
+  </div>
+</div>
+
+<script>
+const S = { kind:'texture', mode:'browse', cat:'', q:'', page:0, uv:4,
+            proj:'angled', sort:'path', role:'', theme:'', all:false,
+            fsort:'count', dims:false,
+            cols:localStorage.getItem('cols')||'auto',
+            full:localStorage.getItem('full')==='1',
+            spin:localStorage.getItem('spin')==='1',
+            spinSpeed:+(localStorage.getItem('spinSpeed')||40),
+            spinDir:+(localStorage.getItem('spinDir')||1),
+            lists:loadLists(), list:localStorage.getItem('list')||'Favorites',
+            star:new Set(),
+            hist:JSON.parse(localStorage.getItem('hist')||'[]') };
+const $ = i => document.getElementById(i);
+
+// Named lists. `star` is the ACTIVE list held as a Set -- one working copy, so
+// every existing membership test stays a Set lookup.
+function loadLists(){
+  let L=null;
+  try { L = JSON.parse(localStorage.getItem('lists')||'null'); } catch(e){}
+  if(!L || typeof L!=='object' || !Object.keys(L).length){
+    // pre-dates named lists: the single starred set becomes the default list
+    let old=[]; try { old = JSON.parse(localStorage.getItem('star')||'[]'); } catch(e){}
+    L = {Favorites: old};
+  }
+  return L;
+}
+const CELL = 220, PATCH = 32;   // card width px, yards of wall it stands for
+const HIST_MAX = 50;
+
+// Kind comes from the PATH, not the tab: favorites and history mix both, and a
+// card has to render as whatever it actually is.
+const kindOf = p => p.endsWith('.blp') ? 'texture' : 'model';
+
+function saveStar(){
+  S.lists[S.list] = [...S.star];
+  localStorage.setItem('lists', JSON.stringify(S.lists));
+  localStorage.setItem('list', S.list);
+  $('nstar').textContent = S.star.size;
+  syncControls();
+}
+
+function renderLists(){
+  const sel=$('lsel');
+  sel.innerHTML = Object.keys(S.lists).sort()
+    .map(n=>'<option value="'+n.replace(/"/g,'&quot;')+'">'+n
+            +' ('+S.lists[n].length+')</option>').join('');
+  sel.value = S.list;
+}
+
+function setList(name){
+  if(!(name in S.lists)) return;
+  S.list = name;
+  S.star = new Set(S.lists[name]);
+  saveStar(); renderLists();
+  // Choosing a list SHOWS it. Without this, picking one while browsing changed
+  // only where the star writes -- the grid never moved, so the control looked
+  // broken. setMode already re-runs go(), so this is not a second query.
+  if(S.mode !== 'favorites') setMode('favorites'); else go();
+}
+function pushHist(p){
+  S.hist = [p, ...S.hist.filter(x=>x!==p)].slice(0, HIST_MAX);
+  localStorage.setItem('hist', JSON.stringify(S.hist));
+}
+
+async function tree(){
+  $('tree').className = S.mode==='browse' ? '' : 'off';
+
+  const t = await (await fetch('/api/tree?kind='+S.kind+'&all='+(S.all?1:0)
+    + '&role='+encodeURIComponent(S.role)
+    + '&theme='+encodeURIComponent(S.theme))).json();
+  $('tree').innerHTML = '';
+  const all = document.createElement('div');
+  all.className = 'all' + (S.cat ? '' : ' on');
+  all.innerHTML = '<i>— all folders —</i>';
+  all.onclick = ()=>{ S.cat=''; S.page=0; go(); };
+  $('tree').append(all);
+  for(const [d,n] of t){
+    const e = document.createElement('div');
+    // rtl keeps the LEAF visible when a path overflows; the bidi mark stops the
+    // trailing count being reordered to the front.
+    e.innerHTML = '\u200E'+d+' <i>'+n+'</i>';
+    e.title = d+'  ('+n+')';
+    if(d===S.cat) e.className='on';
+    // Clicking the selected folder clears it, so escaping a folder never means
+    // scrolling back to the top of 2000 of them.
+    e.onclick = ()=>{ S.cat = (d===S.cat ? '' : d); S.page=0; go(); };
+    $('tree').append(e);
+  }
+}
+
+async function facets(){
+  const f = await (await fetch('/api/facets?kind='+S.kind+'&all='+(S.all?1:0)
+    + '&role='+encodeURIComponent(S.role)
+    + '&theme='+encodeURIComponent(S.theme))).json();
+  for(const [id,key,label] of [['frole','roles','role'],['ftheme','themes','theme']]){
+    const sel = $(id), keep = S[label];
+    // The server returns them by count; A-Z is a re-sort of the same list.
+    const list = S.fsort==='name'
+      ? [...f[key]].sort((a,b)=>a[0].localeCompare(b[0])) : f[key];
+    sel.innerHTML = '<option value="">any '+label+'</option>'
+      + list.map(([k,n])=>'<option value="'+k+'">'+k+' ('+n+')</option>').join('');
+    // A facet can vanish when the kind or the tree switch changes: keep the
+    // selection only if it still exists, or the UI would claim a filter the
+    // query is not applying.
+    sel.value = f[key].some(([k])=>k===keep) ? keep : '';
+    S[label] = sel.value;
+  }
+}
+
+const seen = new WeakSet();
+const io = new IntersectionObserver(es=>{
+  for(const e of es){
+    if(!e.isIntersecting || seen.has(e.target)) continue;
+    seen.add(e.target); fill(e.target);
+  }
+},{rootMargin:'300px'});
+
+function fill(card){
+  const p = card.dataset.path;
+  if(kindOf(p)==='texture'){
+    const v = card.querySelector('.view');
+    v.style.backgroundImage = 'url("/tex/'+encodeURIComponent(p)+'")';
+    sizeSwatch(v);
+  } else {
+    enqueue(card);
+  }
+}
+
+function sizeSwatch(v){
+  // Measured, not CELL: a card is only 220px wide at "auto", and the whole
+  // point of the tiling is that a card spans PATCH yards of wall whatever its
+  // width. Falls back to the constant if it is asked before layout exists,
+  // which would otherwise size every tile to 0 and show nothing.
+  const px = (v.clientWidth || CELL)*(S.uv/PATCH);
+  v.style.backgroundSize = px+'px '+px+'px';
+}
+
+function applyCols(){
+  $('grid').style.gridTemplateColumns = S.cols==='auto'
+    ? 'repeat(auto-fill,minmax('+CELL+'px,1fr))'
+    : 'repeat('+S.cols+',1fr)';
+}
+
+// Width drives both the tile size and the thumbnail's backing store, so a
+// column change has to redo both -- after layout, hence the rAF.
+function resized(){
+  requestAnimationFrame(()=>{
+    document.querySelectorAll('.card .view').forEach(v=>{
+      if(v.tagName!=='CANVAS') sizeSwatch(v); });
+    redrawThumbs();
+  });
+}
+
+function paint(g, c, proj){
+  if(!g||!c) return;
+  const w=c.width=c.clientWidth*2, h=c.height=c.clientHeight*2;
+  const ax = {front:[1,2],side:[0,2],top:[0,1]}[proj];
+  const x = c.getContext('2d');
+  x.clearRect(0,0,w,h);
+  // ONE fill PER TRIANGLE. Batching them into a single path fills the union
+  // once under nonzero winding, and overlap -- which is the only depth cue a
+  // flat silhouette has -- disappears entirely.
+  x.fillStyle='rgba(220,228,245,0.13)';
+  const s = Math.min(w,h)/1024, ox=(w-1024*s)/2, oy=(h-1024*s)/2;
+  const V=g.verts, T=g.tris;
+  for(let i=0;i<T.length;i+=3){
+    x.beginPath();
+    for(let k=0;k<3;k++){
+      const b=T[i+k]*3;
+      const px=ox+V[b+ax[0]]*s, py=h-oy-V[b+ax[1]]*s;
+      k?x.lineTo(px,py):x.moveTo(px,py);
+    }
+    x.fill();
+  }
+}
+const draw = card => paint(card._geo, card.querySelector('canvas'), S.proj);
+
+// Starring changes ONE card's state, so it updates that card in place. Calling
+// go() here rebuilt the whole grid and reset scrollTop, which threw away your
+// position on the page -- from the modal it did so in every mode.
+function toggleStar(p){
+  const on = !S.star.has(p);
+  on ? S.star.add(p) : S.star.delete(p);
+  saveStar();
+  for(const el of $('grid').querySelectorAll('.card')){
+    if(el.dataset.path !== p) continue;
+    el.classList.toggle('star', on);
+    // Hidden rather than removed: in the favorites view an unstarred card no
+    // longer belongs, but re-starring it straight afterwards has to bring it
+    // back, and a removed node cannot come back without a rebuild.
+    if(S.mode === 'favorites') el.hidden = !on;
+  }
+  if(mpath === p) $('mstar').className = on ? 'on starred' : '';
+  renderLists();
+  if(S.mode === 'favorites'){
+    $('pg').textContent = S.star.size + ' in "'+S.list+'"';
+    const left = $('grid').querySelector('.card:not([hidden])');
+    if(!left && !$('grid').querySelector('.empty'))
+      $('grid').insertAdjacentHTML('beforeend',
+        '<div class=empty>nothing yet</div>');
+    else if(left) $('grid').querySelector('.empty')?.remove();
+  }
+}
+
+function card(p){
+  const leaf = p.split('\\').pop().replace(/\.(blp|m2)$/,'');
+  const el = document.createElement('div');
+  el.className='card'+(S.star.has(p)?' star':'');
+  el.dataset.path=p;
+  el.innerHTML = (kindOf(p)==='texture'?'<div class=view></div>'
+                                       :'<canvas class=view></canvas>')
+    + (S.mode==='browse'?'':'<div class=tag>'+kindOf(p)+'</div>')
+    + '<div class=pin>★</div>'
+    + '<div class=meta><b>'+leaf+'</b>'+p+'</div>';
+  el.querySelector('.pin').onclick = ev=>{
+    ev.stopPropagation();
+    toggleStar(p);
+  };
+  el.onclick = ()=>open_(p, el);
+  return el;
+}
+
+async function go(){
+  // facets() first: it can clear a selection that no longer exists, and tree()
+  // filters folders by those same values -- the other order builds the sidebar
+  // from a value that is about to be discarded.
+  if(S.mode==='browse') await facets();
+  await tree();
+  const grid = $('grid'); grid.innerHTML=''; grid.scrollTop=0;
+  let paths, total;
+  if(S.mode==='browse'){
+    const u = '/api/query?kind='+S.kind+'&cat='+encodeURIComponent(S.cat)
+            + '&q='+encodeURIComponent(S.q)+'&page='+S.page
+            + '&role='+encodeURIComponent(S.role)
+            + '&theme='+encodeURIComponent(S.theme)+'&all='+(S.all?1:0);
+    const r = await (await fetch(u)).json();
+    paths = r.paths; total = r.total;
+    S.pages = Math.max(1, Math.ceil(total/r.page_size));
+    $('pg').textContent = total+' · page '+(S.page+1)+'/'+S.pages;
+  } else {
+    const src = S.mode==='favorites' ? [...S.star] : S.hist;
+    const terms = S.q.toLowerCase().split(' ').filter(Boolean);
+    paths = src.filter(p=>terms.every(t=>p.includes(t)));
+    total = paths.length;
+    S.pages = 1;
+    $('pg').textContent = total
+      + (S.mode==='favorites' ? ' in "'+S.list+'"' : ' viewed');
+  }
+  syncControls();
+  if(!paths.length){
+    grid.innerHTML = '<div class=empty>'
+      + (S.mode==='browse'?'nothing here':'nothing yet') + '</div>';
+    return;
+  }
+  for(const p of paths){ const el=card(p); grid.append(el); io.observe(el); }
+  const models = paths.filter(p=>kindOf(p)==='model');
+  if(models.length) meta(models);
+}
+
+async function meta(paths){
+  const m = await (await fetch('/api/meta?paths='+
+              encodeURIComponent(JSON.stringify(paths)))).json();
+  for(const el of document.querySelectorAll('.card')){
+    const d = m[el.dataset.path]; if(!d) continue;
+    el._meta = d;
+    // bound_tris 0 is the one fact that decides whether a model can ever be
+    // collision on the map: vmap4extractor skips a model without them, so it
+    // renders in the client and is absent from the server's world.
+    const col = d.bound_tris ? d.bound_tris+' col' : '<b class=nocol>no collision</b>';
+    el.querySelector('.meta').insertAdjacentHTML('beforeend',
+      '<div>h '+(d.height??'?')+' · w '+(d.width??'?')+' · a '+(d.aspect??'?')
+      +' · '+col+'</div>');
+  }
+  sortGrid();
+}
+
+function sortGrid(){
+  if(S.sort==='path') return;
+  const key = {height:c=>-(c._meta?.height??-1), aspect:c=>-(c._meta?.aspect??-1),
+               tris:c=>-(c._meta?.bound_tris??-1)}[S.sort];
+  const g=$('grid');
+  [...g.children].sort((a,b)=>key(a)-key(b)).forEach(c=>g.append(c));
+}
+
+// ------------------------------------------------------- textured 3d viewer
+// WebGL1, no libraries, TWO contexts: one bound to the modal canvas for orbiting
+// and one offscreen that every grid thumbnail is rendered through and blitted
+// from. A context per card would be 200 of them, which no browser will give.
+// Anything that fails here falls back to the flat silhouette.
+
+const VS = `
+attribute vec3 aPos; attribute vec2 aUv; attribute vec3 aNrm;
+uniform mat4 uMvp; varying vec2 vUv; varying vec3 vN;
+void main(){ vUv=aUv; vN=aNrm; gl_Position=uMvp*vec4(aPos,1.0); }`;
+const FS = `
+precision mediump float;
+varying vec2 vUv; varying vec3 vN;
+uniform sampler2D uTex; uniform float uHasTex; uniform vec3 uTint;
+void main(){
+  vec4 c = uHasTex > 0.5 ? texture2D(uTex, vUv) : vec4(0.72,0.75,0.80,1.0);
+  // Alpha TEST, not blend: doodad foliage is authored as cut-out cards, and
+  // blending them needs a depth sort this viewer deliberately does not do.
+  if (c.a < 0.35) discard;
+  float l = 0.45 + 0.55*max(dot(normalize(vN), normalize(vec3(0.4,0.6,0.9))),0.0);
+  gl_FragColor = vec4(c.rgb*l*uTint, 1.0);
+}`;
+
+function mul(a,b){ const o=new Float32Array(16);
+  for(let i=0;i<4;i++)for(let j=0;j<4;j++){ let v=0;
+    for(let k=0;k<4;k++) v+=a[k*4+j]*b[i*4+k]; o[i*4+j]=v; } return o; }
+function persp(fov,asp,n,f){ const t=1/Math.tan(fov/2), o=new Float32Array(16);
+  o[0]=t/asp; o[5]=t; o[10]=(f+n)/(n-f); o[11]=-1; o[14]=2*f*n/(n-f); return o; }
+function lookAt(e,c,u){
+  const z=[e[0]-c[0],e[1]-c[1],e[2]-c[2]];
+  let l=Math.hypot(...z)||1; z.forEach((v,i)=>z[i]=v/l);
+  const x=[u[1]*z[2]-u[2]*z[1], u[2]*z[0]-u[0]*z[2], u[0]*z[1]-u[1]*z[0]];
+  l=Math.hypot(...x)||1; x.forEach((v,i)=>x[i]=v/l);
+  const y=[z[1]*x[2]-z[2]*x[1], z[2]*x[0]-z[0]*x[2], z[0]*x[1]-z[1]*x[0]];
+  return new Float32Array([x[0],y[0],z[0],0, x[1],y[1],z[1],0, x[2],y[2],z[2],0,
+    -(x[0]*e[0]+x[1]*e[1]+x[2]*e[2]), -(y[0]*e[0]+y[1]*e[1]+y[2]*e[2]),
+    -(z[0]*e[0]+z[1]*e[1]+z[2]*e[2]), 1]);
+}
+
+const TEX_CAP = 200;          // GL textures held per context
+const THUMB_CAP = 1400;       // widest offscreen buffer, in device px
+
+function Rend(canvas){
+  const gl = canvas.getContext('webgl',{antialias:true,alpha:false,
+                                        preserveDrawingBuffer:true});
+  if(!gl) return null;
+  const mk=(t,src)=>{ const sh=gl.createShader(t); gl.shaderSource(sh,src);
+    gl.compileShader(sh);
+    if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS))
+      throw new Error(gl.getShaderInfoLog(sh)); return sh; };
+  let prog;
+  try {
+    prog=gl.createProgram();
+    gl.attachShader(prog,mk(gl.VERTEX_SHADER,VS));
+    gl.attachShader(prog,mk(gl.FRAGMENT_SHADER,FS));
+    gl.linkProgram(prog);
+    if(!gl.getProgramParameter(prog,gl.LINK_STATUS))
+      throw new Error(gl.getProgramInfoLog(prog));
+  } catch(e){ console.warn('webgl unavailable:',e); return null; }
+  const blank=gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D,blank);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,
+                new Uint8Array([200,200,205,255]));
+  return {gl, prog, canvas, blank, tex:new Map(), order:[],
+          uint:!!gl.getExtension('OES_element_index_uint'), buf:null};
+}
+
+function loadTex(R, path){
+  if(R.tex.has(path)) return R.tex.get(path);
+  const gl=R.gl;
+  const pr = new Promise(res=>{
+    const img=new Image();
+    img.onerror=()=>res(null);
+    img.onload=()=>{
+      const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+      // NO flip, and the UVs go in raw. WoW's v runs down the texture and an
+      // unflipped upload puts the image's top row at t=0, so the two already
+      // agree. blender_staging_setup.py:438 writes (u, 1.0 - v) only because
+      // Blender's V runs the other way -- copying that here inverts every model.
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,img);
+      const pot=x=>(x&(x-1))===0;
+      if(pot(img.width)&&pot(img.height)){
+        gl.generateMipmap(gl.TEXTURE_2D);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);
+      } else {
+        // WebGL1 forbids REPEAT on a non-power-of-two texture; clamping is the
+        // only legal wrap, so a tiling UV would sample the edge forever.
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+      }
+      res(t);
+    };
+    img.src='/tex/'+encodeURIComponent(path);
+  });
+  R.tex.set(path,pr); R.order.push(path);
+  while(R.order.length>TEX_CAP){
+    const old=R.order.shift();
+    const q=R.tex.get(old); R.tex.delete(old);
+    Promise.resolve(q).then(t=>{ if(t) gl.deleteTexture(t); });
+  }
+  return pr;
+}
+
+// Textures FIRST and separately, because fetching them is the only async step.
+// bindGeo below must not contain an await: three thumbnails share one renderer,
+// so yielding midway lets the next model overwrite R.buf and delete the buffers
+// this one is about to bind -- which is why only some cards used to draw.
+async function prefetch(R, g){
+  if(!g.uvs) return null;
+  return Promise.all(g.parts.map(pt => pt.tex ? loadTex(R, pt.tex) : null));
+}
+
+function bindGeo(R, g, texs){
+  const gl=R.gl;
+  if(!g.uvs || !texs) return false;
+  const maxI=Math.max.apply(null,g.tris);
+  if(maxI>65535 && !R.uint) return false;
+  const IArr = maxI>65535 ? Uint32Array : Uint16Array;
+  const itype = maxI>65535 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT;
+  const n=g.n_verts, P=new Float32Array(n*3), U=new Float32Array(n*2),
+        N=new Float32Array(n*3);
+  let mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+  for(let i=0;i<n;i++) for(let k=0;k<3;k++){
+    const v=g.verts[i*3+k]; if(v<mn[k])mn[k]=v; if(v>mx[k])mx[k]=v; }
+  const ext=Math.max(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2])||1;
+  for(let i=0;i<n;i++){
+    for(let k=0;k<3;k++){
+      P[i*3+k]=(g.verts[i*3+k]-(mn[k]+mx[k])/2)/ext;
+      N[i*3+k]=(g.norms[i*3+k]-127)/127;
+    }
+    U[i*2]  =g.uv_lo[0]+g.uvs[i*2]  /4095*g.uv_span;
+    U[i*2+1]=g.uv_lo[1]+g.uvs[i*2+1]/4095*g.uv_span;
+  }
+  if(R.buf) for(const b of R.buf) gl.deleteBuffer(b);
+  const mkbuf=(data,t)=>{ const b=gl.createBuffer();
+    gl.bindBuffer(t||gl.ARRAY_BUFFER,b);
+    gl.bufferData(t||gl.ARRAY_BUFFER,data,gl.STATIC_DRAW); return b; };
+  const bp=mkbuf(P), bu=mkbuf(U), bn=mkbuf(N);
+  const bi=mkbuf(new IArr(g.tris), gl.ELEMENT_ARRAY_BUFFER);
+  R.buf=[bp,bu,bn,bi];
+  R.parts = g.parts.map((pt,i)=>({...pt, tex: texs[i] || null}));
+  R.itype=itype; R.ibytes = itype===gl.UNSIGNED_INT?4:2;
+  R.attrs={bp,bu,bn,bi};
+  // The schematic lives in the SAME normalised space as the mesh above, so it
+  // is rebuilt per model rather than scaled at draw time.
+  const lo=[],hi=[];
+  for(let k=0;k<3;k++){ const h=(mx[k]-mn[k])/(2*ext); lo.push(-h); hi.push(h); }
+  // Grouped BY AXIS -- 4 edges each, in X, Y, Z order -- so drawBox can colour
+  // each group with one draw and every wire states which dimension it measures.
+  const L=[], corner=(i,j,k)=>[i?hi[0]:lo[0], j?hi[1]:lo[1], k?hi[2]:lo[2]];
+  const edge=(a,b)=>{ L.push(...a,...b); };
+  for(const k of [0,1]) for(const j of [0,1]) edge(corner(0,j,k),corner(1,j,k));
+  for(const i of [0,1]) for(const k of [0,1]) edge(corner(i,0,k),corner(i,1,k));
+  for(const i of [0,1]) for(const j of [0,1]) edge(corner(i,j,0),corner(i,j,1));
+  if(R.boxBuf) gl.deleteBuffer(R.boxBuf);
+  R.boxBuf = mkbuf(new Float32Array(L));
+  return true;
+}
+
+function render(R, yaw, pitch, dist, showBox){
+  const gl=R.gl, c=R.canvas; if(!R.attrs) return;
+  gl.viewport(0,0,c.width,c.height);
+  gl.clearColor(0.063,0.063,0.078,1); gl.enable(gl.DEPTH_TEST);
+  gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(R.prog);
+  const cp=Math.cos(pitch),
+        e=[Math.cos(yaw)*cp*dist, Math.sin(yaw)*cp*dist, Math.sin(pitch)*dist];
+  // 0.05/20 rather than 0.01/100: the model is normalised to about a unit and
+  // dist is clamped to 12, so a 2000:1 depth range only wasted precision.
+  const mvp=mul(persp(0.9,c.width/c.height,0.05,20), lookAt(e,[0,0,0],[0,0,1]));
+  gl.uniformMatrix4fv(gl.getUniformLocation(R.prog,'uMvp'),false,mvp);
+  const bind=(b,name,sz)=>{ const l=gl.getAttribLocation(R.prog,name);
+    if(l<0) return; gl.bindBuffer(gl.ARRAY_BUFFER,b); gl.enableVertexAttribArray(l);
+    gl.vertexAttribPointer(l,sz,gl.FLOAT,false,0,0); };
+  bind(R.attrs.bp,'aPos',3); bind(R.attrs.bu,'aUv',2); bind(R.attrs.bn,'aNrm',3);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,R.attrs.bi);
+  const hasTex=gl.getUniformLocation(R.prog,'uHasTex');
+  const tint=gl.getUniformLocation(R.prog,'uTint');
+  gl.uniform3f(tint,1,1,1);
+  for(const pt of R.parts){
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, pt.tex||R.blank);
+    gl.uniform1i(gl.getUniformLocation(R.prog,'uTex'),0);
+    gl.uniform1f(hasTex, pt.tex?1:0);
+    gl.drawElements(gl.TRIANGLES, pt.count, R.itype, pt.start*R.ibytes);
+  }
+  if(showBox && R.boxBuf) drawBox(R, tint);
+}
+
+function drawBox(R, tint){
+  const gl=R.gl;
+  const lu=gl.getAttribLocation(R.prog,'aUv'), ln=gl.getAttribLocation(R.prog,'aNrm');
+  // Constant attributes instead of arrays. The normal is set ALONG the light
+  // direction so the lambert term is exactly 1 and the tint arrives unshaded.
+  if(lu>=0){ gl.disableVertexAttribArray(lu); gl.vertexAttrib2f(lu,0,0); }
+  if(ln>=0){ gl.disableVertexAttribArray(ln); gl.vertexAttrib3f(ln,0.4,0.6,0.9); }
+  gl.uniform1f(gl.getUniformLocation(R.prog,'uHasTex'),0);
+  const lp=gl.getAttribLocation(R.prog,'aPos');
+  gl.bindBuffer(gl.ARRAY_BUFFER,R.boxBuf);
+  gl.enableVertexAttribArray(lp);
+  gl.vertexAttribPointer(lp,3,gl.FLOAT,false,0,0);
+  gl.uniform3f(tint,1.00,0.42,0.42); gl.drawArrays(gl.LINES, 0,8);   // X
+  gl.uniform3f(tint,0.49,0.86,0.49); gl.drawArrays(gl.LINES, 8,8);   // Y
+  gl.uniform3f(tint,0.42,0.71,1.00); gl.drawArrays(gl.LINES,16,8);   // Z
+}
+
+// --- the offscreen thumbnail renderer, plus its queue ----------------------
+let TV = null, TVdead = false;
+function thumbRend(){
+  if(TV || TVdead) return TV;
+  const c=document.createElement('canvas'); c.width=440; c.height=300;
+  TV=Rend(c); TVdead=!TV; return TV;
+}
+
+const Q = { list:[], busy:0, max:3 };
+function enqueue(card){ Q.list.push(card); pump(); }
+function pump(){
+  while(Q.busy<Q.max && Q.list.length){
+    const card=Q.list.shift();
+    if(!card.isConnected) continue;      // grid re-rendered under us
+    Q.busy++;
+    thumb(card).catch(()=>{}).then(()=>{ Q.busy--; pump(); });
+  }
+}
+
+async function thumb(card){
+  const p=card.dataset.path;
+  let g=card._geo;
+  if(!g){
+    g=await (await fetch('/api/model/'+encodeURIComponent(p))).json();
+    if(!card.isConnected) return;
+    if(g.error||g.empty){
+      card.querySelector('.meta').insertAdjacentHTML('beforeend',
+        '<div class='+(g.error?'err':'')+'>'+(g.error||g.note)+'</div>');
+      card._geo={empty:true};
+      return;
+    }
+    card._geo=g;
+    card.querySelector('.meta').insertAdjacentHTML('beforeend',
+      '<div>'+g.size.map(n=>n.toFixed(1)).join(' × ')+' yd &middot; '
+      + g.n_tris + (g.capped?'+':'') + ' tris</div>');
+  }
+  if(g.empty) return;
+  const c=card.querySelector('canvas'); if(!c) return;
+  const R=thumbRend();
+  const texs = R ? await prefetch(R,g) : null;
+  if(!card.isConnected) return;
+  // Everything from here down is synchronous, so no other queued model can
+  // touch the shared renderer between the bind and the blit.
+  if(!R || !bindGeo(R,g,texs)){ draw(card); return; }
+  // Shape the offscreen buffer like the card BEFORE rendering: render() takes
+  // its projection aspect from the buffer, so a fixed 440x300 source blitted
+  // into a differently shaped card is exactly how the models got stretched.
+  // Reallocation is skipped when unchanged -- every card on a page is the same
+  // size, so this costs one resize per column change, not one per card.
+  {
+    // measured off the CANVAS, the same element the blit targets -- the card's
+    // border makes card.clientWidth a different number
+    const d=Math.min(devicePixelRatio||1,2);
+    let bw=Math.max(1,Math.round(c.clientWidth*d)),
+        bh=Math.max(1,Math.round(c.clientHeight*d));
+    if(bw>THUMB_CAP){ bh=Math.max(1,Math.round(bh*THUMB_CAP/bw)); bw=THUMB_CAP; }
+    if(R.canvas.width!==bw || R.canvas.height!==bh){
+      R.canvas.width=bw; R.canvas.height=bh;
+    }
+  }
+  const v=PRESET[S.proj]||PRESET.angled;
+  render(R, v[0], v[1], 2.6);
+  const dpr=Math.min(devicePixelRatio||1,2);
+  const cw=Math.max(1,Math.round(c.clientWidth*dpr)),
+        ch=Math.max(1,Math.round(c.clientHeight*dpr));
+  c.width=cw; c.height=ch;
+  c.getContext('2d').drawImage(R.canvas,0,0,R.canvas.width,R.canvas.height,
+                               0,0,cw,ch);
+}
+
+// Re-render every thumbnail that already has geometry. Textures are cached per
+// context, so this is a re-upload and a draw, not a refetch.
+function redrawThumbs(){
+  for(const card of document.querySelectorAll('.card')){
+    if(kindOf(card.dataset.path)==='model' && card._geo && !card._geo.empty)
+      enqueue(card);
+  }
+}
+
+// --- the modal's own interactive context -----------------------------------
+const MVs = { R:null, yaw:0.9, pitch:0.35, dist:2.6 };
+function mDraw(){ if(MVs.R) render(MVs.R, MVs.yaw, MVs.pitch, MVs.dist, S.dims); }
+function mSize(){
+  const R=MVs.R; if(!R) return;
+  const dpr=Math.min(devicePixelRatio||1,2);
+  R.canvas.width=R.canvas.clientWidth*dpr;
+  R.canvas.height=R.canvas.clientHeight*dpr;
+}
+// A turntable about Z, the model's up axis. Driven by elapsed time rather than
+// a per-frame constant so the speed is the same on a 60Hz and a 120Hz display.
+let spinRAF=null, spinPrev=0;
+function spinTick(ts){
+  if(!S.spin || !MVs.R){ spinRAF=null; return; }
+  if(spinPrev) MVs.yaw += S.spinSpeed*S.spinDir*(ts-spinPrev)/1000*Math.PI/180;
+  spinPrev = ts;
+  mDraw();
+  spinRAF = requestAnimationFrame(spinTick);
+}
+function startSpin(){
+  if(spinRAF || !S.spin || !MVs.R) return;
+  spinPrev = 0;                     // first frame only sets the clock
+  spinRAF = requestAnimationFrame(spinTick);
+}
+function stopSpin(){
+  if(spinRAF) cancelAnimationFrame(spinRAF);
+  spinRAF = null;
+}
+
+function glOrbit(c){
+  let drag=null;
+  c.onmousedown=e=>{ drag=[e.clientX,e.clientY]; e.preventDefault(); };
+  addEventListener('mouseup',()=>drag=null);
+  addEventListener('mousemove',e=>{ if(!drag) return;
+    MVs.yaw   -= (e.clientX-drag[0])*0.01;
+    MVs.pitch = Math.max(-1.5,Math.min(1.5,MVs.pitch+(e.clientY-drag[1])*0.01));
+    drag=[e.clientX,e.clientY]; mDraw(); });
+  c.onwheel=e=>{ e.preventDefault();
+    MVs.dist=Math.max(0.6,Math.min(12,MVs.dist*Math.exp(e.deltaY*0.001))); mDraw(); };
+}
+function showDims(g){
+  const box=$('mdims');
+  // A model ALWAYS reserves this row and only its visibility changes. Toggling
+  // display removes it from the layout, and a centred modal then jumps by half
+  // the height difference on every click.
+  if(!g){ box.style.display='none'; return; }
+  const [x,y,z]=g.size;
+  box.innerHTML = '<span class=x>&#9473; X <b>'+x.toFixed(2)+'</b> yd</span>'
+    + '<span class=y>&#9473; Y <b>'+y.toFixed(2)+'</b> yd</span>'
+    + '<span class=z>&#9473; Z <b>'+z.toFixed(2)+'</b> yd (height)</span>'
+    + '<span>' + g.n_verts + ' verts &middot; ' + g.n_tris
+    + (g.capped?'+':'') + ' tris</span>';
+  box.style.display='flex';
+  box.style.visibility = S.dims ? 'visible' : 'hidden';
+}
+$('mdim') && ($('mdim').onchange = e=>{ S.dims=e.target.checked;
+  showDims(mgeo); mDraw(); });
+const PRESET = {angled:[0.9,0.35], front:[0,0.15],
+                side:[Math.PI/2,0.15], top:[0,1.45]};
+
+// ------------------------------------------------------------------- modal
+
+let mpath = null, mgeo = null;
+function open_(p, el){
+  mpath = p; pushHist(p);
+  $('mname').textContent = p.split('\\').pop();
+  $('mfoot').textContent = p;
+  $('mstar').className = S.star.has(p)?'on starred':'';
+  // Shown FIRST: mtile() reads clientWidth, and a display:none modal measures
+  // 0, which silently sized every tile to 0px.
+  $('modal').classList.add('show');
+  document.querySelector('.mbox').classList.toggle('full', S.full);
+  $('mfull').classList.toggle('on', S.full);
+  const wrap = $('mviewwrap');
+  if(kindOf(p)==='texture'){
+    $('mtiled').style.display=''; $('mdimwrap').style.display='none';
+    $('mdims').style.display='none'; $('mctl').style.display='none';
+    stopSpin(); MVs.R=null;
+    wrap.innerHTML = '<div id=mview></div>';
+    mtile();
+  } else {
+    $('mtiled').style.display='none'; $('mdimwrap').style.display='';
+    $('mctl').style.display='flex';
+    wrap.innerHTML = '<canvas id=mview></canvas>';
+    const show = g => { mgeo = g;
+      requestAnimationFrame(async ()=>{
+        const c=$('mview');
+        MVs.R = MVs.R && MVs.R.canvas===c ? MVs.R : Rend(c);
+        const texs = MVs.R ? await prefetch(MVs.R,g) : null;
+        if(MVs.R && bindGeo(MVs.R,g,texs)){
+          mSize(); glOrbit(c); showDims(g); setPreset(S.proj); startSpin();
+        } else { MVs.R=null; showDims(null); paint(g,c,S.proj);
+                 $('mctl').style.display='none'; }
+      }); };
+    if(el && el._geo) show(el._geo);
+    else fetch('/api/model/'+encodeURIComponent(p)).then(r=>r.json()).then(g=>{
+      if(!g.error && !g.empty) show(g); });
+  }
+}
+function mtile(){
+  const v = $('mview'); if(!v||kindOf(mpath)!=='texture') return;
+  v.style.backgroundImage = 'url("/tex/'+encodeURIComponent(mpath)+'")';
+  if($('mtile').checked){
+    // The modal is a wider window on the same wall, so one tile has to keep the
+    // grid's yards-per-pixel or the repeat rate would read differently here.
+    const px = v.clientWidth*(S.uv/PATCH);
+    v.style.backgroundSize = px+'px '+px+'px';
+    v.style.backgroundRepeat='repeat';
+  } else {
+    v.style.backgroundSize='contain';
+    v.style.backgroundRepeat='no-repeat';
+  }
+}
+function setFull(on){
+  S.full = on;
+  localStorage.setItem('full', on?'1':'0');
+  document.querySelector('.mbox').classList.toggle('full', on);
+  $('mfull').classList.toggle('on', on);
+  if(!mpath) return;
+  // The canvas backing store and the tile size are both derived from the
+  // element's measured width, so both have to be redone AFTER the relayout.
+  requestAnimationFrame(()=>{
+    if(kindOf(mpath)==='texture') mtile();
+    else { mSize(); mDraw(); }
+  });
+}
+
+function mclose(){ stopSpin(); $('modal').classList.remove('show');
+                   mpath=mgeo=null; MVs.R=null;
+                   if(S.mode==='history') go(); }
+$('mclose').onclick = mclose;
+$('mtile').onchange = mtile;
+$('mstar').onclick = ()=>{ if(mpath) toggleStar(mpath); };
+$('mspin').onchange = e=>{ S.spin=e.target.checked;
+  localStorage.setItem('spin', S.spin?'1':'0');
+  S.spin ? startSpin() : stopSpin(); };
+$('mspeed').oninput = e=>{ S.spinSpeed=+e.target.value;
+  localStorage.setItem('spinSpeed', S.spinSpeed); speedLabel(); };
+$('mrev').onclick = ()=>{ S.spinDir = -S.spinDir;
+  localStorage.setItem('spinDir', S.spinDir); speedLabel(); };
+$('mreset').onclick = ()=>{ MVs.dist=2.6; setPreset(S.proj); };
+function speedLabel(){
+  $('mspeedv').textContent = S.spinSpeed+'\u00B0/s '
+    + (S.spinDir>0 ? '\u21BB' : '\u21BA');
+}
+$('mspin').checked = S.spin; $('mspeed').value = S.spinSpeed; speedLabel();
+$('mfull').onclick = ()=>setFull(!S.full);
+$('modal').onclick = e=>{ if(e.target===$('modal')) mclose(); };
+addEventListener('keydown', e=>{
+  if(e.key==='Escape') return mclose();
+  // ignore while a field has focus, or typing "f" in the search box would
+  // fullscreen the modal
+  if(/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+  if(e.key==='f' && $('modal').classList.contains('show')) setFull(!S.full);
+});
+
+// ------------------------------------------------------------------ export
+
+function block(kind){
+  const list=[...S.star].filter(p=>kindOf(p)===kind);
+  if(!list.length) return '';
+  if(kind==='texture')
+    return '# materials:\n'+list.map(p=>'    '
+      + p.split('\\').pop().replace(/\.blp$/,'')
+      +": {texture: '"+p+"', uv_scale_yd: "+S.uv+'}').join('\n');
+  return '# dressing.families:\n      family_name:\n        height_yd: 5.0\n'
+       + '        models:\n'
+       + list.map(p=>"          - '"+p+"'").join('\n');
+}
+function yaml(){
+  const out=[block('texture'),block('model')].filter(Boolean);
+  return out.length?out.join('\n\n'):'# nothing starred';
+}
+
+// ------------------------------------------------------------------- wiring
+
+function setKind(k){
+  S.kind=k; S.cat=''; S.page=0; S.role=''; S.theme='';
+  $('kt').classList.toggle('on',k==='texture');
+  $('km').classList.toggle('on',k==='model');
+  chrome(); go();
+}
+function setMode(m){
+  S.mode=m; S.page=0;
+  for(const [id,v] of [['vb','browse'],['vf','favorites'],['vh','history']])
+    $(id).classList.toggle('on', m===v);
+  chrome(); go();
+}
+// Anything that cannot do something is disabled, not merely ignored on click.
+// Paging past the last page used to "work" and walked to 3/1, 4/1, ...
+function syncControls(){
+  $('prev').disabled = S.mode!=='browse' || S.page<=0;
+  $('next').disabled = S.mode!=='browse' || S.page>=(S.pages||1)-1;
+  $('clr').disabled  = S.star.size===0;
+  $('exp').disabled  = S.star.size===0;
+}
+
+function chrome(){
+  // Favorites and history mix kinds, so both controls stay live there.
+  const mixed = S.mode!=='browse';
+  // disabled on the CONTROLS, not just opacity on the wrapper: a faded select
+  // still takes clicks and still opens.
+  $('facets').toggleAttribute('disabled', mixed);
+  for(const id of ['frole','ftheme','fscope','fsort','xrole','xtheme'])
+    $(id).disabled = mixed;
+  $('uvwrap').style.display   = (mixed||S.kind==='texture')?'':'none';
+  $('projwrap').style.display = (mixed||S.kind==='model')?'':'none';
+  $('sortwrap').style.display = (mixed||S.kind==='model')?'':'none';
+  $('prev').style.display = $('next').style.display = mixed?'none':'';
+}
+$('kt').onclick=()=>setKind('texture');
+$('km').onclick=()=>setKind('model');
+$('vb').onclick=()=>setMode('browse');
+$('vf').onclick=()=>setMode('favorites');
+$('vh').onclick=()=>setMode('history');
+let t, rz; $('q').oninput=e=>{ clearTimeout(t);
+  t=setTimeout(()=>{ S.q=e.target.value; S.page=0; go(); },200); };
+$('uv').oninput=e=>{ S.uv=parseFloat(e.target.value); $('uvv').textContent=S.uv;
+  document.querySelectorAll('.card .view').forEach(v=>{
+    if(v.tagName!=='CANVAS') sizeSwatch(v); });
+  mtile(); };
+function setPreset(k){ const p=PRESET[k]; if(!p) return;
+  MVs.yaw=p[0]; MVs.pitch=p[1]; mDraw(); }
+$('proj').onchange=e=>{ S.proj=e.target.value;
+  redrawThumbs();                    // NOT paint(): that is the silhouette
+  if(MVs.R) setPreset(S.proj);
+  else if(mgeo) paint(mgeo,$('mview'),S.proj); };
+$('sort').onchange=e=>{ S.sort=e.target.value; sortGrid(); };
+$('cols').onchange=e=>{ S.cols=e.target.value;
+  localStorage.setItem('cols',S.cols); applyCols(); resized(); };
+addEventListener('resize', ()=>{ clearTimeout(rz);
+  rz=setTimeout(resized, 200); });
+$('frole').onchange=e=>{ S.role=e.target.value; S.cat=''; S.page=0; go(); };
+$('ftheme').onchange=e=>{ S.theme=e.target.value; S.cat=''; S.page=0; go(); };
+$('xrole').onclick=()=>{ S.role=''; S.cat=''; S.page=0; go(); };
+$('xtheme').onclick=()=>{ S.theme=''; S.cat=''; S.page=0; go(); };
+$('fscope').onchange=e=>{ S.all=e.target.value==='all'; S.cat=''; S.page=0; go(); };
+$('fsort').onchange=e=>{ S.fsort=e.target.value; go(); };
+$('prev').onclick=()=>{ if(S.page>0){ S.page--; go(); } };
+$('next').onclick=()=>{ if(S.page<(S.pages||1)-1){ S.page++; go(); } };
+$('exp').onclick=()=>{ $('yaml').textContent=yaml(); $('out').classList.toggle('show'); };
+$('lsel').onchange = e=>setList(e.target.value);
+$('lnew').onclick = ()=>{
+  const n=(prompt('Name for the new list:')||'').trim();
+  if(!n) return;
+  if(n in S.lists) return setList(n);
+  S.lists[n]=[]; setList(n);
+};
+$('lren').onclick = ()=>{
+  const n=(prompt('Rename "'+S.list+'" to:', S.list)||'').trim();
+  if(!n || n===S.list) return;
+  if(n in S.lists && !confirm('"'+n+'" exists. Merge into it?')) return;
+  const merged=[...new Set([...(S.lists[n]||[]), ...S.lists[S.list]])];
+  delete S.lists[S.list];
+  S.lists[n]=merged; setList(n);
+};
+$('ldel').onclick = ()=>{
+  const names=Object.keys(S.lists);
+  if(names.length<2) return alert('That is the only list.');
+  if(!confirm('Delete "'+S.list+'" and its '+S.lists[S.list].length+' items?')) return;
+  delete S.lists[S.list];
+  setList(Object.keys(S.lists).sort()[0]);
+};
+$('clr').onclick=()=>{
+  if(!S.star.size) return;
+  if(!confirm('Remove all '+S.star.size+' items from "'+S.list+'"? '
+              +'This cannot be undone.')) return;
+  S.star.clear(); saveStar(); go(); };
+$('cols').value = S.cols; applyCols();
+if(!(S.list in S.lists)) S.list = Object.keys(S.lists).sort()[0];
+S.star = new Set(S.lists[S.list]);
+renderLists(); saveStar(); chrome(); go();
+</script>
