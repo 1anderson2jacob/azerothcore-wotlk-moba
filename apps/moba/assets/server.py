@@ -1,8 +1,8 @@
 #!/usr/bin/env python3.10
 """Browse every texture and model in the client archives, from a browser.
 
-    asset_server.py [--port 8765]      then open http://127.0.0.1:8765/
-    asset_server.py --lan              also reachable from the local network
+    server.py [--port 8765]      then open http://127.0.0.1:8765/
+    server.py --lan              also reachable from the local network
 
 Decodes ON DEMAND. The archives hold ~110k usable textures; decoding them all
 up front is about 9 GB, so nothing is converted until something asks to see it.
@@ -21,9 +21,17 @@ WBS      = os.environ.get("WBS_ROOT", os.path.expanduser("~/tools/blender-wow-st
 VAR      = os.path.abspath(os.path.join(HERE, "../../../var/blender"))
 TEXCACHE = os.environ.get("TEXCACHE", os.path.join(VAR, "texcache"))
 M2CACHE  = os.environ.get("M2CACHE",  os.path.join(VAR, "m2cache"))
+WEB      = os.path.join(HERE, "web")
+# mpq_tool belongs to the map pipeline and is shared, not copied. This tool sits
+# beside that directory rather than inside it -- it browses client assets for any
+# purpose and is not part of building a WMO.
+WMO      = os.path.abspath(os.path.join(HERE, "..", "wmo"))
+MIME     = {".html": "text/html; charset=utf-8", ".css": "text/css",
+            ".js": "application/javascript; charset=utf-8"}
 METACACHE = os.path.join(os.path.dirname(TEXCACHE), "assetmeta.json")
 
 sys.path.insert(0, HERE)
+sys.path.insert(0, WMO)
 sys.path.insert(0, os.path.join(WBS, "io_scene_wmo"))
 sys.path.insert(0, os.path.join(WBS, "io_scene_wmo/third_party"))
 sys.path.insert(0, os.path.join(WBS, "io_scene_wmo/pywowlib/blp/BLP2PNG"))
@@ -34,6 +42,11 @@ import mpq_tool
 # silhouette, and a 40k-triangle model reads identically to its first 4k.
 TRI_CAP  = 4000
 PAGE     = 200
+
+# Bumped whenever a cached record's SHAPE changes. A stale assetmeta.json is
+# served verbatim by the `if path in _META` fast path, so without this a schema
+# change silently keeps handing out the old fields.
+META_VERSION = 2
 
 _LOCK = threading.Lock()
 _ARC  = []
@@ -238,29 +251,58 @@ class Index:
         return ""
 
     def pool(self, kind, cat, show_all):
+        """A folder means its WHOLE SUBTREE. Matching it exactly made every
+        intermediate directory useless -- world\\azeroth\\duskwood holds no files
+        of its own, so it was not even listable, and "all of Duskwood" could not
+        be asked for. An explicit folder also overrides the scope filter."""
         if cat:
-            return self.by_dir.get((kind, cat), [])
-        out = [p for (k, d), v in self.by_dir.items()
-               if k == kind and (show_all or d.split("\\")[0] in MAP_TOPS)
-               for p in v]
+            pre = cat + "\\"
+            out = [p for (k, d), v in self.by_dir.items()
+                   if k == kind and (d == cat or d.startswith(pre))
+                   for p in v]
+        else:
+            out = [p for (k, d), v in self.by_dir.items()
+                   if k == kind and (show_all or d.split("\\")[0] in MAP_TOPS)
+                   for p in v]
         out.sort()
         return out
 
-    def tree(self, kind, show_all, role="", theme=""):
-        """Counts reflect the active facets, and a folder that keeps nothing is
-        dropped -- a sidebar listing folders the grid cannot show is a list of
-        dead ends."""
-        out = []
+    def folders(self, kind, show_all, at, role="", theme="", nf=None):
+        """One level of the tree under `at`, with counts rolled up from every
+        descendant. A flat list of 2160 full paths was unusable: 921 of them
+        shared a leaf name, and `trees` alone appeared in 52 places."""
+        pre = at + "\\" if at else ""
+        kids, total, here = {}, 0, 0
         for (k, d), v in self.by_dir.items():
-            if k != kind or not (show_all or d.split("\\")[0] in MAP_TOPS):
+            if k != kind:
                 continue
-            n = sum(1 for p in v if (not role or self.role[p] == role)
-                    and (not theme or self.theme[p] == theme))
-            if n:
-                out.append((d, n))
-        return sorted(out, key=lambda kv: kv[0])
+            if at:
+                if not (d == at or d.startswith(pre)):
+                    continue
+            elif not (show_all or d.split("\\")[0] in MAP_TOPS):
+                continue
+            keep = [p for p in v if (not role or self.role[p] == role)
+                    and (not theme or self.theme[p] == theme)]
+            if nf and keep:
+                ensure_meta(kind, keep)
+                keep = [p for p in keep if match_meta(kind, p, nf)]
+            n = len(keep)
+            if not n:
+                continue
+            total += n
+            rest = d[len(pre):]
+            if not rest:                       # assets sitting in `at` itself
+                here += n
+                continue
+            seg = rest.split("\\")[0]
+            kid = kids.setdefault(seg, [0, 0])
+            kid[0] += n
+            if "\\" in rest:
+                kid[1] += 1                    # has folders of its own
+        return {"at": at, "total": total, "here": here,
+                "children": [[k, v[0], bool(v[1])] for k, v in sorted(kids.items())]}
 
-    def facets(self, kind, show_all, role="", theme=""):
+    def facets(self, kind, show_all, role="", theme="", nf=None, paths=None):
         """Each list is narrowed by the OTHER facet, never by itself.
 
         Narrowing by itself would leave the chosen value as the only option.
@@ -268,8 +310,13 @@ class Index:
         a playable race, so its models live under character\\ and the pair
         matched nothing. An option that cannot return a row is a dead end."""
         rc, tc = {}, {}
-        for p in self.pool(kind, "", show_all):
-            r, t = self.role[p], self.theme[p]
+        pool = ([p for p in paths if self.kind_of(p) == kind]
+                if paths is not None else self.pool(kind, "", show_all))
+        if nf:
+            ensure_meta(kind, pool)
+            pool = [p for p in pool if match_meta(kind, p, nf)]
+        for p in pool:
+            r, t = self.role.get(p, ""), self.theme.get(p, "")
             if not theme or t == theme:
                 rc[r] = rc.get(r, 0) + 1
             if not role or r == role:
@@ -278,15 +325,29 @@ class Index:
                                key=lambda kv: -kv[1])
         return {"roles": top(rc), "themes": top(tc)}
 
-    def query(self, kind, cat, q, page, role, theme, show_all):
-        paths = self.pool(kind, cat, show_all)
+    @staticmethod
+    def kind_of(p):
+        return "texture" if p.endswith(".blp") else "model"
+
+    def query(self, kind, cat, q, page, role, theme, show_all, nf=None,
+              paths=None):
+        """`paths` replaces the archive pool with a caller-supplied set -- a
+        saved list -- so every filter below works on it unchanged. Its ORDER is
+        kept, because history is most-recent-first and sorting would lose it."""
+        if paths is not None:
+            paths = [p for p in paths if self.kind_of(p) == kind]
+        else:
+            paths = self.pool(kind, cat, show_all)
         if role:
-            paths = [p for p in paths if self.role[p] == role]
+            paths = [p for p in paths if self.role.get(p) == role]
         if theme:
-            paths = [p for p in paths if self.theme[p] == theme]
+            paths = [p for p in paths if self.theme.get(p) == theme]
         if q:
             terms = q.lower().split()
             paths = [p for p in paths if all(t in p for t in terms)]
+        if nf:
+            ensure_meta(kind, paths)
+            paths = [p for p in paths if match_meta(kind, p, nf)]
         total = len(paths)
         return total, paths[page * PAGE:(page + 1) * PAGE]
 
@@ -410,35 +471,158 @@ def model_geometry(path):
             "textures": sorted({p["tex"] for p in parts if p["tex"]})}
 
 
+def vertex_extent(path, nv, ofs):
+    """True xyz extent from the vertex block. 0.42 ms and EXACT, where box_a --
+    the only header box a collisionless model fills in -- is off by 2654% on
+    wolvar_coals02. M2Vertex is 48 bytes and position is its first 12."""
+    import struct
+    if not nv or nv > 2000000:
+        return None
+    need = ofs + nv * 48
+    storm, handles = archives()
+    with _LOCK:
+        d = mpq_tool.read(storm, handles, path, need)
+    if not d or len(d) < need:
+        return None
+    lo = [1e30] * 3
+    hi = [-1e30] * 3
+    for i in range(nv):
+        for k, v in enumerate(struct.unpack_from("<3f", d, ofs + i * 48)):
+            if v < lo[k]:
+                lo[k] = v
+            if v > hi[k]:
+                hi[k] = v
+    return [round(hi[k] - lo[k], 3) for k in range(3)]
+
+
 def model_meta(path):
-    """Cheap header facts, cached to disk. bound_tris is load-bearing: a model
-    with zero renders in the client but never reaches the vmaps."""
+    """bound_tris is load-bearing: a model with zero renders in the client but
+    never reaches the vmaps.
+
+    height/width/aspect come from the VERTEX extent, not a header box, so they
+    describe what you actually see and exist for collisionless models too.
+    scale_h is separate on purpose -- gen_blockout.py divides by box_b, falling
+    back to box_a (gen_blockout.py:343-366), so the number that sizes a doodad
+    on the map is not always the number your eye judges."""
     if path in _META:
         return _META[path]
     import struct
     storm, handles = archives()
     size = struct.calcsize(mpq_tool.M2_FMT)
     with _LOCK:
-        d = mpq_tool.read(storm, handles, path, size)
+        head = mpq_tool.read(storm, handles, path, size)
     rec = {"bound_tris": None}
-    if d and len(d) >= size:
-        v = struct.unpack(mpq_tool.M2_FMT, d[:size])
-        if v[0] == b"MD20":
-            fl = v[43:57]
-            a, b = fl[7:10], fl[10:13]
-            rec = {"bound_tris": v[57],
-                   "box": [round(c, 3) for c in list(a) + list(b)],
-                   "height": round(b[2] - a[2], 3),
-                   "width": round(max(b[0] - a[0], b[1] - a[1]), 3)}
-            rec["aspect"] = round(rec["width"] / rec["height"], 3) if rec["height"] else None
+    if head and len(head) >= size and head[:4] == b"MD20":
+        v = struct.unpack(mpq_tool.M2_FMT, head[:size])
+        fl = v[43:57]
+        ra, rb = fl[0:3], fl[3:6]
+        ca, cb = fl[7:10], fl[10:13]
+        rec = {"bound_tris": v[57]}
+        scale_h = (cb[2] - ca[2]) or (rb[2] - ra[2])
+        rec["scale_h"] = round(scale_h, 3) if scale_h else None
+        nv, ofs = struct.unpack_from("<II", head, 0x3C)
+        ext = vertex_extent(path, nv, ofs)
+        if ext:
+            rec["size"] = ext
+            rec["height"] = ext[2]
+            rec["width"] = round(max(ext[0], ext[1]), 3)
+            rec["aspect"] = (round(rec["width"] / rec["height"], 3)
+                             if rec["height"] else None)
     _META[path] = rec
     return rec
+
+def blp_meta(path):
+    """Size and alpha depth from a BLP2 header -- 20 bytes, no decode. Alpha
+    depth is what separates a cut-out foliage card from an opaque surface."""
+    if path in _META:
+        return _META[path]
+    import struct
+    storm, handles = archives()
+    with _LOCK:
+        d = mpq_tool.read(storm, handles, path, 20)
+    rec = {"w": None}
+    if d and len(d) >= 20 and d[:4] == b"BLP2":
+        _, _, _, adepth, _, mips, w, h = struct.unpack_from("<4sIBBBBII", d, 0)
+        rec = {"w": w, "h": h, "alpha": adepth, "mips": mips,
+               "res": min(w, h)}
+    _META[path] = rec
+    return rec
+
+
+def meta_of(kind, path):
+    return blp_meta(path) if kind == "texture" else model_meta(path)
+
+
+def ensure_meta(kind, paths):
+    """Populate the cache for exactly the paths about to be filtered. A whole
+    sweep is 16 s for every texture but only 2 s for the map trees, so paying
+    per scope beats paying once for assets that will never be looked at."""
+    todo = [p for p in paths if p not in _META]
+    if not todo:
+        return
+    for p in todo:
+        meta_of(kind, p)
+    save_meta()
+
+
+NUM_KEYS = ("hmin", "hmax", "amin", "amax", "res")
+STR_KEYS = ("col", "alpha")
+
+
+def numeric_filter(src):
+    """Coerce a raw filter mapping ONCE, wherever it came from. An <input>
+    yields strings, and a string reaching match_meta compares against a float
+    and raises -- which the GET path avoided only because it parsed separately."""
+    out = {}
+    for k in NUM_KEYS:
+        v = src.get(k)
+        if v in (None, ""):
+            continue
+        try:
+            out[k] = float(v)
+        except (TypeError, ValueError):
+            pass
+    for k in STR_KEYS:
+        if src.get(k):
+            out[k] = str(src[k])
+    return out
+
+
+def match_meta(kind, path, f):
+    """f: the numeric filter dict. Absent keys never exclude anything."""
+    if not f:
+        return True
+    m = _META.get(path) or {}
+    if kind == "model":
+        h = m.get("height")
+        if f.get("hmin") is not None and (h is None or h < f["hmin"]):
+            return False
+        if f.get("hmax") is not None and (h is None or h > f["hmax"]):
+            return False
+        a = m.get("aspect")
+        if f.get("amin") is not None and (a is None or a < f["amin"]):
+            return False
+        if f.get("amax") is not None and (a is None or a > f["amax"]):
+            return False
+        if f.get("col") == "yes" and not m.get("bound_tris"):
+            return False
+        if f.get("col") == "no" and m.get("bound_tris"):
+            return False
+    else:
+        r = m.get("res")
+        if f.get("res") is not None and (r is None or r < f["res"]):
+            return False
+        if f.get("alpha") == "yes" and not m.get("alpha"):
+            return False
+        if f.get("alpha") == "no" and m.get("alpha"):
+            return False
+    return True
 
 
 def save_meta():
     try:
         with open(METACACHE, "w") as fh:
-            json.dump(_META, fh)
+            json.dump(dict(_META, __v=META_VERSION), fh)
     except OSError:
         pass
 
@@ -467,26 +651,42 @@ class Handler(http.server.BaseHTTPRequestHandler):
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
         one = lambda k, d="": (q.get(k) or [d])[0]
+
+        nf = numeric_filter({k: one(k) for k in NUM_KEYS + STR_KEYS})
+
         try:
-            if u.path == "/":
-                with open(os.path.join(HERE, "asset_browser.html"), "rb") as fh:
-                    return self.send(200, fh.read(), "text/html; charset=utf-8")
-            if u.path == "/api/tree":
-                return self.json(self.index.tree(one("kind", "texture"),
-                                                 one("all") == "1",
-                                                 one("role"), one("theme")))
+            if u.path == "/" or u.path.startswith("/web/"):
+                name = "index.html" if u.path == "/" else u.path[5:]
+                # A filename, optionally under one of two NAMED directories.
+                # Both are whitelisted literals rather than a wildcard segment,
+                # so no input can walk out of WEB however it is encoded.
+                if not re.fullmatch(r"(?:(?:css|js)/)?[A-Za-z0-9_-]+\.[A-Za-z0-9]+",
+                                    name):
+                    return self.send(404, b"not found", "text/plain")
+                fp = os.path.join(WEB, name)
+                if not os.path.isfile(fp):
+                    return self.send(404, b"not found", "text/plain")
+                with open(fp, "rb") as fh:
+                    return self.send(200, fh.read(),
+                                     MIME.get(os.path.splitext(name)[1],
+                                              "text/plain"))
+            if u.path == "/api/folders":
+                return self.json(self.index.folders(
+                    one("kind", "texture"), one("all") == "1", one("at"),
+                    one("role"), one("theme"), nf))
             if u.path == "/api/facets":
                 return self.json(self.index.facets(one("kind", "texture"),
                                                    one("all") == "1",
-                                                   one("role"), one("theme")))
+                                                   one("role"), one("theme"), nf))
             if u.path == "/api/query":
                 total, paths = self.index.query(
                     one("kind", "texture"), one("cat"), one("q"),
                     int(one("page", "0")), one("role"), one("theme"),
-                    one("all") == "1")
+                    one("all") == "1", nf)
                 return self.json({"total": total, "page_size": PAGE, "paths": paths})
             if u.path == "/api/meta":
-                return self.json({p: model_meta(p)
+                kind = one("kind", "model")
+                return self.json({p: meta_of(kind, p)
                                   for p in json.loads(one("paths", "[]"))})
             if u.path.startswith("/tex/"):
                 path = urllib.parse.unquote(u.path[5:])
@@ -499,6 +699,33 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 path = urllib.parse.unquote(u.path[11:])
                 return self.json(model_geometry(path))
         except Exception as exc:                     # one bad asset is not fatal
+            return self.json({"error": "%s: %s" % (type(exc).__name__, exc)}, 500)
+        self.send(404, b"not found", "text/plain")
+
+
+    def do_POST(self):
+        """Same filters, but over a set of paths in the body. A saved list can
+        run to hundreds of entries, which is past what belongs in a URL."""
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(n) or b"{}")
+        except (ValueError, TypeError):
+            return self.json({"error": "bad request body"}, 400)
+        try:
+            paths = [p for p in body.get("paths", []) if isinstance(p, str)]
+            kind = body.get("kind", "texture")
+            nf = numeric_filter(body)
+            if self.path.startswith("/api/query"):
+                total, out = self.index.query(
+                    kind, "", body.get("q", ""), int(body.get("page", 0)),
+                    body.get("role", ""), body.get("theme", ""), True, nf, paths)
+                return self.json({"total": total, "page_size": PAGE,
+                                  "paths": out})
+            if self.path.startswith("/api/facets"):
+                return self.json(self.index.facets(
+                    kind, True, body.get("role", ""), body.get("theme", ""),
+                    nf, paths))
+        except Exception as exc:
             return self.json({"error": "%s: %s" % (type(exc).__name__, exc)}, 500)
         self.send(404, b"not found", "text/plain")
 
@@ -533,10 +760,15 @@ def main(argv):
     if os.path.isfile(METACACHE):
         try:
             with open(METACACHE) as fh:
-                _META.update(json.load(fh))
+                cached = json.load(fh)
+            if cached.pop("__v", None) == META_VERSION:
+                _META.update(cached)
+            else:
+                print("meta cache is from an older schema, rebuilding",
+                      file=sys.stderr)
         except (OSError, ValueError):
             pass
-    tags = load_tags(os.path.join(HERE, "asset_tags.yaml"))
+    tags = load_tags(os.path.join(HERE, "tags.yaml"))
     print("indexing archives ...", file=sys.stderr)
     Handler.index = Index(tags["roles"])
     n_t = sum(len(v) for (k, _), v in Handler.index.by_dir.items() if k == "texture")

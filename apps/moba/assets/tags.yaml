@@ -8,9 +8,9 @@
 # why `tree` sits above `rock`.
 #
 # Themes are NOT here -- they are derived from the path, which is reliable for
-# place. See DROP_SEGMENTS in asset_server.py.
+# place. See DROP_SEGMENTS in server.py.
 #
-# READ BY python3.10, WHICH HAS NO yaml MODULE. asset_server.py parses a strict
+# READ BY python3.10, WHICH HAS NO yaml MODULE. server.py parses a strict
 # subset: `key:` at column 0, `  key: [a, b, c]` indented two, # comments, blank
 # lines. Anything else RAISES rather than being skipped -- a silently ignored
 # rule would read as a bad tagging job.

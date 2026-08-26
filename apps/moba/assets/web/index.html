@@ -1,0 +1,172 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- Without this a phone lays the page out at ~980px and scales it down, so
+     every max-width media query silently never matches. -->
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WoW asset browser</title>
+<link rel="stylesheet" href="/web/css/style.css">
+<aside>
+  <div class=kinds>
+    <button id=kt class=on>textures</button>
+    <button id=km>models</button>
+  </div>
+  <div class=views>
+    <button id=vb class=on>browse</button>
+    <button id=vf>list</button>
+    <button id=vh>history</button>
+  </div>
+  <div class=lists>
+    <select id=lsel title="active list"></select>
+    <button id=lnew class=xb title="new list">+</button>
+    <button id=lren class=xb title="rename list">&#9998;</button>
+    <button id=ldel class=xb title="delete list">&times;</button>
+  </div>
+  <div class=srch><input type=search id=q placeholder="filter by path..."></div>
+  <div class=facets id=facets>
+    <div class=frow><select id=frole><option value="">any role</option></select>
+      <button id=xrole class=xb title="clear role">&times;</button></div>
+    <div class=frow><select id=ftheme><option value="">any theme</option></select>
+      <button id=xtheme class=xb title="clear theme">&times;</button></div>
+    <label class=frow2>include<select id=fscope>
+      <option value=map>map assets only</option>
+      <option value=all>all assets (UI, items, NPCs)</option></select></label>
+    <label class=frow2>list facets by<select id=fsort>
+      <option value=count>quantity</option>
+      <option value=name>A &ndash; Z</option></select></label>
+  </div>
+  <div class=nums id=nums>
+    <div id=nmodel>
+      <label>height <input id=fhmin type=number min=0 placeholder=min>
+        <span>&ndash;</span> <input id=fhmax type=number min=0 placeholder=max> yd
+        <button id=fhclear type=button class=xb title="clear height">&times;</button></label>
+      <label>collision <select id=fcol><option value="">any</option>
+        <option value=yes>has collision</option>
+        <option value=no>none (floor safe)</option></select></label>
+    </div>
+    <div id=ntex>
+      <label>min size <select id=fres><option value="">any</option>
+        <option value=256>256+</option><option value=512>512+</option>
+        <option value=1024>1024+</option></select></label>
+      <label>alpha <select id=falpha><option value="">any</option>
+        <option value=yes>cut-out</option><option value=no>opaque</option></select></label>
+    </div>
+    <button id=fclear type=button class=xb>clear filters</button>
+  </div>
+  <h2>folders</h2>
+  <div id=tree></div>
+</aside>
+
+<div id=scrim></div>
+
+<main>
+  <div class=bar>
+    <button id=menu title="menu">&#9776;</button>
+    <button id=vbtn title="view options">&#9881; view</button>
+    <span class=count><b id=nstar>0</b> starred</span>
+    <button id=cmpbtn title="compare starred assets side by side">compare</button>
+    <button id=starall title="star everything on this page">&#9733; all</button>
+    <button id=clr>clear &#9733;</button>
+    <button id=clink title="copy a shareable link to this view">link</button>
+    <button id=exp>export yaml</button>
+    <div id=vpop>
+      <label id=uvwrap>uv_scale_yd
+        <input id=uv type=range min=0.5 max=16 step=0.5 value=4><b id=uvv>4</b>
+      </label>
+      <label id=projwrap style="display:none">view
+        <select id=proj><option value=angled>angled</option>
+          <option value=front>front</option>
+          <option value=side>side</option><option value=top>top</option></select>
+      </label>
+      <label>bg <span class=bgrow>
+        <button class=sw type=button data-c="#101014"></button>
+        <button class=sw type=button data-c="#3c3c44"></button>
+        <button class=sw type=button data-c="#77777f"></button>
+        <button class=sw type=button data-c="#c4c4cb"></button>
+        <button class=sw type=button data-c="#ffffff"></button>
+        <input type=color id=bg value="#101014">
+      </span></label>
+      <label>columns
+        <select id=cols>
+          <option value=auto>auto</option>
+          <option value=2>2</option><option value=3>3</option>
+          <option value=4>4</option><option value=5>5</option>
+          <option value=6>6</option><option value=8>8</option>
+          <option value=10>10</option></select>
+      </label>
+      <label id=sortwrap style="display:none">sort
+        <select id=sort><option value=path>path</option>
+          <option value=height>height</option><option value=aspect>aspect</option>
+          <option value=tris>bound_tris</option></select>
+      </label>
+    </div>
+  </div>
+  <div class=pagerbar><span class=pager><button id=prev>&larr;</button>
+    <span id=pg></span><button id=next>&rarr;</button></span></div>
+  <div class=grid id=grid></div>
+</main>
+
+<div id=out><b>paste into map_source.yaml</b><pre id=yaml></pre></div>
+
+<div id=toast></div>
+
+<div id=cmp>
+  <div class=chead>
+    <b>compare</b>
+    <span class=ckinds><button id=ckt>textures</button><button id=ckm>models</button></span>
+    <label><input type=checkbox id=crel checked> true relative size</label>
+    <label><input type=checkbox id=cdim> dimensions</label>
+    <label>scale ref <select id=cref>
+      <option value=0>none</option>
+      <option value=1.8>player 1.8 yd</option>
+      <option value=5>doodad 5 yd</option>
+      <option value=16>wall 16 yd</option></select></label>
+    <label>columns <select id=ccols>
+      <option value=auto>auto</option><option value=1>1</option>
+      <option value=2>2</option><option value=3>3</option>
+      <option value=4>4</option><option value=6>6</option></select></label>
+    <span id=cnote></span>
+    <span class=count><button id=cclose>close</button></span>
+  </div>
+  <div class=cgrid id=cgrid></div>
+</div>
+
+<div id=modal>
+  <div class=mbox>
+    <div class=mhead>
+      <b id=mname></b>
+      <span id=mtiled style="display:none">
+        <label><input type=checkbox id=mtile checked> tiled</label></span>
+      <span id=mdimwrap style="display:none">
+        <label><input type=checkbox id=mdim> dimensions</label></span>
+      <span class=count>
+        <button id=mfull title="fullscreen (f)">&#9974;</button>
+        <button id=mstar>★</button><button id=mclose>close</button></span>
+    </div>
+    <div class=mbody><div id=mviewwrap></div>
+      <div id=mctl style="display:none">
+        <label><input type=checkbox id=mspin> spin</label>
+        <input id=mspeed type=range min=5 max=180 step=5 value=40>
+        <b id=mspeedv>40&deg;/s</b>
+        <label>zoom <input id=mzoom type=range min=0 max=100 step=1></label>
+        <label>scale ref <select id=mref>
+          <option value=0>none</option>
+          <option value=1.8>player 1.8 yd</option>
+          <option value=5>doodad 5 yd</option>
+          <option value=16>wall 16 yd</option></select></label>
+        <button id=mrev title="reverse direction">&#8635;</button>
+        <button id=mreset>reset view</button>
+      </div>
+      <div id=mdims style="display:none"></div></div>
+    <div class=mfoot id=mfoot></div>
+  </div>
+</div>
+
+<script src="/web/js/state.js"></script>
+<script src="/web/js/nav.js"></script>
+<script src="/web/js/util.js"></script>
+<script src="/web/js/grid.js"></script>
+<script src="/web/js/gl.js"></script>
+<script src="/web/js/viewer.js"></script>
+<script src="/web/js/compare.js"></script>
+<script src="/web/js/modal.js"></script>
+<script src="/web/js/ui.js"></script>

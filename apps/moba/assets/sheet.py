@@ -1,9 +1,9 @@
 #!/usr/bin/env python3.10
 """Contact sheets of client textures, tiled at wall scale, as browsable HTML.
 
-    blp_sheet.py OUT.html --find SUBSTRING...   every archive entry matching all
-    blp_sheet.py OUT.html --list FILE           one texture path per line
-    blp_sheet.py OUT.html --materials JSON      a bundle's *_materials.json
+    sheet.py OUT.html --find SUBSTRING...   every archive entry matching all
+    sheet.py OUT.html --list FILE           one texture path per line
+    sheet.py OUT.html --materials JSON      a bundle's *_materials.json
 
 Needs pywowlib's compiled BLP2PNG and StormLib bindings, both built for Blender
 3.4's interpreter -- so run this with python3.10, not the system python.
@@ -13,6 +13,7 @@ Overrides: WOW_DATA, WBS_ROOT, WOW_LOCALE (see mpq_tool.py), TEXCACHE.
 import html, json, os, re, sys
 
 HERE     = os.path.dirname(os.path.abspath(__file__))
+WMO      = os.path.abspath(os.path.join(HERE, "..", "wmo"))   # mpq_tool lives there
 WBS      = os.environ.get("WBS_ROOT", os.path.expanduser("~/tools/blender-wow-studio"))
 BLP2PNG  = os.path.join(WBS, "io_scene_wmo/pywowlib/blp/BLP2PNG")
 TEXCACHE = os.environ.get("TEXCACHE", os.path.abspath(
@@ -41,7 +42,7 @@ def png_for(path):
 
 def decode(paths):
     """Decode every path not already cached. Returns the ones that have a PNG."""
-    sys.path.insert(0, HERE)
+    sys.path.insert(0, WMO)
     sys.path.insert(0, BLP2PNG)
     import mpq_tool
     from BLP2PNG import BlpConverter
@@ -77,7 +78,7 @@ def collect(argv):
         with open(argv[1]) as fh:
             paths = [l.strip() for l in fh if l.strip()]
     elif mode == "--find":
-        sys.path.insert(0, HERE)
+        sys.path.insert(0, WMO)
         import mpq_tool
         storm, handles = mpq_tool.open_archives()
         pats = [a.lower() for a in argv[1:]]
@@ -176,7 +177,7 @@ def main(argv):
             for j, n in enumerate(names)) if len(names) > 1 else ""
         cells = [(l, p, os.path.relpath(png_for(p), os.path.dirname(
             os.path.abspath(name)))) for l, p in chunk]
-        page(cells, name, "blp_sheet %d/%d" % (i + 1, len(pages)),
+        page(cells, name, "contact sheet %d/%d" % (i + 1, len(pages)),
              "%d textures  |  %s" % (len(chunk), " ".join(rest)), nav)
         print("%s  (%d)" % (name, len(chunk)), file=sys.stderr)
 
