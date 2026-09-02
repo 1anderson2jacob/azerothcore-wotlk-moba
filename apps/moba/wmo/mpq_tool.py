@@ -3,7 +3,7 @@
 
     mpq_tool.py index [OUT]           write every archive entry to OUT (default stdout)
     mpq_tool.py find SUBSTRING...     print entries matching all substrings
-    mpq_tool.py probe PATH...         M2 collision header: bounding triangles + box
+    mpq_tool.py probe [--json] PATH...  M2 collision header: bounding triangles + boxes
     mpq_tool.py extract PATH OUTDIR   extract a file; for .wmo also pulls its groups
 
 Needs pywowlib's compiled StormLib binding, which is built for Blender 3.4's
@@ -12,7 +12,7 @@ interpreter -- so run this with python3.10, not the system python.
 Overrides: WOW_DATA (client Data dir), WBS_ROOT (blender-wow-studio checkout),
 WOW_LOCALE (client locale, default enUS).
 """
-import os, re, struct, sys
+import json, os, re, struct, sys
 
 DATA   = os.environ.get("WOW_DATA", os.path.expanduser("~/Games/wow335/Data"))
 WBS    = os.environ.get("WBS_ROOT", os.path.expanduser("~/tools/blender-wow-studio"))
@@ -49,13 +49,25 @@ def open_archives():
 
 
 def read(storm, handles, path, nbytes=None):
+    """None when no archive holds the file, b"" when one does and the read
+    failed.
+
+    StormLib RAISES on a file shorter than the count asked for rather than
+    returning short, so without this one bad model aborts the whole batch --
+    a sweep over every doodad in the archives trips about 26 of them."""
     for a in handles:
-        if storm.SFileHasFile(a, path):
+        if not storm.SFileHasFile(a, path):
+            continue
+        f = None
+        try:
             f = storm.SFileOpenFileEx(a, path, 0)
             size = storm.SFileGetFileSize(f)
-            data = storm.SFileReadFile(f, min(size, nbytes) if nbytes else size)
-            storm.SFileCloseFile(f)
-            return data
+            return storm.SFileReadFile(f, min(size, nbytes) if nbytes else size)
+        except storm.error:
+            return b""
+        finally:
+            if f is not None:
+                storm.SFileCloseFile(f)
     return None
 
 
@@ -103,25 +115,50 @@ def cmd_find(argv):
 
 def cmd_probe(argv):
     """nBoundingTriangles is what vmap4extractor's Model::open tests: a model
-    with zero renders in the client but never reaches the vmaps."""
-    if not argv:
+    with zero renders in the client but never reaches the vmaps.
+
+    Both CAaBoxes are reported. box_b collapses to all zeros exactly when
+    nBoundingTriangles is 0, which is what identifies them: box_a bounds the
+    render geometry, box_b the collision hull. box_a is NOT tight -- some models
+    claim over a hundred yards across -- so it sizes a height and never a
+    footprint."""
+    as_json = "--json" in argv
+    paths = [a for a in argv if a != "--json"]
+    if not paths:
         sys.exit("probe needs at least one model path")
     storm, h = open_archives()
     size = struct.calcsize(M2_FMT)
-    for path in argv:
+    out = {}
+    for path in paths:
         probe = path[:-2] + "2" if path[-4:].lower() in (".mdx", ".mdl") else path
         d = read(storm, h, probe, size)
-        if d is None or len(d) < size:
-            print("  MISSING  %s" % probe)
+        rec, why = None, None
+        if d is None:
+            why = "MISSING"
+        elif len(d) < size:
+            why = "UNREADABLE"
+        else:
+            v = struct.unpack(M2_FMT, d[:size])
+            if v[0] != b"MD20":
+                why = "NOT M2"
+            else:
+                fl = v[43:57]
+                rec = {"version": v[1], "bound_tris": v[57], "bound_verts": v[59],
+                       "box_a": [list(fl[0:3]), list(fl[3:6])],
+                       "box_b": [list(fl[7:10]), list(fl[10:13])]}
+        if as_json:
+            out[path] = rec
             continue
-        v = struct.unpack(M2_FMT, d[:size])
-        if v[0] != b"MD20":
-            print("  NOT M2   %s" % probe)
+        if rec is None:
+            print("  %-8s %s" % (why, probe))
             continue
-        fl = v[43:57]
-        lo, hi = fl[7:10], fl[10:13]
-        print("  MD20 v%-3d boundTris=%-6d boundVerts=%-6d  box z %7.2f..%7.2f  xy %6.2f x %6.2f  %s"
-              % (v[1], v[57], v[59], lo[2], hi[2], hi[0] - lo[0], hi[1] - lo[1], probe))
+        lo, hi = rec["box_b"]
+        print("  MD20 v%-3d boundTris=%-6d boundVerts=%-6d  box z %7.2f..%7.2f"
+              "  xy %6.2f x %6.2f  %s"
+              % (rec["version"], rec["bound_tris"], rec["bound_verts"],
+                 lo[2], hi[2], hi[0] - lo[0], hi[1] - lo[1], probe))
+    if as_json:
+        print(json.dumps(out))
 
 
 def cmd_extract(argv):

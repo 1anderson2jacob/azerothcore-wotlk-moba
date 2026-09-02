@@ -2,21 +2,19 @@
 # Run inside Blender 3.4 (Text Editor -> Open -> Run Script) on tt_staging_34.blend.
 # Idempotent: safe to re-run. Prints PASS/FAIL at the end. Save the .blend afterwards.
 
-import bpy, re, bmesh, math, os, json
-from mathutils import Matrix, Vector
+import bpy, re, bmesh, math, os, json, sys
+from mathutils import Matrix, Quaternion, Vector
 
 ROOT_NAME   = "TwistedTreeline"
 DIR_PATH    = "World\\wmo\\TwistedTreeline\\"
 ROOT_WMO_ID = 9000              # MOHD.id; <= 32767 or the WMOAreaTable key aliases
 SET_NAME    = "Set_$DefaultGlobal"
-DOODAD_OBJ  = "TT_TestDoodad_Lamppost"
-DOODAD_M2   = "World\\EXPANSION01\\DOODADS\\GHOSTLANDS\\Lampposts\\BE_Lamppost_Ghostlands01.m2"
-DOODAD_SERVER_LOC = (0.0, 70.0, 0.0)    # open floor, 13 yd clear of any island
+DOODAD_PREFIX = "Doodad_"       # NOT TT_: that prefix is the shipping-object scan
 
 ORIENT_PROBE   = "TT_JWall_14"
 ORIENT_PROBE_Y = 55.46          # its bbox centre y in the blockout; the turn negates it
 
-RENDER_ONLY = {"TT_Trees"}
+RENDER_ONLY = set()
 SINGLETON   = {"TT_OuterWall"}
 
 # Written by build_blockout.py beside the blockout .blend. Loaded rather than
@@ -24,13 +22,29 @@ SINGLETON   = {"TT_OuterWall"}
 # follows map_source.yaml, so a copy here goes stale silently.
 MATERIALS_JSON = os.path.expanduser(
     "~/code/azerothcore-wotlk/var/blender/twisted_treeline_v2_materials.json")
+DOODADS_JSON = MATERIALS_JSON.replace("_materials.json", "_doodads.json")
+
+# Real client textures in the 3.4 viewport. PREVIEW ONLY -- the exporter reads
+# wow_wmo_material.diff_texture_1 for its path string (wmo_scene.py:539) and
+# never the pixels or the node tree, so every failure here degrades to the 1x1
+# placeholder and is reported instead of stopping the setup.
+TEXCACHE     = os.path.join(os.path.dirname(MATERIALS_JSON), "texcache")
+MPQ_TOOLS    = os.path.abspath(os.path.join(os.path.dirname(MATERIALS_JSON),
+                                            "../../apps/moba/wmo"))
+WBS_ROOT     = os.path.expanduser("~/tools/blender-wow-studio/io_scene_wmo")
+WBS_BLP      = WBS_ROOT + "/pywowlib/blp/BLP2PNG"
+WBS_3P       = WBS_ROOT + "/third_party"   # pywowlib's m2 parser imports bidict
+M2CACHE      = os.path.join(os.path.dirname(MATERIALS_JSON), "m2cache")
+PREVIEW_NODE = "TT_Preview"
 
 try:
     with open(MATERIALS_JSON) as fh:
         TEXTURES = json.load(fh)
+    with open(DOODADS_JSON) as fh:
+        DOODADS = json.load(fh)
 except OSError as exc:
     raise SystemExit("ABORT: cannot read %s (%s) -- run gen_blockout.py first"
-                     % (MATERIALS_JSON, exc))
+                     % (exc.filename, exc))
 
 errors, notes = [], []
 def base(name):        # strip Blender's .001 copy suffix
@@ -40,7 +54,10 @@ scene = bpy.context.scene
 
 # ---------------------------------------------------------------- 0. sanity
 present = {o.name for o in bpy.data.objects if o.type == 'MESH' and o.name.startswith("TT_")}
-present.discard(DOODAD_OBJ)
+# Anything already sitting in a doodad set is dressing, not a shipping group,
+# whatever it happens to be called.
+present -= {o.name for c in bpy.data.collections if c.name.startswith("Set_")
+            for o in c.objects}
 
 
 def series(prefix):
@@ -160,11 +177,70 @@ for name in sorted(SHIPPING):
     ob.wow_wmo_vertex_info.node_size = 0           # dynamic BSP node size
 
 # ---------------------------------------------------------------- 5. materials + textures
+_MPQ = []                       # [(storm, handles)] -- opened on the first cache miss
+
+
+def cache_name(path):
+    """A texture path as a flat filename.
+
+    BlpConvert writes basePath + separator + the name it is handed and creates
+    no directories on this code path, so the DUNGEONS\\TEXTURES\\ tree has to
+    collapse into the name. Keyed on the TEXTURE, never the material: swapping a
+    candidate is the whole preview loop, and a material-keyed cache hands back
+    the candidate before it."""
+    return re.sub(r"[\\/]", "_", path)
+
+
+def blp_png(path):
+    """Decode one client BLP into TEXCACHE and return the PNG's path."""
+    png = os.path.join(TEXCACHE, os.path.splitext(cache_name(path))[0] + ".png")
+    if os.path.isfile(png):
+        return png
+    for p in (MPQ_TOOLS, WBS_BLP):
+        if p not in sys.path:
+            sys.path.insert(0, p)
+    import mpq_tool
+    from BLP2PNG import BlpConverter
+    if not _MPQ:
+        _MPQ.append(mpq_tool.open_archives())
+    storm, handles = _MPQ[0]
+    data = mpq_tool.read(storm, handles, path)
+    if not data:
+        raise IOError("no archive holds it")
+    os.makedirs(TEXCACHE, exist_ok=True)
+    BlpConverter().convert([(data, cache_name(path).encode())], TEXCACHE.encode())
+    if not os.path.isfile(png):
+        raise IOError("BLP2PNG wrote nothing")
+    return png
+
+
+def show_texture(mat, img):
+    """Wire the image in so the viewport actually draws it.
+
+    Our own node, not WBS's: update_diff_texture_1 populates a node named
+    DiffuseTexture1 that nothing outside WBS's material panel creates, so
+    assigning the pointer alone renders nothing. mat.diffuse_color is left
+    alone, so the per-material hue Solid shading uses to catch a wall wearing
+    the wrong candidate still works."""
+    mat.use_nodes = True
+    nt = mat.node_tree
+    tex = nt.nodes.get(PREVIEW_NODE)
+    if tex is None:
+        tex = nt.nodes.new("ShaderNodeTexImage")
+        tex.name = tex.label = PREVIEW_NODE
+        tex.location = (-360, 300)
+    tex.image = img
+    bsdf = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
+    if bsdf is not None and not bsdf.inputs["Base Color"].is_linked:
+        nt.links.new(tex.outputs["Color"], bsdf.inputs["Base Color"])
+
+
 used = {}
 for name in SHIPPING:
     for m in bpy.data.objects[name].data.materials:
         if m:
             used.setdefault(m.name, m)
+unpreviewed = []
 for mat in used.values():
     b = base(mat.name)
     path = TEXTURES.get(b)
@@ -175,35 +251,230 @@ for mat in used.values():
     if path != path.lower():
         errors.append("material %s texture %r is not lowercase" % (mat.name, path))
         continue
-    img = bpy.data.images.get(b) or bpy.data.images.new(b, 1, 1)
+    img = bpy.data.images.get(b)
+    try:
+        png = blp_png(path)
+    # SystemExit too: mpq_tool.open_archives calls sys.exit when storm will not
+    # import, and that is a BaseException -- a bare `except Exception` lets a
+    # missing binding kill the whole setup over a preview.
+    except (Exception, SystemExit) as exc:
+        unpreviewed.append("%s -- %s" % (b, exc))
+        png = None
+    # Reload whenever what is loaded is not THIS texture's png. Repointing a
+    # material at another candidate is the whole preview loop, and keeping the
+    # image just because one is present leaves the previous art on the wall
+    # while the exported path says otherwise.
+    if png is not None and (img is None or os.path.realpath(
+            bpy.path.abspath(img.filepath)) != os.path.realpath(png)):
+        if img is not None:
+            bpy.data.images.remove(img)
+        img = bpy.data.images.load(png, check_existing=False)
+        img.name = b
+    if img is None:
+        img = bpy.data.images.new(b, 1, 1)
+    if tuple(img.size) != (1, 1):
+        show_texture(mat, img)
     img.wow_wmo_texture.path = path
     mat.wow_wmo_material.diff_texture_1 = img
     mat.wow_wmo_material.shader         = '0'      # Diffuse
     mat.wow_wmo_material.blending_mode  = '0'      # Opaque
     mat.wow_wmo_material.terrain_type   = '0'
 
-# ---------------------------------------------------------------- 6. test doodad
-ob = bpy.data.objects.get(DOODAD_OBJ)
-if ob is None:
-    me = bpy.data.meshes.new(DOODAD_OBJ)
+# ---------------------------------------------------------------- 6. doodads
+# Rebuilt from scratch every run, including anything a previous revision left in
+# the set -- the retired TT_TestDoodad_Lamppost among it.
+stale = {o.name: o for o in list(doodadset.objects)}
+stale.update({o.name: o for o in bpy.data.objects
+              if o.name.startswith(DOODAD_PREFIX)})
+for ob in stale.values():
+    bpy.data.objects.remove(ob, do_unlink=True)
+for me in [m for m in bpy.data.meshes
+           if m.name.startswith(DOODAD_PREFIX) and not m.users]:
+    bpy.data.meshes.remove(me)
+# Materials are per-mesh and never shared (see m2_mesh), so a dropped mesh
+# always orphans its own -- purge or every run leaks one set per model.
+for mat in [m for m in bpy.data.materials
+            if m.name.startswith(DOODAD_PREFIX) and not m.users]:
+    bpy.data.materials.remove(mat)
+unmodelled = []
+
+
+def proxy_mesh(key, box):
+    """One box mesh per model, at the M2's own footprint and z range in model
+    units -- so the object's export scale draws it in the viewport at the size it
+    will ship at, and spacing is judgeable before a pack. Spans z rather than
+    rising from it because a hanging model's geometry is entirely BELOW its
+    origin, and a box drawn upward from there shows the wrong half of the wall.
+
+    Carries NO material on purpose: WoWWMODoodad.on_each_update copies the
+    material of any doodad whose material has other users, so one shared
+    material would fork into one copy per tree on every depsgraph tick."""
+    name = DOODAD_PREFIX + key
+    me = bpy.data.meshes.get(name)
+    if me is not None:
+        return me
+    dx, dy = (max(float(v), 0.1) for v in box[:2])
+    z0, z1 = float(box[2]), float(box[3])
+    z1 = max(z1, z0 + 0.1)
+    me = bpy.data.meshes.new(name)
     bm = bmesh.new()
     bmesh.ops.create_cube(bm, size=1.0)
-    for v in bm.verts:                              # 1 x 1 x 3.5, sitting on z = 0
-        v.co.z = (v.co.z + 0.5) * 3.5
-    bm.to_mesh(me); bm.free()
-    ob = bpy.data.objects.new(DOODAD_OBJ, me)
-for c in list(ob.users_collection):
-    c.objects.unlink(ob)
-doodadset.objects.link(ob)
-ob.wow_wmo_doodad.enabled = True                    # WBS moves non-matching objects out
-ob.wow_wmo_doodad.path    = DOODAD_M2
-# Section 0b turned SHIPPING, not this object, so its location is the model frame
-# -- the server frame negated in x and y.
-ob.location      = (-DOODAD_SERVER_LOC[0], -DOODAD_SERVER_LOC[1], DOODAD_SERVER_LOC[2])
-ob.rotation_mode = 'QUATERNION'
-ob.rotation_quaternion = (1.0, 0.0, 0.0, 0.0)
-ob.scale = (1.0, 1.0, 1.0)
-ob.hide_viewport = ob.hide_render = False
+    for v in bm.verts:
+        v.co.x *= dx
+        v.co.y *= dy
+        v.co.z = z0 + (v.co.z + 0.5) * (z1 - z0)
+    bm.to_mesh(me)
+    bm.free()
+    return me
+
+
+def image_for(path):
+    """One image datablock per texture, shared across materials freely -- the
+    doodad handler forks MATERIALS, never images."""
+    png = blp_png(path)
+    name = os.path.basename(png)
+    img = bpy.data.images.get(name)
+    if img is not None and os.path.realpath(
+            bpy.path.abspath(img.filepath)) == os.path.realpath(png):
+        return img
+    if img is not None:
+        bpy.data.images.remove(img)
+    img = bpy.data.images.load(png, check_existing=False)
+    img.name = name
+    return img
+
+
+def m2_mesh(name, path):
+    """The model's real geometry, one material per submesh texture.
+
+    Walked as submesh index range -> triangle_indices -> vertex_indices ->
+    vertices. Verified against an independent reader: the box this reconstructs
+    for duskwoodspookytree01 matches mpq_tool's own MD20 header read on all six
+    bounds.
+
+    Every material here is NEW and belongs to this mesh alone.
+    WoWWMODoodad.on_each_update copies each material slot of any doodad whose
+    active material has users > 1, on every depsgraph update -- and a material
+    is owned by the MESH, so N objects sharing one mesh hold users at 1 while
+    two meshes sharing one material fork forever. Never key these by texture."""
+    for p in (MPQ_TOOLS, WBS_ROOT, WBS_3P):
+        if p not in sys.path:
+            sys.path.insert(0, p)
+    import mpq_tool
+    from pywowlib.m2_file import M2File
+    if not _MPQ:
+        _MPQ.append(mpq_tool.open_archives())
+    storm, handles = _MPQ[0]
+    os.makedirs(M2CACHE, exist_ok=True)
+    stem = os.path.join(M2CACHE, os.path.splitext(cache_name(path))[0])
+    # pywowlib reads from disk and derives skin paths as <stem>NN.skin, so every
+    # file has to land beside the .m2 under one basename.
+    def grab(src, dst):
+        if os.path.isfile(dst):
+            return
+        data = mpq_tool.read(storm, handles, src)
+        if not data:
+            raise IOError("no archive holds %s" % os.path.basename(src))
+        with open(dst, "wb") as fh:
+            fh.write(data)
+
+    grab(path, stem + ".m2")
+    m2 = M2File(2, stem + ".m2")            # 2 -> WOTLK via from_expansion_number
+    # read_additional_files insists on ALL num_skin_profiles being present, LOD
+    # profiles included -- the two Lunar New Year lanterns declare 2 and boxed
+    # themselves when only 00 was extracted. The count is knowable only after the
+    # root is parsed, which is why this runs after the M2File call.
+    for i in range(m2.root.num_skin_profiles):
+        grab("%s%02d.skin" % (path[:-3], i), "%s%02d.skin" % (stem, i))
+    m2.read_additional_files(m2.find_model_dependencies().skins, [])
+    skin = m2.skins[0]
+
+    lut = list(m2.root.texture_lookup_table)
+    tex_of = {tu.skin_section_index: lut[tu.texture_combo_index]
+              for tu in skin.texture_units if tu.texture_combo_index < len(lut)}
+    tris, face_slot, slots = [], [], {}
+    for i, sm in enumerate(skin.submeshes):
+        tex_id = tex_of.get(i, -1)
+        slots.setdefault(tex_id, len(slots))
+        for k in range(sm.index_start, sm.index_start + sm.index_count, 3):
+            tris.append(tuple(skin.vertex_indices[skin.triangle_indices[k + o]]
+                              for o in range(3)))
+            face_slot.append(slots[tex_id])
+    if not tris:
+        raise IOError("no triangles")
+
+    me = bpy.data.meshes.new(name)
+    me.from_pydata([tuple(v.pos) for v in m2.root.vertices], [], tris)
+    for tex_id, slot in sorted(slots.items(), key=lambda kv: kv[1]):
+        mat = bpy.data.materials.new("%s_%02d" % (name, slot))
+        me.materials.append(mat)
+        if tex_id < 0:
+            continue
+        src = m2.root.textures[tex_id].filename.value.lower().replace("/", "\\")
+        try:
+            show_texture(mat, image_for(src))
+        except (Exception, SystemExit):
+            continue                    # untextured slot; the geometry still shows
+        nt = mat.node_tree
+        bsdf = next((n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"), None)
+        if bsdf is not None:
+            nt.links.new(nt.nodes[PREVIEW_NODE].outputs["Alpha"],
+                         bsdf.inputs["Alpha"])
+            # Canopy and web cards are alpha-tested; drawn opaque they read as
+            # billboards, which is worse than the box they replace.
+            mat.blend_method = mat.shadow_method = 'CLIP'
+    # Material indices go on BEFORE validate, which makes a desync impossible
+    # rather than merely detected. These models carry the same triangle twice to
+    # fake double-siding -- 16 such faces on the horde banner, 57 on
+    # zuldrak_largetree_01 -- and validate drops the copy; assigned afterwards, a
+    # survivor would slide onto the next submesh's texture.
+    for poly, slot in zip(me.polygons, face_slot):
+        poly.material_index = slot
+    me.validate()
+    uv = me.uv_layers.new(name="UVMap")
+    for loop in me.loops:
+        # WoW's V runs down from the top-left, Blender's up from the bottom-left.
+        u, v = m2.root.vertices[loop.vertex_index].tex_coords
+        uv.data[loop.index].uv = (u, 1.0 - v)
+    return me
+
+
+def model_mesh(key, spec):
+    """Real geometry when the model can be read, the box proxy when it cannot."""
+    name = DOODAD_PREFIX + key
+    me = bpy.data.meshes.get(name)
+    if me is not None:
+        return me
+    try:
+        return m2_mesh(name, spec["path"])
+    except (Exception, SystemExit) as exc:
+        unmodelled.append("%s -- %s" % (key, exc))
+        # m2_mesh may have died AFTER creating the mesh, and proxy_mesh returns
+        # any mesh already under this name -- so the half-built one has to go.
+        partial = bpy.data.meshes.get(name)
+        if partial is not None:
+            bpy.data.meshes.remove(partial)
+        return proxy_mesh(key, spec["box"])
+
+for i, d in enumerate(DOODADS["placements"]):
+    spec = DOODADS["models"][d["model"]]
+    ob = bpy.data.objects.new("%s%04d" % (DOODAD_PREFIX, i),
+                              model_mesh(d["model"], spec))
+    doodadset.objects.link(ob)
+    ob.wow_wmo_doodad.enabled = True             # WBS moves non-matching objects out
+    ob.wow_wmo_doodad.path    = spec["path"]
+    # Section 0b turned SHIPPING and not these, so a placement is the server
+    # frame turned 180 deg about Z: x and y negate AND the yaw gains 180. The
+    # old single test doodad hid the second half by being rotationally symmetric.
+    x, y, z = d["pos"]
+    ob.location = (-x, -y, z)
+    ob.rotation_mode = 'QUATERNION'
+    # Yaw puts the model's local +X along the wall's face normal, which is the
+    # plane a hanging card is authored in, so the card lands flat on the wall.
+    ob.rotation_quaternion = Quaternion((0.0, 0.0, 1.0),
+                                        math.radians(d["yaw_deg"] + 180.0))
+    ob.scale = (d["scale"],) * 3
+    ob.hide_viewport = ob.hide_render = False
 
 # ---------------------------------------------------------------- 7. active collection
 bpy.context.view_layer.update()
@@ -249,12 +520,25 @@ print("collide=%d (expect %d)  render-only=%d (expect %d)"
 print("materials:")
 for mat in sorted(used.values(), key=lambda m: m.name):
     t = mat.wow_wmo_material.diff_texture_1
-    print("   %-18s -> %s" % (mat.name, t.wow_wmo_texture.path if t else "NONE"))
-d = bpy.data.objects[DOODAD_OBJ]
-print("doodad %r enabled=%s model loc=%s (server %s) quat=%s scale=%.3f\n   %s"
-      % (d.name, d.wow_wmo_doodad.enabled, tuple(round(v, 2) for v in d.location),
-         DOODAD_SERVER_LOC, tuple(round(v, 3) for v in d.rotation_quaternion),
-         d.scale[0], d.wow_wmo_doodad.path))
+    print("   %-18s %-9s -> %s"
+          % (mat.name, "%dx%d" % tuple(t.size) if t else "-",
+             t.wow_wmo_texture.path if t else "NONE"))
+if unpreviewed:
+    print("not previewed (%d) -- 1x1 placeholder, export unaffected:" % len(unpreviewed))
+    for u in sorted(unpreviewed):
+        print("   " + u)
+counts = {}
+for ob in doodadset.objects:
+    counts[ob.wow_wmo_doodad.path] = counts.get(ob.wow_wmo_doodad.path, 0) + 1
+print("doodads: %d placements, %d distinct models" % (len(doodadset.objects), len(counts)))
+for p, n in sorted(counts.items()):
+    print("   %4d  %s" % (n, p))
+
+if unmodelled:
+    print("box proxies (%d) -- geometry unreadable, placement unaffected:"
+          % len(unmodelled))
+    for u in sorted(unmodelled):
+        print("   " + u)
 
 for n in notes:
     print("NOTE : " + n)

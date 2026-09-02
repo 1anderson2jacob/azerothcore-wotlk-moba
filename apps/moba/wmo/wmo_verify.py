@@ -170,8 +170,9 @@ def main(root_path):
     elif sets[0][0] != "Set_$DefaultGlobal":
         warn("set 0 is %r, not Set_$DefaultGlobal" % sets[0][0])
 
-    valid_name_offsets, spawns = set(), []
-    for ofs, path in sorted(strings(modn).items()):
+    names = sorted(strings(modn).items())
+    valid_name_offsets, spawns, no_collision = set(), [], []
+    for ofs, path in names:
         probe = path
         if probe[-4:].lower() in (".mdx", ".mdl"):
             probe = probe[:-2] + "2"
@@ -179,10 +180,18 @@ def main(root_path):
         if nbt is None and client.h:
             fail("MODN model not readable from the MPQs: %s" % probe)
         elif nbt == 0:
-            warn("%s has 0 bounding triangles: renders in the client, dropped from vmaps" % probe)
+            no_collision.append(probe)
         else:
             valid_name_offsets.add(ofs)
         print("  MODN @%d  %s  boundTris=%s" % (ofs, path, nbt))
+    # One line, not one per model. Zero bounding triangles is the GOAL for wall
+    # dressing -- a vine that reached the vmaps would be an invisible bump
+    # mid-lane -- so a warn each buries the case that does matter: a tree meant
+    # to block movement that silently does not.
+    if no_collision:
+        warn("%d of %d MODN models have 0 bounding triangles -- they render in"
+             " the client and are dropped from the vmaps (per-model boundTris"
+             " above)" % (len(no_collision), len(names)))
     for i in range(len(modd) // 40):
         packed, = struct.unpack_from("<I", modd, i * 40)
         pos = struct.unpack_from("<3f", modd, i * 40 + 4)

@@ -12,6 +12,7 @@ boolean output whose topology nothing predicts.
 
 The floor ships as grid chunks rather than one sheet -- see BATCH_TRI_CEILING.
 """
+import bisect
 import colorsys
 import json
 import math
@@ -24,6 +25,7 @@ import bpy
 import numpy as np
 from mathutils import Vector
 from mathutils.geometry import tessellate_polygon
+from mathutils.bvhtree import BVHTree
 
 
 # A WMO render batch counts MOVI indices in uint16, and WBS emits one batch per
@@ -57,6 +59,19 @@ MAT_PREFIX = "TT_"
 # buried below the floor and never seen, so it rides along with `lower`.
 WALL_BANDS = {"lower": ("skirt", "lower"),
               "upper": ("ledge", "upper", "bevel", "cap")}
+
+# The vertical risers, and the only faces a wall SCATTER may land on.
+# Deliberately NOT WALL_BANDS: that groups the buried skirt with `lower` and the
+# horizontal cap with `upper`, which is right for a texture -- one island reads
+# as one rock -- and would put half the props underground and stack the rest on
+# the surface island_caps already scatters. The ledge rail names its own span
+# and does not consult this.
+WALL_RISERS = ("lower", "upper")
+
+
+# How far out from a riser to sample the floor it faces. Past the wall's own
+# footprint and well inside the narrowest base ring.
+BASE_PROBE_YD = 5.0
 
 
 # ------------------------------------------------------------------ sampling
@@ -257,9 +272,12 @@ class Shell:
         for t in tessellate_polygon([[Vector((x, y, 0.0)) for x, y, _ in pts]]):
             self.faces.append([base + t[0], base + t[1], base + t[2]])
 
-    def annulus(self, out_base, out_pts, out_z, in_base, in_pts):
+    def annulus(self, out_base, out_pts, in_base, in_pts):
         """Fill between an outer ring and an inner one of a different point
-        count, by triangulating the outer polygon with the inner as its hole."""
+        count, by triangulating the outer polygon with the inner as its hole.
+
+        Ring vertices carry their own z and the tessellation is 2D, so the fill
+        follows whatever heights the two rings were built with."""
         polys = [[Vector((x, y, 0.0)) for x, y in out_pts],
                  [Vector((x, y, 0.0)) for x, y, _ in in_pts]]
         n_out = len(out_pts)
@@ -272,6 +290,27 @@ class Shell:
         count nobody predicts, so the range is measured, never computed."""
         if len(self.faces) > start:
             self.spans.append((name, start, len(self.faces)))
+
+
+def loop_arc(ring):
+    """Cumulative distance along a riser's xy loop, plus its total.
+
+    Both rings of a riser share one xy loop -- wall_rings builds them from the
+    same list -- so the arc belongs to the strip, not to either ring."""
+    pts = [(x, y) for x, y, _ in ring]
+    n = len(pts)
+    arc, run = [], 0.0
+    for i in range(n):
+        arc.append(run)
+        run += math.dist(pts[i], pts[(i + 1) % n])
+    return pts, arc, run
+
+
+def nearest_z(x, y, ring):
+    """z of the closest point on a ring. The outer plate is sampled far more
+    coarsely than the rim it follows -- a convex hull at 15 yd against a 4.5 yd
+    boundary loop -- so this is a resample, not a lookup."""
+    return min(ring, key=lambda p: (p[0] - x) ** 2 + (p[1] - y) ** 2)[2]
 
 
 def ring_at(pts, z_list):
@@ -327,11 +366,13 @@ def build_wall(name, pts, floor_z, top_z, thickness, cfg):
     shell = Shell()
     n = len(pts)
     bases = [shell.ring(r[1]) for r in rings]
-    for nm, a, b in zip(WALL_STRIPS_FLAT if flat else WALL_STRIPS_TERRACED,
-                        bases, bases[1:]):
+    riser_loops = {}
+    for k, nm in enumerate(WALL_STRIPS_FLAT if flat else WALL_STRIPS_TERRACED):
         start = len(shell.faces)
-        shell.strip(a, b, n)
+        shell.strip(bases[k], bases[k + 1], n)
         shell.mark(nm, start)
+        if nm in WALL_RISERS:
+            riser_loops[nm] = loop_arc(rings[k][1])
     if thickness is None:
         start = len(shell.faces)
         shell.cap(bases[-1], rings[-1][1])
@@ -341,17 +382,20 @@ def build_wall(name, pts, floor_z, top_z, thickness, cfg):
         shell.mark("skirt", start)
     else:
         rim = rings[-1][1]
-        plate_z = max(z for _, _, z in rim)
         rect = hull_ring([(x, y) for x, y, _ in rim], thickness,
                          cfg.get("outer_step_yd", 15.0))
-        top = shell.ring([(x, y, plate_z) for x, y in rect])
+        # The plate FOLLOWS the crest. Pinned flat at the crest's global maximum
+        # it turns the whole plateau into a ramp climbing to the tallest segment,
+        # which is then visible over the lip from every stretch of wall shorter
+        # than that one -- nearly all of them, since heights vary 12-20.
+        top = shell.ring([(x, y, nearest_z(x, y, rim)) for x, y in rect])
         bot = shell.ring([(x, y, cfg["bottom_yd"]) for x, y in rect])
         start = len(shell.faces)
-        shell.annulus(top, rect, plate_z, bases[-1], rim)
+        shell.annulus(top, rect, bases[-1], rim)
         shell.mark("cap", start)
         start = len(shell.faces)
         shell.strip(top, bot, len(rect))
-        shell.annulus(bot, rect, cfg["bottom_yd"], bases[0], rings[0][1])
+        shell.annulus(bot, rect, bases[0], rings[0][1])
         shell.mark("skirt", start)
     mesh = bpy.data.meshes.new(name)
     mesh.from_pydata(shell.verts, [], shell.faces)
@@ -366,7 +410,7 @@ def build_wall(name, pts, floor_z, top_z, thickness, cfg):
     # Spans index the face list AS BUILT. A face dropped by validate() slides
     # every later face into the wrong band and nothing downstream could tell, so
     # the shortfall is returned and gated rather than assumed to be zero.
-    return obj, flat, shell.spans, built - len(mesh.polygons)
+    return obj, flat, shell.spans, built - len(mesh.polygons), riser_loops
 
 
 def build_floor(loops, heights, coarse_yd, fine_yd):
@@ -498,80 +542,622 @@ def chunk_floor(mesh, target):
 
 # ----------------------------------------------------------------- dressing
 
-def point_in_loop(pts, x, y):
-    inside = False
-    n = len(pts)
-    for i in range(n):
-        ax, ay = pts[i]
-        bx, by = pts[(i + 1) % n]
-        if (ay > y) != (by > y):
-            if x < ax + (y - ay) / (by - ay) * (bx - ax):
-                inside = not inside
-    return inside
+def bvh_of(mesh):
+    """Fan-triangulated BVH over a built object.
+
+    Fanned here rather than handing polygons to FromPolygons because a strip
+    quad spanning two rings of differing z is not planar, and a ray must not be
+    able to fall through whichever way someone else chose to split it."""
+    verts = [tuple(v.co) for v in mesh.vertices]
+    tris = []
+    for p in mesh.polygons:
+        vi = list(p.vertices)
+        for k in range(1, len(vi) - 1):
+            tris.append((vi[0], vi[k], vi[k + 1]))
+    return BVHTree.FromPolygons(verts, tris, all_triangles=True)
 
 
-def scatter_cones(loops, tops, cfg, rng):
-    """Placeholder tree mass on the wall tops. Flat grey and obviously wrong on
-    purpose -- it is replaced by M2 doodads in dressing."""
-    verts, faces = [], []
-    for lp, top in zip(loops, tops):
-        pts = lp["points"]
-        area = abs(signed_area(pts))
-        count = int(area / 1000.0 * cfg["per_1000_yd2"])
-        xs = [p[0] for p in pts]
-        ys = [p[1] for p in pts]
-        placed, guard = 0, 0
-        while placed < count and guard < count * 60:
-            guard += 1
-            x = rng.uniform(min(xs), max(xs))
-            y = rng.uniform(min(ys), max(ys))
-            if not point_in_loop(pts, x, y):
-                continue
-            placed += 1
-            r = rng.uniform(*cfg["radius_yd"])
-            hgt = rng.uniform(*cfg["height_yd"])
-            z = top - cfg.get("sink_yd", 1.0)
-            base = len(verts)
-            sides = 7
-            for k in range(sides):
-                a = 2 * math.pi * k / sides
-                verts.append((x + r * math.cos(a), y + r * math.sin(a), z))
-            verts.append((x, y, z + hgt))
-            tip = base + sides
-            for k in range(sides):
-                faces.append([base + k, base + (k + 1) % sides, tip])
-    if not verts:
+def flat_area(mesh, min_nz):
+    """Near-horizontal area projected onto the map plane, which is what a
+    per-1000-yd2 density means when the surface is a stepped mesa: two terraces
+    stacked over the same ground read as that ground's worth of trees."""
+    return sum(p.area * p.normal.z for p in mesh.polygons if p.normal.z >= min_nz)
+
+
+def scatter_on(obj, count, spec, keys, models, rng, min_nz):
+    """Sample points on whatever the object's upward-facing surface turns out
+    to be, by ray-casting straight down onto it.
+
+    Cap, terrace ledge and the outer plateau are all reached the same way, and
+    the slope test drops the risers and the chamfer without any of them being
+    named -- so a retessellation, or an island that failed to terrace and came
+    out a plain prism, cannot leave a doodad hanging off a wall face.
+
+    A candidate is kept only when its whole FOOTPRINT lands on the surface, not
+    just its origin. `inner_ledge` shares the loop's own xy, so the terrace
+    shelf's outer edge IS the island boundary -- an origin-only test put 27% of
+    island trees over an 8 yd drop, several of them within a yard of the edge."""
+    me = obj.data
+    if count <= 0:
+        return []
+    spacing = float(spec["min_spacing_yd"])
+    jitter = float(spec.get("scale_jitter", 0.0))
+    margin = float(spec.get("edge_margin_yd", 0.0))
+    bvh = bvh_of(me)
+    xs = [v.co.x for v in me.vertices]
+    ys = [v.co.y for v in me.vertices]
+    top = max(v.co.z for v in me.vertices) + 10.0
+    down = Vector((0.0, 0.0, -1.0))
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    # A surface inside the allowed slope cannot rise more than this across the
+    # footprint, so anything that does is a terrace step, not one surface.
+    grade = math.tan(math.acos(min(max(min_nz, -1.0), 1.0)))
+    cell = max(spacing, 0.001)
+    grid, out = {}, []
+
+    def ground(x, y):
+        loc, nor, _i, _d = bvh.ray_cast(Vector((x, y, top)), down)
+        return None if loc is None or nor.z < min_nz else loc.z
+
+    for _ in range(count * 60):
+        if len(out) >= count:
+            break
+        x = rng.uniform(x0, x1)
+        y = rng.uniform(y0, y1)
+        key = keys[rng.randrange(len(keys))]
+        m = models[key]
+        # Jittered here, not by the caller: the radius the footprint is tested
+        # at has to be the radius that ships.
+        scale = m["scale"] * (1.0 + rng.uniform(-jitter, jitter))
+        r = max(m["box"][0], m["box"][1]) / 2.0 * scale + margin
+        z = ground(x, y)
+        if z is None:
+            continue
+        tol = r * grade + 0.25
+        if any(pz is None or abs(pz - z) > tol
+               for pz in (ground(x + r * math.cos(a), y + r * math.sin(a))
+                          for a in (k * math.pi / 4.0 for k in range(8)))):
+            continue
+        gx, gy = int(x // cell), int(y // cell)
+        clash = any((px - x) ** 2 + (py - y) ** 2 < spacing * spacing
+                    for i in range(gx - 1, gx + 2)
+                    for j in range(gy - 1, gy + 2)
+                    for px, py in grid.get((i, j), ()))
+        if clash:
+            continue
+        grid.setdefault((gx, gy), []).append((x, y))
+        out.append((x, y, z, key, scale))
+    return out
+
+
+def band_faces(mesh, spans, band):
+    """Polygon indices of one riser, from build_wall's record of which ring pair
+    made each face. An unterraced prism has no `upper` span at all, so it yields
+    nothing and the band reports as absent rather than as an empty scatter."""
+    out = []
+    for name, start, end in spans:
+        if name == band:
+            out += range(start, min(end, len(mesh.polygons)))
+    return out
+
+
+def face_columns(mesh, poly):
+    """A riser face as its two vertical edges: ((xy, z_bottom, z_top), same).
+
+    Both rings of a strip are built on the SAME xy loop, so a riser quad is
+    exactly vertical and its corners fall into two columns. Pairing by xy rather
+    than sorting the four corners by z matters where the ledge over one point
+    sits below the floor under the next -- clear today by 4 yd, and by nothing
+    that enforces it."""
+    cols = {}
+    for i in poly.vertices:
+        co = mesh.vertices[i].co
+        cols.setdefault((round(co.x, 3), round(co.y, 3)), []).append(co.z)
+    if len(cols) != 2 or any(len(z) != 2 for z in cols.values()):
         return None
-    mesh = bpy.data.meshes.new("TT_Trees")
-    mesh.from_pydata(verts, [], faces)
-    mesh.validate()
-    return bpy.data.objects.new("TT_Trees", mesh)
+    return tuple((Vector(xy), min(z), max(z)) for xy, z in cols.items())
+
+
+def ledge_columns(mesh, poly):
+    """A terrace-shelf quad as its two CROSS-sections: ((lip_xy, foot_xy, z), same).
+
+    The shelf is horizontal, so its four corners fall into four xy columns and
+    face_columns reads nothing there. They pair by VERTEX INDEX instead:
+    Shell.ring appends `inner_ledge` before `ledge_out` and both are the same
+    loop, so the two lowest indices are the drop lip and the two highest the
+    riser foot -- which is what pairs them across the wrap face too, where loop
+    order is not index order. Self-checking: wall_rings gives both rings one z
+    list, so a mispaired corner reads a z that does not match its partner's."""
+    vi = sorted(poly.vertices)
+    if len(vi) != 4 or vi[2] - vi[0] != vi[3] - vi[1]:
+        return None
+    co = [mesh.vertices[i].co for i in vi]
+    if abs(co[0].z - co[2].z) > 1e-3 or abs(co[1].z - co[3].z) > 1e-3:
+        return None
+    return tuple((Vector((co[k].x, co[k].y)),
+                  Vector((co[k + 2].x, co[k + 2].y)), co[k].z) for k in (0, 1))
+
+
+def scatter_on_faces(obj, idx, count, spec, keys, models, rng):
+    """Sample points across one riser, area-weighted over its faces.
+
+    A downward ray cannot land on a vertical face, so this samples the faces
+    directly -- and needs no slope test to do it: a riser is exactly vertical by
+    construction, which leaves the span filter as the whole selector.
+
+    The model is FITTED to the band by its own scaled extent rather than dropped
+    at the sample point, because the three ways a doodad can be authored --
+    standing on its origin, hanging below it, floating above it -- put its
+    geometry in three different places relative to that point."""
+    me = obj.data
+    if count <= 0:
+        return []
+    spacing = float(spec["min_spacing_yd"])
+    jitter = float(spec.get("scale_jitter", 0.0))
+    margin = float(spec.get("edge_margin_yd", 0.0))
+    push = float(spec.get("push_yd", 0.0))
+
+    faces, weights, total = [], [], 0.0
+    for k in idx:
+        cols = face_columns(me, me.polygons[k])
+        if cols is None:
+            continue
+        total += me.polygons[k].area
+        faces.append((cols, me.polygons[k].normal.copy()))
+        weights.append(total)
+    if not faces:
+        return []
+
+    cell = max(spacing, 0.001)
+    grid, out = {}, []
+    for _ in range(count * 60):
+        if len(out) >= count:
+            break
+        j = min(bisect.bisect_left(weights, rng.uniform(0.0, total)),
+                len(faces) - 1)
+        (a, b), n = faces[j]
+        u = rng.random()
+        xy = a[0].lerp(b[0], u)
+        z_bot = a[1] + (b[1] - a[1]) * u + margin
+        z_top = a[2] + (b[2] - a[2]) * u - margin
+        key = keys[rng.randrange(len(keys))]
+        m = models[key]
+        # Jittered here, not by the caller: the extent fitted into the band has
+        # to be the extent that ships.
+        scale = m["scale"] * (1.0 + rng.uniform(-jitter, jitter))
+        lo, hi = (v * scale for v in m["box"][2:4])
+        room = (z_top - z_bot) - (hi - lo)
+        base = (z_bot + rng.uniform(0.0, room) if room >= 0.0
+                else (z_bot + z_top - (hi - lo)) / 2.0)   # taller than the band
+        # Spaced on the geometry's own centre, never the origin: origins sit
+        # anywhere from 14 yd above a model to 4 yd below it, so spacing those
+        # spaces nothing anyone can see.
+        cx, cy, cz = xy.x, xy.y, base + (hi - lo) / 2.0
+        gx, gy, gz = int(cx // cell), int(cy // cell), int(cz // cell)
+        if any((px - cx) ** 2 + (py - cy) ** 2 + (pz - cz) ** 2 < spacing * spacing
+               for p in range(gx - 1, gx + 2)
+               for q in range(gy - 1, gy + 2)
+               for r in range(gz - 1, gz + 2)
+               for px, py, pz in grid.get((p, q, r), ())):
+            continue
+        grid.setdefault((gx, gy, gz), []).append((cx, cy, cz))
+        out.append((cx + n.x * push, cy + n.y * push, base - lo,
+                    math.degrees(math.atan2(n.y, n.x)), key, scale))
+    return out
+
+def base_facing(mesh, idx, heights, base_yd):
+    """Split a riser's faces into those fronting base-height floor and the rest.
+
+    A base is a ring of raised platform, so the walls bounding it -- the outer
+    ring's back arc, and the whole of the island the ring encircles -- are
+    exactly the faces whose ground stands at base height. Nothing is named or
+    indexed, so a repaint that moves a base moves this with it."""
+    at, rest = [], []
+    for k in idx:
+        p = mesh.polygons[k]
+        c, n = p.center, p.normal
+        z = heights.at(c.x + n.x * BASE_PROBE_YD, c.y + n.y * BASE_PROBE_YD)
+        (at if z > base_yd * 0.5 else rest).append(k)
+    return at, rest
+
+
+def contiguous(idx):
+    """Maximal runs of consecutive face indices.
+
+    band_faces returns them in the order shell.strip appended, which is loop
+    order -- so a gap in the numbering IS a gap in the wall, and the outer
+    ring's two base arcs fall out as two runs without anything here knowing a
+    base exists."""
+    runs, cur = [], []
+    for k in idx:
+        if cur and k != cur[-1] + 1:
+            runs.append(cur)
+            cur = []
+        cur.append(k)
+    if cur:
+        runs.append(cur)
+    return runs
+
+
+def run_segments(mesh, run, columns=face_columns):
+    """A run as an ordered walk: (near column, far column, outward normal) per
+    face, each face's columns ordered to continue the one before it.
+
+    `columns` reads one face. Both readers put the xy that ADVANCES along the
+    run in slot 0, which is the only slot this touches.
+
+    face_columns reads poly.vertices, and recalc_face_normals may have flipped
+    the winding of every face on the object -- consistently, but in whichever
+    direction it chose. Walked unordered, a rail zig-zags on the spot instead of
+    advancing along the wall."""
+    cols = [(k, columns(mesh, mesh.polygons[k])) for k in run]
+    cols = [(k, c) for k, c in cols if c is not None]
+    if len(cols) < 2:
+        return []
+    a0, b0 = cols[0][1]                   # seed: face 0's shared column goes last
+    nxt = cols[1][1]
+    if (min((a0[0] - q[0]).length for q in nxt)
+            < min((b0[0] - q[0]).length for q in nxt)):
+        cols[0] = (cols[0][0], (b0, a0))
+    segs, prev = [], None
+    for k, (a, b) in cols:
+        if prev is not None and (a[0] - prev).length > (b[0] - prev).length:
+            a, b = b, a
+        segs.append((a, b, mesh.polygons[k].normal.copy()))
+        prev = b[0]
+    return segs
+
+
+def rail_on(obj, runs, keys, models, spec, start):
+    """One model every spacing_yd along each run, in list order.
+
+    A catalogue, not a scatter. The question a gallery answers is *which of
+    these do I want*, which needs one readable example at a known place; a
+    density answers *how does a mass of them read*, which is a different
+    question and why the scatter surfaces exist separately.
+
+    Returns the placements and how far through `keys` it reached, so one list
+    spans every run on the map without a model ever appearing twice."""
+    me = obj.data
+    spacing = float(spec["spacing_yd"])
+    margin = float(spec.get("edge_margin_yd", 0.0))
+    push = float(spec.get("push_yd", 0.0))
+    out, i = [], start
+    for run in runs:
+        travelled, next_at = 0.0, spacing / 2.0
+        for a, b, n in run_segments(me, run):
+            width = (b[0] - a[0]).length
+            while width > 0.0 and next_at <= travelled + width and i < len(keys):
+                u = (next_at - travelled) / width
+                xy = a[0].lerp(b[0], u)
+                z_bot = a[1] + (b[1] - a[1]) * u + margin
+                z_top = a[2] + (b[2] - a[2]) * u - margin
+                m = models[keys[i]]
+                lo, hi = m["box"][2] * m["scale"], m["box"][3] * m["scale"]
+                out.append((xy.x + n.x * push, xy.y + n.y * push,
+                            (z_bot + z_top - (hi - lo)) / 2.0 - lo,
+                            math.degrees(math.atan2(n.y, n.x)), keys[i],
+                            m["scale"]))
+                i += 1
+                next_at += spacing
+            travelled += width
+    return out, i
+
+
+def rail_on_ledge(obj, runs, keys, models, spec, start, seed):
+    """rail_on's horizontal sibling: one model every spacing_yd along a terrace
+    shelf, standing on it.
+
+    Separate from rail_on for the reason scatter_on_faces is separate from
+    scatter_on -- a horizontal surface stands a model on its ORIGIN, so a
+    lamppost's sunk base plate is buried and is not height, the same way a
+    tree's root flare is not. Yaw points from the riser foot out over the lip,
+    so an arm reaches across the drop rather than into the wall.
+
+    Placed on the centreline and never rejected for width. A footprint test
+    reads the model at its widest point, which on a tree is the canopy, not the
+    roots; over a 12-20 yd drop that overhang is the thing worth having, and a
+    catalogue entry silently dropped shows you nothing. The count wider than its
+    own shelf is returned instead."""
+    me = obj.data
+    if not keys:
+        return [], start, 0
+    spacing = float(spec["spacing_yd"])
+    sink = float(spec.get("sink_yd", 0.0))
+    mul = float(spec.get("scale", 1.0))
+    # A catalogue STOPS when its list runs out -- that exhaustion is what makes
+    # one model per slot answer "which of these do I want". A fill runs past the
+    # end, in list order or drawn per slot.
+    shuffle = bool(spec.get("shuffle", False))
+    cycle = bool(spec.get("cycle", False)) or shuffle
+    out, wide, i = [], 0, start
+    for run in runs:
+        travelled, next_at = 0.0, spacing / 2.0
+        for a, b, _n in run_segments(me, run, ledge_columns):
+            mid_a, mid_b = (a[0] + a[1]) / 2.0, (b[0] + b[1]) / 2.0
+            width = (mid_b - mid_a).length
+            while (width > 0.0 and next_at <= travelled + width
+                   and (cycle or i < len(keys))):
+                u = (next_at - travelled) / width
+                xy = mid_a.lerp(mid_b, u)
+                across = a[0].lerp(b[0], u) - a[1].lerp(b[1], u)
+                # Seeded PER SLOT, not from a running generator: the draw must
+                # not depend on how runs split across objects, and must never
+                # come from dress()'s shared rng, which would re-roll every
+                # scatter downstream of it.
+                j = (random.Random(seed * 1000003 + i).randrange(len(keys))
+                     if shuffle else i % len(keys))
+                key = keys[j]
+                m = models[key]
+                scale = m["scale"] * mul
+                if max(m["box"][0], m["box"][1]) * scale > across.length:
+                    wide += 1
+                out.append((xy.x, xy.y, a[2] + (b[2] - a[2]) * u - sink,
+                            math.degrees(math.atan2(across.y, across.x)),
+                            key, scale))
+                i += 1
+                next_at += spacing
+            travelled += width
+    return out, i, wide
+
+
+def placement(models, key, x, y, z, yaw, scale):
+    return {"model": key,
+            "pos": [round(x, 3), round(y, 3), round(z, 3)],
+            "yaw_deg": round(yaw, 1),
+            "scale": round(scale, 5)}
+
+
+def place_explicit(key, anchor, push, models, walls):
+    """One model at one place: the nearest riser face to the anchor carries it.
+
+    Scatter is the right tool for mass and the wrong one for intent -- it cannot
+    put a specific model at a specific spot, and marking a base is exactly that.
+    Only the anchor is hand-authored; yaw, the height within the band and the
+    push out of the wall are all read off whichever face it lands on, so a
+    retessellation moves the banner with the wall instead of stranding it."""
+    want = Vector(anchor)
+    best = None
+    for obj, spans in walls:
+        me = obj.data
+        for band in WALL_RISERS:
+            for k in band_faces(me, spans, band):
+                cols = face_columns(me, me.polygons[k])
+                if cols is None:
+                    continue
+                a, b = cols
+                seg = b[0] - a[0]
+                sl = seg.length
+                u = 0.0 if sl == 0 else max(0.0, min(1.0,
+                                                     (want - a[0]).dot(seg) / (sl * sl)))
+                xy = a[0].lerp(b[0], u)
+                d = (want - xy).length
+                if best is None or d < best[0]:
+                    best = (d, xy, u, a, b, me.polygons[k].normal.copy(),
+                            obj.name, band, me.polygons[k].area)
+    if best is None:
+        return None
+    d, xy, u, a, b, n, name, band, area = best
+    z_bot = a[1] + (b[1] - a[1]) * u
+    z_top = a[2] + (b[2] - a[2]) * u
+    m = models[key]
+    lo, hi = m["box"][2] * m["scale"], m["box"][3] * m["scale"]
+    return ((xy.x + n.x * push, xy.y + n.y * push,
+             (z_bot + z_top - (hi - lo)) / 2.0 - lo,
+             math.degrees(math.atan2(n.y, n.x)), m["scale"]),
+            {"object": name, "band": band, "off_yd": d, "area": round(area)})
+
+
+def dress(dressing, outer, islands, heights, base_yd, rng, seed):
+    """Doodad placements in the SERVER frame. `outer` and `islands` are
+    (object, spans) pairs -- the spans are what tells a riser from the buried
+    skirt, which nothing about the geometry recovers.
+
+    geometry.json's frame is the world frame on map 900, so these are directly
+    what `.gps` reads back; blender_staging_setup.py applies the model-frame turn
+    when it instantiates them.
+
+    Horizontal surfaces run first and in their original order, so adding a wall
+    surface leaves every tree exactly where the previous build put it.
+    `base_walls` runs last and CLAIMS its faces -- the scatter surfaces are handed
+    the complement, so a gallery wall never also carries dressing.
+    `terrace_ledges` draws no rng at all, so it can be added or dropped without
+    moving anything else."""
+    models = dressing["resolved"]["models"]
+    fams = dressing["resolved"]["families"]
+    min_nz = math.cos(math.radians(float(dressing["max_slope_deg"])))
+    surfaces = dressing["surfaces"]
+    objs = {"outer_plateau": [outer], "island_caps": islands,
+            "outer_wall": [outer], "island_walls": islands}
+    gallery = "base_walls" in surfaces
+
+    out, legend = [], []
+    for which in ("outer_plateau", "island_caps", "outer_wall", "island_walls"):
+        if which not in surfaces:
+            continue
+        spec = surfaces[which]
+        density = float(spec["per_1000_yd2"])
+        sink = float(spec.get("sink_yd", 0.0))
+        bands = (spec["families"] if isinstance(spec["families"], dict)
+                 else {b: spec["families"] for b in WALL_RISERS})
+        for i, (obj, spans) in enumerate(objs[which]):
+            if which not in ("outer_wall", "island_walls"):
+                fam = pick(spec["families"], i)
+                area = flat_area(obj.data, min_nz)
+                want = int(area / 1000.0 * density)
+                pts = scatter_on(obj, want, spec, fams[fam], models, rng, min_nz)
+                for x, y, z, key, scale in pts:
+                    out.append(placement(models, key, x, y, z - sink,
+                                         rng.uniform(0.0, 360.0), scale))
+                legend.append({"surface": which, "object": obj.name, "band": "",
+                               "family": fam, "area_yd2": round(area),
+                               "want": want, "placed": len(pts)})
+                continue
+            for band in WALL_RISERS:
+                idx = band_faces(obj.data, spans, band)
+                if gallery:
+                    _claimed, idx = base_facing(obj.data, idx, heights, base_yd)
+                if not idx:               # an unterraced prism has no `upper`
+                    continue
+                fam = pick(bands[band], i)
+                area = sum(obj.data.polygons[k].area for k in idx)
+                want = int(area / 1000.0 * density)
+                pts = scatter_on_faces(obj, idx, want, spec, fams[fam],
+                                       models, rng)
+                for x, y, z, yaw, key, scale in pts:
+                    out.append(placement(models, key, x, y, z, yaw, scale))
+                legend.append({"surface": which, "object": obj.name, "band": band,
+                               "family": fam, "area_yd2": round(area),
+                               "want": want, "placed": len(pts)})
+
+    if gallery:
+        spec = surfaces["base_walls"]
+        flat = spec["families"]
+        flat = [flat] if isinstance(flat, str) else list(flat)
+        keys = [k for fam in flat for k in fams[fam]]
+        i, claimed_area = 0, 0.0
+        for obj, spans in [outer] + islands:
+            for band in WALL_RISERS:
+                at, _rest = base_facing(obj.data,
+                                        band_faces(obj.data, spans, band),
+                                        heights, base_yd)
+                if not at:
+                    continue
+                area = sum(obj.data.polygons[k].area for k in at)
+                claimed_area += area
+                pts, i = rail_on(obj, contiguous(at), keys, models, spec, i)
+                for x, y, z, yaw, key, scale in pts:
+                    out.append(placement(models, key, x, y, z, yaw, scale))
+                legend.append({"surface": "base_walls", "object": obj.name,
+                               "band": band, "family": "rail",
+                               "area_yd2": round(area),
+                               "want": len(pts), "placed": len(pts)})
+        legend.append({"surface": "base_walls", "object": "(catalogue)",
+                       "band": "", "family": "%d slots" % i,
+                       "area_yd2": round(claimed_area),
+                       "want": len(keys), "placed": i})
+
+    # Rails sharing the terrace shelves, discovered by prefix -- gen_blockout.py's
+    # whitelist decides which names are legal, so a new one needs no edit here.
+    # `scope` is what lets the island shelves and the perimeter's carry different
+    # mixes: one surface class, read at completely different distances.
+    for which in sorted(s for s in surfaces if s.startswith("terrace_ledge")):
+        spec = surfaces[which]
+        flat = spec["families"]
+        flat = [flat] if isinstance(flat, str) else list(flat)
+        keys = [k for fam in flat for k in fams[fam]]
+        i, shelf_area, wide = 0, 0.0, 0
+        # Islands before the outer ring, which is the one ordering decision here:
+        # a catalogue runs out, and the islands are what a walk actually visits.
+        scope = spec.get("scope", "all")
+        for obj, spans in ({"islands": islands, "outer": [outer]}
+                           .get(scope, islands + [outer])):
+            runs = contiguous(band_faces(obj.data, spans, "ledge"))
+            if not runs:                  # an unterraced prism has no shelf
+                continue
+            area = sum(obj.data.polygons[k].area for r in runs for k in r)
+            shelf_area += area
+            pts, i, over = rail_on_ledge(obj, runs, keys, models, spec, i, seed)
+            wide += over
+            for x, y, z, yaw, key, scale in pts:
+                out.append(placement(models, key, x, y, z, yaw, scale))
+            legend.append({"surface": which, "object": obj.name,
+                           "band": "ledge", "family": "rail",
+                           "area_yd2": round(area),
+                           "want": len(pts), "placed": len(pts)})
+        cycled = bool(spec.get("cycle") or spec.get("shuffle"))
+        legend.append({"surface": which,
+                       "object": "(fill)" if cycled else "(catalogue)",
+                       "band": "", "family": "%d slots, %d wider than the shelf"
+                       % (i, wide),
+                       "area_yd2": round(shelf_area),
+                       "want": i if cycled else len(keys), "placed": i})
+
+    for key, anchor, push in dressing["resolved"].get("anchors", []):
+        got = place_explicit(key, anchor, push, models, [outer] + islands)
+        if got is None:
+            continue
+        (x, y, z, yaw, scale), info = got
+        out.append(placement(models, key, x, y, z, yaw, scale))
+        legend.append({"surface": "placement", "object": info["object"],
+                       "band": info["band"], "family": "%s +%.1f yd"
+                       % (key, info["off_yd"]),
+                       "area_yd2": info["area"], "want": 1, "placed": 1})
+    return out, legend
 
 
 # --------------------------------------------------------------- finishing
 
-def cube_uv(obj, scales):
+def riser_uvs(spans, loops, scale_of):
+    """face index -> (xy_i, u_i, xy_j, u_j), u already in tile units.
+
+    Shell.strip appends one quad per loop segment in order, so a span's k-th face
+    is segment k. The tile count is ROUNDED to a whole number: a riser is a
+    closed ring, and an arc length that is not a whole number of tiles leaves a
+    visible seam at the wrap. Rounding absorbs it into a sub-percent change in
+    the effective scale instead."""
+    out = {}
+    for nm, start, end in spans:
+        if nm not in loops:
+            continue
+        pts, arc, total = loops[nm]
+        n = len(pts)
+        if total <= 0 or end - start != n:
+            continue
+        tiles = max(1, round(total / scale_of[nm]))
+        for i in range(n):
+            j = (i + 1) % n
+            out[start + i] = (pts[i], arc[i] / total * tiles,
+                              pts[j], (arc[j] if j else total) / total * tiles)
+    return out
+
+
+def vertex_jitter(seed, vi, amount):
+    """Deterministic offset in tile units, keyed on the VERTEX index so every
+    face touching it moves together. Per-face jitter would hard-cut the texture
+    at every shared edge, which reads worse than the lattice it breaks."""
+    if not amount:
+        return 0.0, 0.0
+    r = random.Random(seed * 1000003 + vi)
+    return r.uniform(-amount, amount), r.uniform(-amount, amount)
+
+
+def assign_uv(obj, slots, seed, risers=None):
     """World-space cube projection, tiling at each material's own rate. A
     masonry texture depicts a known real-world span, so one global rate cannot
-    serve both it and a ground texture. WBS wants the layer named UVMap."""
+    serve both it and a ground texture. WBS wants the layer named UVMap.
+
+    `risers` replaces u with arc length along the loop on wall riser faces. Cube
+    projection reads u off whichever world axis the face normal points down, so
+    on a curving ring the texture direction flips 90 degrees wherever that axis
+    changes and stretches by 1/cos between the flips."""
     mesh = obj.data
     bm = bmesh.new()
     bm.from_mesh(mesh)
+    bm.verts.index_update()
     uv = bm.loops.layers.uv.new("UVMap")
-    for face in bm.faces:
-        n = face.normal
-        axis = max(range(3), key=lambda i: abs(n[i]))
+    for fi, face in enumerate(bm.faces):
         idx = face.material_index
-        scale = scales[idx] if idx < len(scales) else scales[0]
+        _, scale, jit = slots[idx] if idx < len(slots) else slots[0]
+        arc = risers.get(fi) if risers else None
+        if arc is None:
+            nrm = face.normal
+            axis = max(range(3), key=lambda i: abs(nrm[i]))
         for loop in face.loops:
             co = loop.vert.co
-            if axis == 0:
-                u, v = co.y, co.z
+            if arc is not None:
+                p_i, u_i, p_j, u_j = arc
+                near_i = ((co.x - p_i[0]) ** 2 + (co.y - p_i[1]) ** 2
+                          <= (co.x - p_j[0]) ** 2 + (co.y - p_j[1]) ** 2)
+                u, v = (u_i if near_i else u_j), co.z / scale
+            elif axis == 0:
+                u, v = co.y / scale, co.z / scale
             elif axis == 1:
-                u, v = co.x, co.z
+                u, v = co.x / scale, co.z / scale
             else:
-                u, v = co.x, co.y
-            loop[uv].uv = (u / scale, v / scale)
+                u, v = co.x / scale, co.y / scale
+            du, dv = vertex_jitter(seed, loop.vert.index, jit)
+            loop[uv].uv = (u + du, v + dv)
     bm.to_mesh(mesh)
     bm.free()
 
@@ -648,14 +1234,14 @@ def dedupe_slots(chosen, registry):
     return slots, index
 
 
-def finish(obj, slots, collide, collection, classify=None):
-    """slots: [(material, uv_scale)] in material-index order. `classify` runs
-    after the slots exist and before the UVs, which need the indices."""
-    for mat, _ in slots:
+def finish(obj, slots, collide, collection, classify=None, risers=None, seed=0):
+    """slots: [(material, uv_scale, uv_jitter)] in material-index order. `classify`
+    runs after the slots exist and before the UVs, which need the indices."""
+    for mat, _, _ in slots:
         obj.data.materials.append(mat)
     if classify is not None:
         classify(obj.data)
-    cube_uv(obj, [s for _, s in slots])
+    assign_uv(obj, slots, seed, risers)
     # Does NOT reach the staging scene -- custom properties do not survive OBJ
     # (README step 2). The real carrier is the object NAME, matched against
     # blender_staging_setup.py's COLLIDE set. This only drives the gate below.
@@ -707,8 +1293,10 @@ def main():
     specs = bo["materials"]
     order = sorted(specs)
     default_uv = float(bo["uv_scale_yd"])
+    default_jitter = float(bo.get("uv_jitter", 0.0))
     registry = {k: (material(MAT_PREFIX + k, swatch(i, len(order))),
-                    float(specs[k].get("uv_scale_yd", default_uv)))
+                    float(specs[k].get("uv_scale_yd", default_uv)),
+                    float(specs[k].get("uv_jitter", default_jitter)))
                 for i, k in enumerate(order)}
     with open(cfg["out_materials"], "w") as fh:
         json.dump({MAT_PREFIX + k: specs[k]["texture"] for k in order},
@@ -725,14 +1313,14 @@ def main():
         chosen = {c: pick(surf["floor"][c], i) for c in FLOOR_CLASSES}
         slots, slot_of = dedupe_slots(chosen, registry)
         obj = bpy.data.objects.new(name, chunk)
-        finish(obj, slots, True, coll,
+        finish(obj, slots, True, coll, seed=bo["seed"],
                classify=lambda me, m=slot_of: assign_floor_slots(me, base_yd, m))
         floors.append(obj)
         floor_legend.append({"object": name, "materials": chosen})
 
     outer_spec = wall_spec(surf["outer_wall"])
     island_spec = wall_spec(surf["island_walls"])
-    walls, tops, flats, legend, desync = [], [], 0, [], []
+    walls, flats, legend, desync = [], 0, [], []
     jobs = [("TT_OuterWall", outer[0]["points"], wall_cfg["outer_margin_yd"],
              outer_spec, 0)]
     jobs += [("TT_JWall_%02d" % i, h["points"], None, island_spec, i)
@@ -741,8 +1329,8 @@ def main():
         floor_z = [heights.at_max(x, y) for x, y in pts]
         rise = height_profile(pts, wall_cfg, rng)
         top_z = [f + r for f, r in zip(floor_z, rise)]
-        obj, flat, spans, lost = build_wall(name, pts, floor_z, top_z,
-                                            thickness, wall_cfg)
+        obj, flat, spans, lost, riser_loops = build_wall(
+            name, pts, floor_z, top_z, thickness, wall_cfg)
         flats += int(flat)
         if lost:
             desync.append(name)
@@ -750,16 +1338,21 @@ def main():
         slots, band_slot = dedupe_slots(chosen, registry)
         span_slot = {nm: band_slot[b]
                      for b, names in WALL_BANDS.items() for nm in names}
-        finish(obj, slots, True, coll,
+        finish(obj, slots, True, coll, seed=bo["seed"],
+               risers=riser_uvs(spans, riser_loops,
+                                {b: registry[chosen[b]][1] for b in WALL_BANDS}),
                classify=lambda me, s=spans, m=span_slot: assign_wall_bands(me, s, m))
-        walls.append(obj)
-        tops.append(sum(top_z) / len(top_z))
+        walls.append((obj, spans))
         legend.append({"object": name, "centre_yd": centroid(pts),
                        "lower": chosen["lower"], "upper": chosen["upper"]})
 
-    trees = scatter_cones(holes, tops[1:], bo["scatter"], rng)
-    if trees is not None:
-        finish(trees, [registry[surf["trees"]]], False, coll)
+    doodads, doodad_legend = dress(bo["dressing"], walls[0], walls[1:],
+                                   heights, base_yd, rng, bo["seed"])
+    with open(cfg["out_doodads"], "w") as fh:
+        json.dump({"frame": "server",
+                   "models": {k: {"path": v["path"], "box": v["box"]}
+                              for k, v in bo["dressing"]["resolved"]["models"].items()},
+                   "placements": doodads}, fh, indent=1, sort_keys=True)
 
     for obj in list(coll.objects):
         obj.data.transform(obj.matrix_world)
@@ -806,7 +1399,9 @@ def main():
         "wall_legend": legend,
         "wall_span_desync": desync,
         "offset_vertices_clamped": CLAMPED[0],
-        "trees": 0 if trees is None else len(trees.data.polygons),
+        "doodads": len(doodads),
+        "doodad_legend": doodad_legend,
+        "doodad_models": len({d["model"] for d in doodads}),
         "z_range_yd": [round(min(zs), 2), round(max(zs), 2)],
         # Render-only geometry is allowed to be open; the floor chunks are sheets
         # by construction. Only sealed collision solids are worth gating on.

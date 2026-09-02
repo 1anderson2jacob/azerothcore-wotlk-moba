@@ -33,7 +33,10 @@ sequence has been run start to finish, most recently for Twisted Treeline v2 on
 a script.
 
 Every check compares against **what the previous step reported** rather than a
-literal. Numbers in brackets are what Twisted Treeline v2 produces today.
+literal, and this file deliberately carries no numbers for any map: they move
+with the trace, the tessellation and the dressing. A stale one does not read as
+stale, it reads as a real failure — a z range left here outlived the wall heights
+that produced it and sent a session hunting geometry that had never moved.
 
 ### Set these once
 
@@ -77,9 +80,14 @@ enough when only `build_blockout.py` or the `blockout:` block of
 `map_source.yaml` changed. Anything touching the paint, `blockout_trace.py`, or
 the trace-side keys needs both stages.
 
-Read off `$BUNDLE`'s report and carry them forward: **objects** [23], **floor
-chunks** [6, 3x2], **largest chunk tris** [under 21845], **max face span**
-[12.0 yd, 3 verts], **z range** [-8.0 .. 33.83].
+Read off `$BUNDLE`'s report the four numbers a later step consults: **objects**,
+**floor chunks and island walls**, **z range**, and **doodads**. Steps 3 and 4
+compare each against what you noted. None of them has a correct value — they
+follow the trace, the batch-ceiling grid and the `dressing` block.
+
+The rest of the report needs no note. Everything carrying a hard limit — batch
+triangles, non-planar floor faces, the 16-bit vertex cap — `gen_blockout.py`
+gates itself and fails the build over, so there is nothing left to eyeball.
 
 ### 2. OBJ to the staging side
 
@@ -125,8 +133,9 @@ Foreground, so `print()` lands in that terminal.
    map's width is the -90 deg about X import bug; undo and redo the import
    rather than rotating after.
 5. Text Editor -> **Open** `apps/moba/wmo/blender_staging_setup.py` -> Run
-   Script. Wants `PASS`, `Outdoor holds N` equal to step 1's object count, and
-   `derived: N floor chunks, N island walls` equal to step 1's grid.
+   Script. Wants `PASS`, `Outdoor holds N` equal to step 1's object count,
+   `derived: N floor chunks, N island walls` equal to step 1's grid, and
+   `doodads: N placements` equal to step 1's doodad count.
 6. **File > Save As** -> `$STAGING`. The setup exists only in RAM until you do.
 
 ### 4. Export
@@ -183,13 +192,17 @@ File count = groups + root + WDT + 4 DBCs.
 rm -rf $EXTRACT && mkdir -p $EXTRACT && cd $EXTRACT
 ~/code/azerothcore-wotlk/env/dist/bin/vmap4_extractor -d ~/Games/wow335/Data/
 ~/code/azerothcore-wotlk/env/dist/bin/vmap4_assembler Buildings vmaps
-cp vmaps/${MAPID}.vmtree vmaps/*.wmo.vmo ~/code/azerothcore-wotlk/env/dist/bin/vmaps/
+cp vmaps/${MAPID}.vmtree vmaps/*.vmo ~/code/azerothcore-wotlk/env/dist/bin/vmaps/
 rm ~/code/azerothcore-wotlk/env/dist/bin/mmaps/${MAPID}*.mmtile
 cd ~/code/azerothcore-wotlk/env/dist/bin && ./mmaps_generator $MAPID
 ```
 
-The `.wmo.vmo` is globbed rather than named: the extractor recases it its own
-way (`Twistedtreeline.wmo.vmo`, not `$MAP`), and a WMO-only map has exactly one.
+The `.vmo` files are globbed rather than named, and the glob has to be that wide.
+The extractor recases the WMO its own way (`Twistedtreeline.wmo.vmo`, not
+`$MAP`), and **a doodad model that probes bounding triangles contributes a
+`<Model>.m2.vmo` of its own** — a category that did not exist before the map
+carried dressing, and that `*.wmo.vmo` silently misses. The wall-face families
+all probe zero, so they render and never reach this directory.
 
 Both `rm`s are load-bearing: `vmap4_extractor` refuses a non-empty output
 directory, and `mmaps_generator` skips any tile whose existing `.mmtile` matches
@@ -202,8 +215,10 @@ applies only to a fresh checkout.
 ### 9. In game
 
 Restart the worldserver, `.debug bg`, queue in. Then `.go xyz <x> <y>` for a
-point step 1's report says is floor -- **omit the z** and let the server resolve
-it, which doubles as a vmap check.
+point step 1's report says is floor -- **give it a z of 5** and let yourself drop
+onto the surface, which doubles as a vmap check. Omitting z cannot work on a
+WMO-only map: there is no terrain for `Map::GetHeight` to fall back on, and its
+vmap search runs only `DEFAULT_HEIGHT_SEARCH` 50 yd down from `MAX_HEIGHT`.
 
 ### Rebuilding after a texture-only change
 
@@ -224,7 +239,39 @@ worldserver.
 
 The test for whether this applies is `gen_blockout.py`'s own report: re-run 8
 when the **geometry** numbers change, skip it when only the material legend
-does.
+does. **A dressing change may or may not be one of these** — a doodad reaches
+the vmaps through `Doodad::ExtractSet` only if it has bounding triangles, and
+wall dressing deliberately uses models with none. `wmo_verify.py`'s `doodads
+emitted to vmaps` line is the test: unchanged from the last build means the
+extractors would produce the same bytes, so skip 8 and relaunch the client.
+
+**Both of those are COUNT tests, and a count cannot see a change that moves what
+it counts.** Two got through. The outer plate was changed to follow the crest
+instead of pinning to its global maximum, which moved vertices up to 10 yd while
+every object, face, doodad and z-range figure held steady — `hull_ring` and the
+tessellation are 2D and never see z. And a doodad `scale` change rewrites every
+spawn's transform in the `.vmtree` while the placement count is identical. When
+a change alters *values* rather than *quantities*, run 8 and do not consult the
+report.
+
+### Previewing a texture without shipping it
+
+The 3.4 viewport shows real art, so a candidate can be judged without touching
+steps 4-9. To try one:
+
+1. Repoint an existing material key's `texture:` in `map_source.yaml`.
+2. `python3 apps/moba/gen_blockout.py --stage build`.
+3. Re-run the staging script in the Blender session already open.
+
+No OBJ export and no re-import. Material *names* travel through the OBJ but a
+key's texture path does not — that reaches the 3.4 side through the materials
+sidecar, which is also why step 2 is not optional: Blender's python has no
+`yaml`. Adding a key, or changing which surface wears which key, does change the
+names and needs step 2 and a fresh import as well.
+
+Shading mode decides what you see. **Material Preview** draws the texture;
+**Solid** draws `diffuse_color`, the per-material hue that catches a wall
+wearing the wrong candidate from a top-down look. Both are worth keeping.
 
 ## Why each step is what it is
 
@@ -394,30 +441,31 @@ which objects collide — has to be re-established on the 3.4 side, which is wha
 
 Run `blender_staging_setup.py` in the Text Editor. It builds the WBS structure:
 root collection, `Outdoor`, collision vertex groups on the colliding subset,
-materials wired to texture paths, the root's `wmo_id`, and a test doodad — and
+materials wired to texture paths, the root's `wmo_id`, and the doodad set — and
 turns the scene into the server frame, for which see *Where the map lands*.
 
 **The staging `.blend` holds nothing you cannot regenerate** — that is the point
 of the script, and it is verified (see below). Treat it as disposable and keep
 the source `.blend` backed up instead.
 
-**That stops being true the moment you place a doodad**, so it is a claim with
-an expiry date rather than a property of the pipeline. A placement is
-hand-authored information — model path, position, rotation, scale — and it has
-nowhere else to live. It cannot sit in the source `.blend`, because
-`wow_wmo_doodad` is a WBS property and WBS only runs in 3.4. It cannot travel
-through the OBJ, which carries geometry and no custom properties (the same
-reason a per-object collide flag has to be re-established on the 3.4 side).
-From the first real doodad the staging file holds original data, not derived,
-and losing it means redoing the dressing pass by hand.
+Doodads are the case that threatens this, and why they do not is worth stating.
+A placement is hand-authored information — model path, position, rotation,
+scale — and two of the three obvious homes are closed to it. It cannot sit in
+the source `.blend`, because `wow_wmo_doodad` is a WBS property and WBS only
+runs in 3.4. It cannot travel through the OBJ, which carries geometry and no
+custom properties — the same reason a per-object collide flag has to be
+re-established on the 3.4 side.
 
-Settle this before authoring at scale, not after. The shape that fits this
-project is a `doodad_config.yaml` plus a generator that builds the placements
-in the 3.4 scene, the way `tower_config.yaml` feeds `gen_tower_data.py` — which
-makes the `.blend` derived again and turns placements into diffable text. The
-open question is direction: placements want to be *authored* by dragging things
-around the viewport, not typed as coordinates, so the tool probably needs a
-"dump the current placements to YAML" pass as much as the YAML-to-scene one.
+**The third home is the one the material paths already use.** Placements resolve
+on the 5.1 side, from `map_source.yaml`'s `dressing` block against the geometry
+being built, and land in `var/blender/<bundle>_doodads.json` beside the
+materials sidecar; this script instantiates them. Nothing in the 3.4 scene is
+original data, so the disposability claim has no expiry date.
+
+That is also why the resolver lives in `build_blockout.py` rather than
+`gen_blockout.py`: a wall top's height comes out of `height_profile()`'s seeded
+run along the resampled loop and exists nowhere else, so whatever places a
+doodad on one has to be the process that built it.
 
 One caveat that outlives the script: **the setup exists only in RAM until you
 save.** A whole session's work was once found missing from the file on disk
@@ -610,6 +658,23 @@ grid centre `(17066.67, 17066.67, 0)` with the model's bounds around it, and eve
 `.mmtile` should report `DNAV` v7, `mmapVersion 19` and a **nonzero polygon
 count** — a tile that builds with zero polygons is terrain nothing can walk.
 
+**Every model the `.vmtree` names must have a `.vmo` beside it**, because the
+tree stores names and the `.vmo` files store the geometry:
+
+```bash
+cd env/dist/bin/vmaps
+strings -a ${MAPID}.vmtree | grep -E '\.(m2|wmo)$' | sort -u |
+  while read m; do [ -f "$m.vmo" ] || echo "NO VMO: $m"; done
+```
+
+About 8% of spawned models across the whole world fail to convert and always
+have — the misses are spread evenly through the alphabet, so they are individual
+failures rather than one abort. Harmless where nothing walks. **Worth checking
+anyway because of how the assembler fails**: `convertWorld2` breaks its
+conversion loop on the first error (`TileAssembler.cpp:203-208`), so a model that
+fails hard strands every model sorting after it, and the only symptom is
+collision quietly missing.
+
 ### Getting onto the finished map
 
 Parsing proves the files are right. It does not prove the client renders the map or
@@ -771,29 +836,46 @@ fails, an unturned scene passes.
 ### `blender_staging_setup.py` — build a staging scene from a bare OBJ import
 
 Produces a WBS-ready scene: root collection, `Outdoor`, collision vertex groups
-on the colliding subset, materials wired to texture paths, and the test doodad.
+on the colliding subset, materials wired to texture paths, and the doodad set.
 
 **Proven to reproduce the staging scene exactly.** Rebuilt from an OBJ into an
 empty 3.4 file on 2026-08-12: all 47 group files came out the same size as the
 hand-built original, 17 byte-identical, and every triangle count, collision
 count, material path and doodad matched. This is what makes the staging
-`.blend` disposable, subject to the doodad caveat in step 3 — re-run the proof
-if the script changes.
+`.blend` disposable — re-run the proof if the script changes.
 
 Group and material *ordering* differs, because Blender sorts collection
 contents case-insensitively and the script links them in ASCII order. That
 moves group-file indices and material ids; it changes nothing the extractor
 reads by name.
 
-The images it creates are blank 1x1 placeholders carrying the right WoW path —
-all the export needs, since MOTX ships the path string and not pixels, but the
-viewport stays untextured.
+It loads the real BLPs. Each material's texture is pulled from the client
+archives through `mpq_tool.open_archives`, decoded by WBS's `BlpConverter`, and
+cached as PNG under `var/blender/texcache/` — so the 3.4 viewport shows the
+actual art in Material Preview while `diffuse_color` keeps the per-material hue
+Solid shading uses. That needs arm64 fix 6 below; without it every material
+falls back to a blank 1x1 placeholder, which is reported and harmless, because
+MOTX ships the path string and the export never reads pixels.
 
-### `blender_preflight.py` — check an existing staging scene, and add the doodad
+Doodads carry their real geometry too. Each unique model's `.m2` and every
+`.skin` profile it declares are extracted to `var/blender/m2cache/` and read
+with pywowlib's `M2File`, giving one mesh per model, shared across that model's
+placements and textured per submesh. Anything unreadable falls back to the box
+proxy and is reported. **The export is unaffected either way** — MODD is written
+from the object's transform and `wow_wmo_doodad.path` and never reads the mesh
+(`wmo_scene.py:616-638`), which is what makes real geometry a free preview
+rather than a shipping decision. Model coordinates go in raw, matching the box
+proxies' own convention; verified against the two Dalaran banners, which are
+asymmetric and face out of their walls in the viewport as they do in game.
+
+### `blender_preflight.py` — check an existing staging scene
 
 Additive and idempotent. Verifies every precondition the WBS exporter enforces,
 repairs only what is missing, and prints each change it made under `changed:`.
 Run it before every export.
+
+It counts the doodad set against the sidecar rather than building it; building
+is `blender_staging_setup.py`'s job.
 
 ### `wmo_verify.py` — offline check of an exported WMO
 
@@ -843,6 +925,12 @@ The MPQs carry internal listfiles, so asset paths are enumerable rather than
 guesswork. A `_s` suffix on a texture is a specular map — never assign one as
 diffuse.
 
+**Doodad paths are not consistently spelled, and a sweep filtered on
+`passivedoodads` silently loses 19% of them.** 1871 models live under
+`PASSIVE DOODADS` — with a space — including the whole `HangingLantern` family.
+Match `passive ?doodads`, or take every `.m2` under `World\` and accept the wider
+net. Nothing warns; the missing models simply never appear as candidates.
+
 **WMOs shop in `DUNGEONS\TEXTURES\`, not `TILESET\`.** The latter is ADT terrain
 art, authored to be *structureless* so it tiles and alpha-blends without visible
 repetition — which is exactly what makes it read as flat noise stood up a 16 yd
@@ -851,6 +939,15 @@ wall. Blizzard's own outdoor rock WMOs use the dungeon tree:
 it is `DUNGEONS\TEXTURES\WALLS\MM_STRMWND_WALL_04.BLP`. `TILESET\` is right for
 the one case it was authored for — a horizontal surface seen from above, so
 floors and nothing else.
+
+**A texture authored for vertex tinting ships at full brightness.** WBS writes
+no MOCV on an outdoor group — `wmo_scene_group.py` sets `mocv = None` for
+anything `is_indoor` returns false for, which is every group this pipeline
+produces. A texture painted light and flat, expecting the WMO to darken it,
+renders blinding here. `MM_STRMWND_WALL_04.BLP` decodes nearly white on its own
+and is what Blizzard's outdoor `HillsbradTerraceWall.wmo` wears, so finding a
+texture on a real WMO says nothing about how it will look on one of ours. Judge
+a candidate from its decoded BLP.
 
 Sets are authored as families sharing a prefix with the surface class in the
 name — `JLO_MCAVEG_GROUND` / `_WALL` / `_LEDGE` / `_CEILING`. Picking a *set*
@@ -861,6 +958,21 @@ not. Read a reference WMO's MOTX chunk to see what a real one uses.
 a wall: a model with **0 bounding triangles** renders and never collides, and
 one with more than 0 always collides. There is no third option, which is why
 "walkable but vision-blocking" brush cannot be a doodad at all.
+
+**For shape, not collision, the asset browser's `/api/model/` is the tool** — it
+returns the vertex list quantised against `span`, alongside `lo`/`hi`/`size`, so
+the width across any z-slice is a few lines of arithmetic. That is the
+difference between "this model is 8 yd wide" and "its ROOTS are 5 yd and its
+canopy 16", which a bounding box cannot tell you and which is usually the
+question a placement turns on: canopy overhanging a cliff is wanted, root flare
+hanging in the air is not.
+
+**Scaling a family to a common height leaves its width free**, and stock models
+vary enough in proportion that this bites repeatedly. Two trees of one family
+at 26 yd tall came out 10.9 and 25.6 yd wide. A per-surface multiplier shrinks
+both equally and can never bring them into line — the fix is to split them into
+families with their own `height_yd`, picked so the dimension that meets the
+surface is what matches.
 
 ### `mpq_pack` — build the client patch archive
 
@@ -932,6 +1044,14 @@ on a fresh clone:**
    `<fp.h>` (gone ~20 years) and `#define fdopen(fd,mode) NULL` over the SDK's
    real declaration. StormLib's copy of `zutil.h` has the same latent bug but
    compiles clean; leave it.
+6. `blp/BLP2PNG/setup.py`: add `-DPNG_ARM_NEON_OPT=0` to the Darwin
+   `extra_compile_args`. The vendored libpng has no `arm/` directory at all, but
+   `pngpriv.h:132` auto-enables NEON on an arm target and `pngpriv.h:142` then
+   points `PNG_FILTER_OPTIMIZATIONS` at `png_init_filter_functions_neon` — a
+   symbol whose source file was never vendored, so the extension builds and
+   fails at *import* with `symbol not found in flat namespace`. libpng's own
+   comment three lines above names this flag as the fix. `PNG2BLP/setup.py:49`
+   carries the same latent bug; nothing here needs it.
 
 ### What cannot be automated
 
@@ -957,6 +1077,15 @@ on a fresh clone:**
 pywowlib's StormLib binding, compiled against Blender 3.4's interpreter
 (`storm.cpython-310-darwin.so`). Any other python fails the import. `mpq_pack` is
 C++ and needs only clang plus `libstorm.a` from that same build.
+
+**BLP pixels are reachable outside Blender too.** `BLP2PNG.cpython-310-darwin.so`
+is built against the same 3.10 ABI as the storm binding, so a standalone
+`python3.10` importing `BlpConverter` from
+`~/tools/blender-wow-studio/io_scene_wmo/pywowlib/blp/BLP2PNG` decodes an archive
+BLP straight to PNG — no Blender, no GUI session, arm64 fix 6 above still
+required. Verified 2026-08-25 on a 44,876-byte BLP out to a 256x256 RGBA PNG.
+Contact sheets and headless texture passes therefore need nothing from the 3.4
+side.
 
 **The toolchain spans two pythons and neither is sufficient alone.** Blender's
 bundled python has numpy (2.3.4) and reads packed image pixels through

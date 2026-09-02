@@ -3,23 +3,21 @@
 # texture assigned, links one of the already-loaded images by path. Never
 # overwrites an existing assignment, never touches geometry or vertex groups.
 
-import bpy, re, bmesh, os, json
+import bpy, re, os, json
 from mathutils import Vector
 
 ROOT_WMO_ID = 9000              # must match blender_staging_setup.py
 SET_NAME   = "Set_$DefaultGlobal"
-DOODAD_OBJ = "TT_TestDoodad_Lamppost"
-DOODAD_M2  = "World\\EXPANSION01\\DOODADS\\GHOSTLANDS\\Lampposts\\BE_Lamppost_Ghostlands01.m2"
-DOODAD_SERVER_LOC = (0.0, 70.0, 0.0)
 
 ORIENT_PROBE   = "TT_JWall_14"
 ORIENT_PROBE_Y = 55.46          # its bbox centre y in the blockout; the turn negates it
 
-RENDER_ONLY = {"TT_Trees"}
+RENDER_ONLY = set()
 SINGLETON   = {"TT_OuterWall"}
 
 PRESENT = {o.name for o in bpy.data.objects if o.type == 'MESH' and o.name.startswith("TT_")}
-PRESENT.discard(DOODAD_OBJ)
+PRESENT -= {o.name for c in bpy.data.collections if c.name.startswith("Set_")
+            for o in c.objects}
 
 
 def series(prefix):
@@ -34,16 +32,19 @@ def series(prefix):
 COLLIDE  = SINGLETON | series("TT_Floor_") | series("TT_JWall_")
 SHIPPING = COLLIDE | RENDER_ONLY
 
-# Written by build_blockout.py; must match blender_staging_setup.py's copy.
+# Written by build_blockout.py; must match blender_staging_setup.py's copies.
 MATERIALS_JSON = os.path.expanduser(
     "~/code/azerothcore-wotlk/var/blender/twisted_treeline_v2_materials.json")
+DOODADS_JSON = MATERIALS_JSON.replace("_materials.json", "_doodads.json")
 
 try:
     with open(MATERIALS_JSON) as fh:
         TEXTURES = json.load(fh)
+    with open(DOODADS_JSON) as fh:
+        DOODADS = json.load(fh)
 except OSError as exc:
     raise SystemExit("ABORT: cannot read %s (%s) -- run gen_blockout.py first"
-                     % (MATERIALS_JSON, exc))
+                     % (exc.filename, exc))
 
 base  = lambda n: re.sub(r"\.\d{3}$", "", n)
 fails, notes = [], []
@@ -168,8 +169,11 @@ if shipped != SHIPPING:
     fails.append("Outdoor set mismatch; missing=%s extra=%s"
                  % (sorted(SHIPPING - shipped), sorted(shipped - SHIPPING)))
 
-# -- 5. test doodad ---------------------------------------------------------
-print("\n== DOODAD ==")
+# -- 5. doodads -------------------------------------------------------------
+# Checked, never rebuilt: the set comes from the sidecar and building it is
+# blender_staging_setup.py's job. Only the enabled flag is repaired, because
+# WBS's own handler is what clears it.
+print("\n== DOODADS ==")
 if doodads is not None:
     dset = find_child(doodads, SET_NAME)
     if dset is None:
@@ -177,41 +181,32 @@ if doodads is not None:
             if k.name.startswith("Set_$DefaultGlobal"):
                 dset = k
     if dset is None:
-        dset = bpy.data.collections.new(SET_NAME)
-        doodads.children.link(dset)
-        notes.append("created %s" % SET_NAME)
-
-    ob = bpy.data.objects.get(DOODAD_OBJ)
-    if ob is None:
-        me = bpy.data.meshes.new(DOODAD_OBJ)
-        bm = bmesh.new()
-        bmesh.ops.create_cube(bm, size=1.0)
-        for v in bm.verts:                       # 1 x 1 x 3.5, standing on z = 0
-            v.co.z = (v.co.z + 0.5) * 3.5
-        bm.to_mesh(me)
-        bm.free()
-        ob = bpy.data.objects.new(DOODAD_OBJ, me)
-        notes.append("created %s" % DOODAD_OBJ)
-    for c in list(ob.users_collection):
-        if c is not dset:
-            c.objects.unlink(ob)
-    if ob.name not in dset.objects:
-        dset.objects.link(ob)
-
-    ob.wow_wmo_doodad.enabled = True             # or WBS's handler evicts it
-    ob.wow_wmo_doodad.path    = DOODAD_M2
-    # The scene is the server frame turned 180 deg about Z, and this object was
-    # not part of that turn -- so a server position is negated in x and y here.
-    ob.location = (-DOODAD_SERVER_LOC[0], -DOODAD_SERVER_LOC[1], DOODAD_SERVER_LOC[2])
-    ob.rotation_mode = 'QUATERNION'
-    ob.rotation_quaternion = (1.0, 0.0, 0.0, 0.0)
-    ob.scale = (1.0, 1.0, 1.0)
-    ob.hide_viewport = ob.hide_render = False
-    ob.hide_set(False)
-    print("  %s in %r enabled=%s scale=%.2f" % (ob.name, dset.name, ob.wow_wmo_doodad.enabled, ob.scale[0]))
-    print("  model loc = %s (server %s)"
-          % (tuple(round(v, 2) for v in ob.location), DOODAD_SERVER_LOC))
-    print("  path = %s" % ob.wow_wmo_doodad.path)
+        fails.append("no %s collection; run blender_staging_setup.py" % SET_NAME)
+    else:
+        want = len(DOODADS["placements"])
+        got = list(dset.objects)
+        counts = {}
+        for ob in got:
+            if not ob.wow_wmo_doodad.enabled:
+                ob.wow_wmo_doodad.enabled = True
+                notes.append("re-enabled doodad %s" % ob.name)
+            if not ob.wow_wmo_doodad.path:
+                fails.append("doodad %s has no model path" % ob.name)
+            try:
+                if ob.hide_get():
+                    ob.hide_set(False)
+                    notes.append("unhid %s (build_references skips hidden objects)"
+                                 % ob.name)
+            except RuntimeError:
+                notes.append("%s not in the view layer; could not unhide" % ob.name)
+            counts[ob.wow_wmo_doodad.path] = counts.get(ob.wow_wmo_doodad.path, 0) + 1
+        print("  %d doodads in %r, %d distinct models" % (len(got), dset.name, len(counts)))
+        for p, n in sorted(counts.items()):
+            print("   %4d  %s" % (n, p))
+        if len(got) != want:
+            fails.append("%s holds %d doodads, %s wants %d -- re-run "
+                         "blender_staging_setup.py"
+                         % (dset.name, len(got), os.path.basename(DOODADS_JSON), want))
 
 # -- 6. report --------------------------------------------------------------
 print("\n" + "=" * 70)

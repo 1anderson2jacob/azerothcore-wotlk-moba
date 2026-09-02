@@ -61,6 +61,30 @@ MATERIAL_NAME = re.compile(r"^[A-Za-z0-9_]+$")
 # Wall face bands. build_blockout.py maps each to a set of named face spans.
 WALL_BANDS = ("lower", "upper")
 
+# Dressing surfaces build_blockout.py knows how to place onto. The top/wall
+# split is not cosmetic: a horizontal surface stands a model on its origin and a
+# vertical one does not, which is why probe_models reads how to measure a family
+# from this and why one family cannot serve both.
+DRESSING_TOP_SURFACES = ("outer_plateau", "island_caps", "terrace_ledges",
+                         "terrace_ledge_trees", "terrace_ledge_trees_outer")
+DRESSING_WALL_SURFACES = ("outer_wall", "island_walls")
+# Railed rather than scattered: a fixed pitch along a run, so these validate on
+# spacing_yd instead of a density. Every terrace_ledge* surface is in BOTH
+# tuples -- railed, and horizontal, which is how probe_models learns to measure
+# its families. base_walls and terrace_ledges are catalogues and come out once a
+# look is chosen; the tree fills stay.
+DRESSING_RAIL_SURFACES = ("base_walls", "terrace_ledges", "terrace_ledge_trees",
+                          "terrace_ledge_trees_outer")
+DRESSING_SURFACES = tuple(dict.fromkeys(DRESSING_TOP_SURFACES
+                                        + DRESSING_WALL_SURFACES
+                                        + DRESSING_RAIL_SURFACES))
+
+# The storm binding is a cpython-310 .so, so probing models needs that python
+# specifically -- the same constraint apps/moba/wmo/README.md states for the
+# standalone tools.
+PY310 = os.environ.get("PY310", "python3.10")
+MPQ_TOOL = Path(__file__).parent / "wmo" / "mpq_tool.py"
+
 MIRROR_IOU_WARN = 0.90
 STAGES = ("trace", "build", "all")
 
@@ -126,7 +150,7 @@ def validate_materials(bo, path):
                 fail(f'{path}: material {key!r} "uv_scale_yd" must be positive')
 
     surf = bo["surfaces"]
-    require(surf, ("floor", "trees", "outer_wall", "island_walls"),
+    require(surf, ("floor", "outer_wall", "island_walls"),
             path, "blockout.surfaces.")
     if set(surf["floor"]) != set(FLOOR_CLASSES):
         fail(f'{path}: "blockout.surfaces.floor" must name exactly '
@@ -138,7 +162,6 @@ def validate_materials(bo, path):
         if not got:
             fail(f'{path}: "blockout.surfaces.floor.{cls}" must not be empty')
         refs += got
-    refs += material_refs(surf["trees"])
     for which in ("outer_wall", "island_walls"):
         spec = surf[which]
         if isinstance(spec, str):
@@ -151,10 +174,256 @@ def validate_materials(bo, path):
             got = material_refs(spec[band])
             if not got:
                 fail(f'{path}: "blockout.surfaces.{which}.{band}" must not be empty')
+            # A list cycles over OBJECTS and the outer wall is always exactly one,
+            # so entries past the first would be dropped in silence -- a uniform
+            # perimeter that reads as a broken build rather than an unsupported
+            # config. Islands cycle on purpose; this surface cannot.
+            if which == "outer_wall" and len(got) > 1:
+                fail(f'{path}: "blockout.surfaces.outer_wall.{band}" names '
+                     f'{len(got)} materials, but the outer wall is one object -- '
+                     "only the first would be used. Name a single material.")
             refs += got
     for name in refs:
         if name not in mats:
             fail(f'{path}: "blockout.surfaces" references unknown material {name!r}')
+
+
+def family_refs(spec):
+    """A dressing `families` value: one name, a list cycled over the surface's
+    objects, or -- on a wall surface -- either of those per band."""
+    if isinstance(spec, dict):
+        return [n for band in spec.values() for n in material_refs(band)]
+    return material_refs(spec)
+
+
+def family_kinds(dr):
+    """family name -> the set of surface kinds referencing it. probe_models reads
+    this to know how to measure the family, so a name in both is a config error
+    rather than a choice."""
+    kinds = {}
+    for which, spec in dr["surfaces"].items():
+        kind = "top" if which in DRESSING_TOP_SURFACES else "wall"
+        for name in family_refs(spec.get("families", [])):
+            kinds.setdefault(name, set()).add(kind)
+    return kinds
+
+
+def validate_dressing(bo, path):
+    dr = bo["dressing"]
+    if not isinstance(dr, dict):
+        fail(f'{path}: "blockout.dressing" must be a mapping')
+    require(dr, ("families", "surfaces", "max_slope_deg"), path, "blockout.dressing.")
+
+    fams = dr["families"]
+    if not isinstance(fams, dict) or not fams:
+        fail(f'{path}: "blockout.dressing.families" must be a non-empty mapping')
+    for name, spec in fams.items():
+        if not isinstance(spec, dict) or "models" not in spec or "height_yd" not in spec:
+            fail(f'{path}: dressing family {name!r} needs "models" and "height_yd"')
+        if not isinstance(spec["height_yd"], (int, float)) or spec["height_yd"] <= 0:
+            fail(f'{path}: dressing family {name!r} "height_yd" must be positive')
+        if not spec["models"]:
+            fail(f'{path}: dressing family {name!r} has no models')
+        for m in spec["models"]:
+            if not str(m).lower().endswith(".m2"):
+                fail(f'{path}: dressing family {name!r} model {m!r} must end .m2 '
+                     "-- MODN takes the model, not an .mdx alias")
+
+    surf = dr["surfaces"]
+    if set(surf) - set(DRESSING_SURFACES):
+        fail(f'{path}: "blockout.dressing.surfaces" may only name '
+             + ", ".join(DRESSING_SURFACES))
+    for which, spec in surf.items():
+        rail = which in DRESSING_RAIL_SURFACES
+        require(spec, ("families", "spacing_yd") if rail
+                else ("families", "per_1000_yd2", "min_spacing_yd"),
+                path, f"blockout.dressing.surfaces.{which}.")
+        scope = spec.get("scope", "all")
+        if scope not in ("all", "islands", "outer"):
+            fail(f'{path}: dressing surface {which!r} "scope" must be one of '
+                 "all, islands, outer")
+        if isinstance(spec["families"], dict):
+            if which not in DRESSING_WALL_SURFACES:
+                fail(f'{path}: dressing surface {which!r} is horizontal and has no '
+                     'bands, so its "families" cannot be a per-band mapping')
+            if set(spec["families"]) != set(WALL_BANDS):
+                fail(f'{path}: dressing surface {which!r} "families" must name '
+                     f'exactly {", ".join(WALL_BANDS)}')
+        for name in family_refs(spec["families"]):
+            if name not in fams:
+                fail(f'{path}: dressing surface {which!r} references unknown '
+                     f"family {name!r}")
+        if rail:
+            if spec["spacing_yd"] <= 0:
+                fail(f'{path}: dressing surface {which!r} wants a positive '
+                     '"spacing_yd"')
+            seen = [n for n in family_refs(spec["families"])]
+            if len(seen) != len(set(seen)):
+                fail(f'{path}: dressing surface {which!r} names a family twice -- '
+                     "a catalogue places each model once, so a repeat silently "
+                     "costs a slot and shows you nothing new")
+        elif spec["min_spacing_yd"] <= 0 or spec["per_1000_yd2"] <= 0:
+            fail(f'{path}: dressing surface {which!r} wants a positive '
+                 '"per_1000_yd2" and "min_spacing_yd"')
+        if spec.get("push_yd", 0.0) < 0:
+            fail(f'{path}: dressing surface {which!r} "push_yd" moves a prop OUT '
+                 "along the face normal and cannot be negative")
+
+    for name, used in family_kinds(dr).items():
+        if len(used) > 1:
+            fail(f'{path}: dressing family {name!r} is used on both a wall and a '
+                 "horizontal surface -- a cap buries everything below the model's "
+                 "origin and a wall face buries nothing, so one height_yd cannot "
+                 "mean both. Copy the family under a second name")
+
+
+def validate_placements(dr, path):
+    """Explicit single-model placements, resolved against the geometry rather
+    than typed: an anchor names the intent and the wall supplies everything
+    else."""
+    places = dr.get("placements", [])
+    if not isinstance(places, list):
+        fail(f'{path}: "blockout.dressing.placements" must be a list')
+    for i, spec in enumerate(places):
+        where = f"blockout.dressing.placements[{i}]"
+        if not isinstance(spec, dict):
+            fail(f"{path}: {where} must be a mapping")
+        require(spec, ("model", "height_yd", "anchor"), path, where + ".")
+        if not str(spec["model"]).lower().endswith(".m2"):
+            fail(f'{path}: {where} model {spec["model"]!r} must end .m2')
+        if not isinstance(spec["height_yd"], (int, float)) or spec["height_yd"] <= 0:
+            fail(f'{path}: {where} "height_yd" must be positive')
+        a = spec["anchor"]
+        if not (isinstance(a, list) and len(a) == 2
+                and all(isinstance(v, (int, float)) for v in a)):
+            fail(f'{path}: {where} "anchor" must be [x, y] in map yards -- the '
+                 "nearest riser face to it is what carries the model")
+        if spec.get("push_yd", 0.0) < 0:
+            fail(f'{path}: {where} "push_yd" moves the model OUT along the face '
+                 "normal and cannot be negative")
+
+
+def probe_models(bo, path):
+    """Every model's own bounding box, so each family's per-model scale is
+    derived from the height the config asks for rather than typed.
+
+    Shelled out because the storm binding is compiled against Blender 3.4's
+    interpreter and this process is the system python -- the same split that
+    makes the Blender-side tools take JSON."""
+    dr = bo["dressing"]
+    kinds = family_kinds(dr)
+    wanted = []
+    for _fam, spec in sorted(dr["families"].items()):
+        for m in spec["models"]:
+            key = str(m).lower()
+            if key not in wanted:
+                wanted.append(key)
+    for spec in dr.get("placements", []):
+        key = str(spec["model"]).lower()
+        if key not in wanted:
+            wanted.append(key)
+
+    proc = subprocess.run([PY310, str(MPQ_TOOL), "probe", "--json"] + wanted,
+                          capture_output=True, text=True)
+    if proc.returncode != 0:
+        tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-12:])
+        fail(f"{path}: mpq_tool.py probe failed -- is {PY310} the interpreter "
+             f"pywowlib's storm binding was built for?\n{tail}")
+    try:
+        probed = json.loads(proc.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        fail(f"{path}: mpq_tool.py probe --json produced no JSON\n"
+             + proc.stdout[-400:])
+
+    models, families, legend = {}, {}, []
+    missing, flat, no_collision, solid = [], [], [], []
+    for fam, spec in sorted(dr["families"].items()):
+        want_h = float(spec["height_yd"])
+        wall = "wall" in kinds.get(fam, ())
+        keys, scales = [], []
+        for i, m in enumerate(spec["models"]):
+            src = str(m).lower()
+            rec = probed.get(src)
+            if rec is None:
+                missing.append(src)
+                continue
+            (rlo, rhi), (clo, chi) = rec["box_a"], rec["box_b"]
+            # A cap stands the model on its origin, so whatever the author left
+            # below z=0 is buried and is not height -- counting a tree's root
+            # flare shrinks all 38 of them by up to 12%. A wall face buries
+            # nothing, and a model authored to HANG puts every vertex below the
+            # origin: azjol_hangingfern_01 tops out at 0.27, which read as a
+            # height scales it 96x.
+            z_lo, z_hi = (rlo[2], rhi[2]) if wall else (0.0, rhi[2])
+            if z_hi - z_lo <= 0.0:
+                flat.append(src)
+                continue
+            if rec["bound_tris"] and wall:
+                solid.append(src)
+            elif not rec["bound_tris"] and not wall:
+                no_collision.append(src)
+            key = f"{fam}_{i:02d}"
+            # Footprint off the collision box, which zeroes out exactly when
+            # bound_tris does -- and that is every model worth hanging on a wall,
+            # so box_a is the fallback. box_a's xy is not tight (ghostlandstree04
+            # claims 175 yd across), which is why it only ever sizes the viewport
+            # proxy and never rejects a placement.
+            box = (clo, chi) if (chi[0] - clo[0]) or (chi[1] - clo[1]) else (rlo, rhi)
+            models[key] = {"path": src,
+                           "scale": round(want_h / (z_hi - z_lo), 5),
+                           # model units, so the export scale draws the proxy at
+                           # the size the doodad ships at. z starts where the
+                           # placement rule treats the model as starting: the
+                           # origin on a cap, the geometry itself on a wall.
+                           "box": [round(box[1][0] - box[0][0], 3),
+                                   round(box[1][1] - box[0][1], 3),
+                                   round(z_lo, 3),
+                                   round(z_hi, 3)]}
+            keys.append(key)
+            scales.append(models[key]["scale"])
+        families[fam] = keys
+        if keys:
+            legend.append({"family": fam, "height_yd": want_h, "models": len(keys),
+                           "scale_lo": min(scales), "scale_hi": max(scales)})
+
+    if missing:
+        fail(f"{path}: dressing model not in the client MPQs: " + ", ".join(missing))
+    if flat:
+        fail(f"{path}: dressing model has a zero-height bounding box, so no "
+             "scale can be derived from it: " + ", ".join(flat))
+    for src in sorted(set(no_collision)):
+        note(f"warn  {src} probes 0 bounding triangles -- renders in the client,"
+             " dropped from the vmaps")
+    for src in sorted(set(solid)):
+        note(f"warn  {src} carries collision and is dressing a wall face --"
+             " players run against those constantly, so it ships as an invisible"
+             " bump mid-lane")
+    places = dr.get("placements", [])
+    anchors = []
+    for i, spec in enumerate(places):
+        src = str(spec["model"]).lower()
+        rec = probed.get(src)
+        if rec is None:
+            fail(f"{path}: placement {i} model is not in the client MPQs: {src}")
+        (rlo, rhi), (clo, chi) = rec["box_a"], rec["box_b"]
+        z_lo, z_hi = rlo[2], rhi[2]        # a placement always lands on a riser
+        if z_hi - z_lo <= 0.0:
+            fail(f"{path}: placement {i} model has a zero-height bounding box, so "
+                 f"no scale can be derived from it: {src}")
+        if rec["bound_tris"]:
+            note(f"warn  {src} carries collision and is placed on a wall face --"
+                 " players run against those constantly, so it ships as an"
+                 " invisible bump")
+        box = (clo, chi) if (chi[0] - clo[0]) or (chi[1] - clo[1]) else (rlo, rhi)
+        key = "place_%02d" % i
+        models[key] = {"path": src,
+                       "scale": round(float(spec["height_yd"]) / (z_hi - z_lo), 5),
+                       "box": [round(box[1][0] - box[0][0], 3),
+                               round(box[1][1] - box[0][1], 3),
+                               round(z_lo, 3), round(z_hi, 3)]}
+        anchors.append((key, list(spec["anchor"]), float(spec.get("push_yd", 0.3))))
+    return {"models": models, "families": families, "legend": legend,
+            "anchors": anchors}
 
 
 def validate(cfg, path):
@@ -177,7 +446,7 @@ def validate(cfg, path):
 
     bo = cfg["blockout"]
     require(bo, ("floor_edge_yd", "floor_detail_edge_yd", "bottom_yd", "wall",
-                 "scatter", "materials", "surfaces", "uv_scale_yd",
+                 "dressing", "materials", "surfaces", "uv_scale_yd",
                  "export_collection", "seed"),
             path, "blockout.")
     if bo["floor_detail_edge_yd"] >= bo["floor_edge_yd"]:
@@ -201,6 +470,8 @@ def validate(cfg, path):
              "drops below the floor it stands on")
 
     validate_materials(bo, path)
+    validate_dressing(bo, path)
+    validate_placements(bo["dressing"], path)
 
 
 # ------------------------------------------------------------------- running
@@ -256,19 +527,27 @@ def run_build(cfg, path, out_dir, blender):
             fail(f"{path}: {needed} missing -- run the trace stage first")
     BLEND_DIR.mkdir(parents=True, exist_ok=True)
     blend = (BLEND_DIR / f"{out_dir.name}_blockout.blend").resolve()
-    # Texture paths cannot reach the 3.4 staging scene any other way: custom
-    # properties do not survive the OBJ, and 3.4's python has no yaml.
+    # Texture paths and doodad placements cannot reach the 3.4 staging scene any
+    # other way: custom properties do not survive the OBJ, and 3.4's python has
+    # no yaml.
     materials = (BLEND_DIR / f"{out_dir.name}_materials.json").resolve()
+    doodads = (BLEND_DIR / f"{out_dir.name}_doodads.json").resolve()
+    blockout = dict(cfg["blockout"])
+    blockout["dressing"] = dict(blockout["dressing"])
+    blockout["dressing"]["resolved"] = probe_models(cfg["blockout"], path)
     params = {
         "geometry": str(geometry.resolve()),
         "heights": str(heights.resolve()),
         "out_blend": str(blend),
         "out_materials": str(materials),
-        "blockout": cfg["blockout"],
+        "out_doodads": str(doodads),
+        "blockout": blockout,
     }
     report = run_tool(BUILD_TOOL, params, blender, "BUILD", path)
     report["_blend"] = str(blend)
     report["_materials"] = str(materials)
+    report["_doodads"] = str(doodads)
+    report["_dressing"] = blockout["dressing"]["resolved"]["legend"]
     return report
 
 
@@ -321,6 +600,17 @@ def gate_build(report):
     if report["walls_unterraced"]:
         note(f'warn  {report["walls_unterraced"]} wall(s) too small to terrace,'
              " built as plain prisms")
+    for d in report["doodad_legend"]:
+        where = f'{d["object"]} {d["band"]}'.strip()
+        if not d["area_yd2"]:
+            ok = False
+            note(f"FAIL  {where} offers no surface to dress -- its normals are"
+                 " inverted, or dressing.max_slope_deg sits under the ledge's"
+                 " own slope")
+        elif d["want"] and d["placed"] < d["want"] * 0.6:
+            note(f'warn  {where} took {d["placed"]} of {d["want"]} doodads'
+                 " -- min_spacing_yd is saturating the surface before the"
+                 " density is met")
     if report["wall_span_desync"]:
         ok = False
         note("FAIL  mesh.validate() dropped faces on "
@@ -402,12 +692,24 @@ def main():
                 note("    %-14s (%7.1f, %7.1f)  lower=%-17s upper=%s"
                      % (w["object"], w["centre_yd"][0], w["centre_yd"][1],
                         w["lower"], w["upper"]))
+            note(f'  dressing   {report["doodads"]} doodads,'
+                 f' {len(report["_dressing"])} families,'
+                 f' {report["doodad_models"]} models used')
+            for f in report["_dressing"]:
+                note("    %-20s %4.1f yd  %d models  scale %.3f .. %.3f"
+                     % (f["family"], f["height_yd"], f["models"],
+                        f["scale_lo"], f["scale_hi"]))
+            for d in report["doodad_legend"]:
+                note("    %-14s %-6s %-20s %7.0f yd2  want %4d  placed %4d"
+                     % (d["object"], d["band"], d["family"], d["area_yd2"],
+                        d["want"], d["placed"]))
             note(f'  faces      max span {report["floor_max_face_span_yd"]} yd,'
                  f' {report["floor_max_face_verts"]} verts')
             note(f'  z range    {report["z_range_yd"][0]} .. '
                  f'{report["z_range_yd"][1]} yd')
             note(f'  wrote      {report["_blend"]}')
             note(f'             {report["_materials"]}  (key -> texture path)')
+            note(f'             {report["_doodads"]}  (doodad placements)')
             if not gate_build(report):
                 failed = True
 

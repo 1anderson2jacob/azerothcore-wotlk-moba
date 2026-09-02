@@ -56,12 +56,6 @@ blockout:
     outer_margin_yd: 30.0          # plateau width beyond the map's convex hull
     outer_step_yd: 15.0            # point spacing on that hull
 
-  scatter:                         # placeholder tree mass, replaced in dressing
-    per_1000_yd2: 5.0
-    radius_yd: [2.5, 5.0]
-    height_yd: [7.0, 15.0]
-    sink_yd: 1.0
-
   # ---------------------------------------------------------------- surfaces
   # A registry of every material the map may use, and separately what wears
   # which. Split because the wall pool has no business knowing how many walls
@@ -91,7 +85,6 @@ blockout:
     lane_ghostlands:     {texture: 'tileset\expansion01\ghostlands\ghostlandsgrass01.blp'}
 
     walkway: {texture: 'dungeons\textures\floor\jlo_dmaul_walkway.blp', uv_scale_yd: 6.0}
-    tree:    {texture: 'tileset\expansion01\ghostlands\ghostlandsrock01.blp'}
 
     # Wall candidates. uv_scale is held at 4.0 across all of them ON PURPOSE:
     # vary texture and tiling rate together and the comparison decides nothing.
@@ -133,7 +126,16 @@ blockout:
     mcave_crock:       {texture: 'dungeons\textures\rock\jlo_mcaveexg_crock.blp',          uv_scale_yd: 4.0}
     mrdn_rockwall02:   {texture: 'dungeons\textures\rock\jlo_mrdn_rockwall02.blp',         uv_scale_yd: 4.0}
 
-    # The incumbent, kept as the control on the outer ribbon.
+    # The perimeter ribbon. Rough rock below the terrace ledge, dressed courses
+    # above, so the ledge reads as the seam between the two tiers.
+    #
+    # Named for the SURFACE, not the texture, so trying a candidate stays a
+    # repoint here -- renaming a key changes the material name, which is what
+    # forces an OBJ round trip and a fresh 3.4 import.
+    perimeter_lower: {texture: 'dungeons\textures\rock\bm_kzn_rockwall01.blp', uv_scale_yd: 6.0, uv_jitter: 0.15}
+    perimeter_upper: {texture: 'dungeons\textures\rock\jlo_mcave_rock.blp',    uv_scale_yd: 5.0, uv_jitter: 0.12}
+
+    # The previous incumbent. Unassigned now, kept as the path to revert to.
     ghostlands_rock: {texture: 'tileset\expansion01\ghostlands\ghostlandsrock01.blp', uv_scale_yd: 4.0}
 
   surfaces:
@@ -143,14 +145,14 @@ blockout:
     # Floor class is decided by height, not by chunk: lane at z<=0.25,
     # base at z>=base_yd-0.25, ramp between.
     floor:
-      lane: [lane_ashenvale, lane_darkshore_moss, lane_duskwood,
-             lane_hyjal, lane_grizzly, lane_ghostlands]
+      lane: lane_darkshore_moss
       base: walkway
       ramp: walkway
-    trees: tree
 
-    # A bare name means one material on every band.
-    outer_wall: ghostlands_rock
+    # A bare name means one material on every band; a mapping names each.
+    outer_wall:
+      lower: perimeter_lower
+      upper: perimeter_upper
 
     # One entry per island per band. A shorter list cycles and a longer one
     # silently drops its tail, so these lengths track the trace's island count.
@@ -167,5 +169,340 @@ blockout:
               shdwfang_outer03, shdwfang_stones02, mcave_crock, mrdn_rockwall02]
 
   uv_scale_yd: 8.0                 # default when a material states none
+  uv_jitter: 0.0                   # per-vertex UV wobble, as a fraction of a tile.
+                                   # Per-material override too, like uv_scale_yd
   export_collection: TT_WMO_Export
   seed: 20260818                   # height variation and scatter are deterministic
+
+  # ---------------------------------------------------------------- dressing
+  # M2 doodads on the wall tops and the wall faces. Placements are RESOLVED, not
+  # authored: this block plus the built geometry produce
+  # var/blender/<bundle>_doodads.json, which blender_staging_setup.py
+  # instantiates. That is the whole reason the 3.4 staging scene stays derived --
+  # a doodad dragged into it by hand would be the one thing in that file no
+  # rebuild could reproduce.
+  #
+  # Models cost nothing to ship. MODN stores the path string exactly as MOTX
+  # stores a texture's, so the client patch carries no M2 and no BLP.
+  dressing:
+    max_slope_deg: 30.0            # a HORIZONTAL surface steeper than this takes
+                                   # no doodad. MUST stay under the bevel's 45 deg
+                                   # (0.75 yd rise over a 0.75 yd inset) or every
+                                   # wall top wears a ring of trees hanging off
+                                   # its chamfer. Wall faces never consult it: a
+                                   # riser is exactly vertical by construction,
+                                   # so the band spans already answer which faces
+                                   # they are
+
+    # `height_yd` is the height the family is scaled TO. gen_blockout.py probes
+    # each M2's own bounding box and divides, so the per-model scale is derived
+    # and swapping in a bigger model does not silently grow the tree.
+    #
+    # WHERE the model is measured from differs by surface, and that is why a
+    # family may only be used on one kind. A cap stands the model on its origin,
+    # so anything the author left below z=0 is buried and is not height. A wall
+    # face buries nothing, and models authored to hang put every vertex BELOW the
+    # origin -- azjol_hangingfern_01 tops out at 0.27, which read as a height
+    # scales it 96x.
+    #
+    # Height is held constant WITHIN each comparable group on purpose, the same
+    # way the wall textures hold uv_scale at 4.0: vary silhouette and size
+    # together and the comparison decides nothing. Native sizes span 1 to 215 yd.
+    families:
+      duskwood_spooky:
+        height_yd: 26.0
+        models:
+          - 'world\azeroth\duskwood\passivedoodads\trees\duskwoodspookytree01.m2'
+          - 'world\azeroth\duskwood\passivedoodads\trees\duskwoodspookytree02.m2'
+          - 'world\azeroth\duskwood\passivedoodads\trees\duskwoodspookytree03.m2'
+      duskwood_canopy:
+        height_yd: 26.0
+        models:
+          - 'world\azeroth\duskwood\passivedoodads\trees\duskwoodtreecanopy01.m2'
+          - 'world\azeroth\duskwood\passivedoodads\trees\duskwoodtreecanopy02.m2'
+          - 'world\azeroth\duskwood\passivedoodads\trees\duskwoodtreecanopy03.m2'
+      ghostlands:
+        height_yd: 26.0
+        models:
+          # GhostlandsTree02 is deliberately absent: it probes 0 bounding
+          # triangles, so it renders and never reaches the vmaps.
+          - 'world\expansion01\doodads\generic\bloodelf\trees\ghostlandstree03.m2'
+          - 'world\expansion01\doodads\generic\bloodelf\trees\ghostlandstree04.m2'
+      felwood:
+        height_yd: 26.0
+        models:
+          - 'world\kalimdor\felwood\passivedoodads\tree\felwoodtree01.m2'
+          - 'world\kalimdor\felwood\passivedoodads\tree\felwoodtree02.m2'
+      # The same two models split apart so they can carry different heights.
+      # Scaled to a common height they are not comparable: 02 ships 2.4x the
+      # canopy and 1.6x the root flare of 01, because height fixes one axis and
+      # leaves the other to the model's own proportions.
+      felwood_tall:
+        height_yd: 26.0
+        models:
+          - 'world\kalimdor\felwood\passivedoodads\tree\felwoodtree01.m2'
+      felwood_wide:
+        height_yd: 16.5
+        models:
+          - 'world\kalimdor\felwood\passivedoodads\tree\felwoodtree02.m2'
+      tirisfal:
+        height_yd: 26.0
+        models:
+          - 'world\lordaeron\tirisfalglade\passivedoodads\trees\tirisfallgladecanopytree02.m2'
+          - 'world\lordaeron\tirisfalglade\passivedoodads\trees\tirisfallgladecanopytree03.m2'
+          - 'world\lordaeron\tirisfalglade\passivedoodads\trees\tirisfallgladecanopytree04.m2'
+      silverpine:
+        height_yd: 26.0
+        models:
+          - 'world\lordaeron\silverpine\passivedoodads\trees\silverpinetree01.m2'
+          - 'world\lordaeron\silverpine\passivedoodads\trees\silverpinetree03.m2'
+      ashenvale:
+        height_yd: 26.0
+        models:
+          - 'world\kalimdor\ashenvale\passivedoodads\ashenvaletrees\ashenvaletree02.m2'
+          - 'world\kalimdor\ashenvale\passivedoodads\ashenvaletrees\ashenvaletree03.m2'
+      feralas:
+        height_yd: 26.0
+        models:
+          - 'world\kalimdor\feralas\passivedoodads\tree\feralastree01.m2'
+      deadwind_rock:
+        height_yd: 26.0
+        models:
+          - 'world\azeroth\deadwindpass\passivedoodads\rocktrees\deadwindpassrocktree01.m2'
+          - 'world\azeroth\deadwindpass\passivedoodads\rocktrees\deadwindpassrocktree02.m2'
+          - 'world\azeroth\deadwindpass\passivedoodads\rocktrees\deadwindpassrocktree03.m2'
+      stonetalon_burnt:
+        height_yd: 26.0
+        models:
+          - 'world\kalimdor\stonetalon\passivedoodads\trees\burntstonetree01.m2'
+          - 'world\kalimdor\stonetalon\passivedoodads\trees\burntstonetree07.m2'
+          - 'world\kalimdor\stonetalon\passivedoodads\trees\burntstonetree08.m2'
+      moonglade:
+        height_yd: 26.0
+        models:
+          - 'world\kalimdor\moonglade\passivedoodads\moongladetrees\moongladetree02.m2'
+          - 'world\kalimdor\moonglade\passivedoodads\moongladetrees\moongladetree03.m2'
+      grizzly:
+        height_yd: 26.0
+        models:
+          - 'world\expansion02\doodads\grizzlyhills\trees\grizzlyhills_tree01.m2'
+          - 'world\expansion02\doodads\grizzlyhills\trees\grizzlyhills_tree05.m2'
+      crystalsong:
+        height_yd: 26.0
+        models:
+          - 'world\expansion02\doodads\crystalsongforest\trees\crystalsongtree01.m2'
+          - 'world\expansion02\doodads\crystalsongforest\trees\crystalsongtree03.m2'
+      zuldrak:
+        height_yd: 26.0
+        models:
+          - 'world\expansion02\doodads\zuldrak\trees\zuldrak_largetree_01.m2'
+          - 'world\expansion02\doodads\zuldrak\trees\zuldrak_largetree_02.m2'
+      plagueland:
+        height_yd: 26.0
+        models:
+          - 'world\lordaeron\plagueland\passivedoodads\trees\plaguelandtree01.m2'
+          - 'world\lordaeron\plagueland\passivedoodads\trees\plaguelandtree02.m2'
+          - 'world\lordaeron\plagueland\passivedoodads\trees\plaguelandtree03.m2'
+      # The control on the outer ring, same role ghostlands_rock plays for the
+      # wall textures. Taller because it is the horizon, not a wall top.
+      elwynn_canopy:
+        height_yd: 30.0
+        models:
+          - 'world\azeroth\elwynn\passivedoodads\trees\elwynntreecanopy01.m2'
+          - 'world\azeroth\elwynn\passivedoodads\trees\elwynntreecanopy02.m2'
+          - 'world\azeroth\elwynn\passivedoodads\trees\elwynntreecanopy03.m2'
+
+
+      # Terrace-ledge catalogue. One height across all 87 for the same reason
+      # the wall textures hold uv_scale at 4.0: vary silhouette and size
+      # together and the comparison decides nothing. 5.0 yd sits the whole post
+      # against the 7.25 yd upper riser rather than over the wall crest --
+      # deliberate, and the first thing to revisit if they do not read from a
+      # lane.
+      #
+      # Ordered NARROWEST scaled box first. Nothing is rejected for width, so
+      # the order only decides WHERE a model appears: the best-fitting ones land
+      # on the islands a walk visits, the 3-10 yd wrecks on the perimeter where
+      # they cost nothing. Native heights span 2.0 to 10.0 yd, so the scale
+      # range is wide and the box widths with it.
+      lampposts:
+        height_yd: 5.0
+        models:
+          - 'world\expansion02\doodads\generic\oracle\o_lamppost_01.m2'
+          - 'world\expansion02\doodads\generic\forsaken\fk_lamppost.m2'
+          - 'world\expansion02\doodads\generic\forsaken\fk_lamppost_unlit.m2'
+          - 'world\azeroth\westfall\passivedoodads\lamppost\westfalllamppost.m2'
+          - 'world\expansion01\doodads\generic\bloodelf\lamp\be_lamp01.m2'
+          - 'world\azeroth\westfall\passivedoodads\lamppost\westfalllamppost02.m2'
+          - 'world\azeroth\westfall\passivedoodads\lamppost\westfalllamppost01.m2'
+          - 'world\expansion01\doodads\generic\ethereal\lamppost\et_lamppost01off.m2'
+          - 'world\expansion02\doodads\wintertauren\wt_lamppost01.m2'
+          - 'world\expansion02\doodads\grizzlyhills\trappers\trapperlamppost_01.m2'
+          - 'world\generic\passivedoodads\lunarnewyear\lunarnewyearlantern_horde_standing.m2'
+          - 'world\kalimdor\darkshore\passivedoodads\lamp\darkstreetlamp02.m2'
+          - 'world\expansion01\doodads\generic\draenei\lampposts\dr_lamppost_01.m2'
+          - 'world\generic\nightelf\passive doodads\lamps\kalidarstreetlamp02.m2'
+          - 'world\generic\passivedoodads\lunarnewyear\lunarnewyearlantern_alliance_standing.m2'
+          - 'world\generic\human\passive doodads\lamps\westernplaguelandslampoststraight.m2'
+          - 'world\kalimdor\felwood\passivedoodads\lamp\felwoodlamp01.m2'
+          - 'world\generic\human\passive doodads\lamps\westernplaguelandslampost02.m2'
+          - 'world\generic\human\passive doodads\lamps\westernplaguelandslampost01.m2'
+          - 'world\expansion02\doodads\grizzlyhills\trappers\trapperlamppost_01_unlit.m2'
+          - 'world\generic\human\passive doodads\lamps\westernplaguelandslampostbroken02.m2'
+          - 'world\generic\human\passive doodads\lamps\westernplaguelandslampoststraightoff.m2'
+          - 'world\generic\human\passive doodads\lamps\westernplaguelandslampostbroken01.m2'
+          - 'world\expansion02\doodads\generic\ancientnightelf\borean_roadlamp01.m2'
+          - 'world\expansion02\doodads\dalaran\dalaran_lamppost01.m2'
+          - 'world\kalimdor\darkshore\passivedoodads\lamp\darkstreetlamp.m2'
+          - 'world\expansion01\doodads\generic\ethereal\lamppost\et_lamppost01.m2'
+          - 'world\generic\human\passive doodads\lamps\tirisfallstreetlamp01.m2'
+          - 'world\generic\human\passive doodads\hanginglanterns\generalhanginglantern01.m2'
+          - 'world\generic\nightelf\passive doodads\lamps\darnassusstreetlamp02.m2'
+          # 0 bounding triangles: renders, never reaches the vmaps. Kept anyway
+          # -- a ledge 4-12 yd up has no navmesh consequence either way, which
+          # is the whole reason this surface could take collision models at all.
+          - 'world\expansion02\doodads\generic\forsaken\fk_lamphanging.m2'
+          - 'world\expansion02\doodads\furbolgs\fb_lamppost_darkshore_01.m2'
+          - 'world\expansion01\doodads\generic\ancientorc\lampost\ao_lamppost01.m2'
+          - 'world\generic\human\passive doodads\lamps\plaguelandslamp.m2'
+          - 'world\expansion02\doodads\generic\vrykul\lamppost\vr_lamppost_02.m2'
+          - 'world\expansion02\doodads\stratholme_past\ld_stratholmestreetlamp01.m2'
+          - 'world\expansion01\doodads\eversong\lamppost\be_lamppost_eversong01-optimized.m2'
+          - 'world\expansion01\doodads\eversong\lamppost\be_lamppost_eversong01.m2'
+          - 'world\expansion02\doodads\generic\irondwarf\id_lamppost.m2'
+          - 'world\expansion01\doodads\ghostlands\lampposts\be_lamppost_ghostlands01.m2'
+          - 'world\expansion01\doodads\ghostlands\lampposts\be_lamppost_ghostlands02.m2'
+          - 'world\expansion02\doodads\generic\vrykul\lamppost\vr_lamppost_03.m2'
+          - 'world\expansion02\doodads\furbolgs\fb_lamppost_gh_01.m2'
+          - 'world\generic\human\passive doodads\lamps\stormwindstreetlamp01.m2'
+          - 'world\generic\nightelf\passive doodads\lamps\darnassusstreetlamp01.m2'
+          - 'world\expansion02\doodads\generic\irondwarf\id_lamppost_broken.m2'
+          - 'world\expansion02\doodads\generic\vrykul\lamppost\vr_lamppost_01.m2'
+          - 'world\expansion02\doodads\generic\vrykul\lamppost\vr_lamppost_snow_01.m2'
+          - 'world\expansion02\doodads\generic\vrykul\lamppost\vr_lamppost_snow_01blue.m2'
+          - 'world\generic\orc\passive doodads\lanterns\orchanginglantern.m2'
+          - 'world\azeroth\elwynn\passivedoodads\lamppost\lamppost.m2'
+          - 'world\generic\human\passive doodads\lampposts\duskwoodlamppost.m2'
+          - 'world\generic\human\passive doodads\lampposts\duskwoodlamppostbroken.m2'
+          - 'world\generic\human\passive doodads\lamps\lamppostbroken.m2'
+          - 'world\kalimdor\barrens\passivedoodads\lampposts\barrenslamppost01.m2'
+          - 'world\generic\orc\passive doodads\lampposts\orcbrazierlamppost01.m2'
+          - 'world\generic\nightelf\passive doodads\lamps\kalidarstreetlamp01.m2'
+          - 'world\generic\orc\passive doodads\lampposts\orcbrazier_lightpostbarrens.m2'
+          - 'world\generic\orc\passive doodads\lampposts\orcbrazierstreetlamp.m2'
+          - 'world\khazmodan\uldaman\passivedoodads\lamps\uldamanlampandpostbusted03.m2'
+          - 'world\expansion01\doodads\zangar\lamp\zangarlamppost01.m2'
+          - 'world\khazmodan\uldaman\passivedoodads\lamps\uldamanlampandpostbusted04.m2'
+          - 'world\expansion01\doodads\generic\draenei\lampposts\dr_lamppost_02.m2'
+          - 'world\expansion02\doodads\generic\irondwarf\id_lamppost-off.m2'
+          - 'world\expansion01\doodads\shadowmoon\base\ol_lochlamppost.m2'
+          - 'world\generic\dwarf\passive doodads\lampposts\lochlamppost.m2'
+          - 'world\expansion02\doodads\wintertauren\wt_lamppost01_wreckeda.m2'
+          - 'world\generic\dwarf\passive doodads\lampposts\anvilmarlamppost.m2'
+          - 'world\expansion02\doodads\generic\ancientnightelf\borean_brokenroadlamp01.m2'
+          - 'world\expansion02\doodads\generic\tuskar\fishlamp\ts_fishlight.m2'
+          - 'world\khazmodan\uldaman\passivedoodads\lamps\uldamanlampandpostbusted02.m2'
+          - 'world\expansion02\doodads\wintertauren\wt_lamppost01_wreckedb.m2'
+          - 'world\khazmodan\uldaman\passivedoodads\lamps\uldamanlampbroken.m2'
+          - 'world\khazmodan\uldaman\passivedoodads\lamps\uldamanlampandpost.m2'
+          - 'world\generic\tauren\passive doodads\lampposts\taurenlamppost.m2'
+          - 'world\generic\tauren\passive doodads\lampposts\taurenlamppost02.m2'
+          - 'world\expansion02\doodads\generic\human\lamppost\hu_lamppost_northrend.m2'
+          - 'world\expansion01\doodads\generic\ancientorc\lampost\ao_lamppost02.m2'
+          - 'world\generic\tauren\passive doodads\lampposts\taurenlamppostbroken02.m2'
+          - 'world\generic\dwarf\passive doodads\lanterns\new_small_lantern02.m2'
+          - 'world\generic\dwarf\passive doodads\lanterns\new_small_lantern01.m2'
+          - 'world\khazmodan\uldaman\passivedoodads\lamps\uldamanlampandpostbusted01.m2'
+          - 'world\expansion01\doodads\hellfirepeninsula\lamppost\ancient_drainei_lamppost_ruined.m2'
+          - 'world\generic\nightelf\passive doodads\lamps\darnassuswreckedstreetlamp01.m2'
+          - 'world\generic\tauren\passive doodads\lampposts\taurenlamppostbroken.m2'
+          - 'world\khazmodan\uldaman\passivedoodads\lamps\uldamanlampfallen.m2'
+          - 'world\generic\nightelf\passive doodads\lamps\darnassuswreckedstreetlamp02.m2'
+
+    # Density is per 1000 yd2 of the surface, projected onto the map plane,
+    # which is what reads as spacing from a top-down camera.
+    #
+    # `families` takes one name, or a list cycled over the objects of that
+    # surface -- islands in trace order.
+    surfaces:
+      outer_plateau:
+        families: elwynn_canopy
+        per_1000_yd2: 14.0
+        min_spacing_yd: 5.0
+        scale_jitter: 0.20
+        sink_yd: 1.0
+        edge_margin_yd: 0.0 # the outer edge is the horizon; overhang there is free
+      island_caps:
+        # A COMPARISON BUILD, not a chosen look: one candidate family per island,
+        # 15 of them, walked on the same stops the wall-texture build uses.
+        # Mirror twins deliberately differ here -- dressing symmetry is not a
+        # fairness property, and a distinct family per island is more per walk.
+
+        # Ordered widest footprint first, because islands are numbered by
+        # descending area and the footprint test rejects a tree whose canopy
+        # overruns the cap. Arbitrary order strands whichever wide family lands
+        # on a small island: it cost four bare islands against two.
+        families: [feralas, ghostlands, felwood, ashenvale, duskwood_canopy,
+                   deadwind_rock, moonglade, plagueland, duskwood_spooky, zuldrak,
+                   tirisfal, silverpine, grizzly, stonetalon_burnt, crystalsong]
+        per_1000_yd2: 6.0
+        min_spacing_yd: 5.0
+        scale_jitter: 0.15
+        sink_yd: 1.0
+        edge_margin_yd: 0.0 # canopy over the drop is wanted, and nothing walks
+                            # at cap height for it to obstruct
+  
+      # A CATALOGUE, not a chosen look: 87 lampposts, one per slot, in list
+      # order. rail_on_ledge stops when the list runs out, so the spacing is
+      # picked to make the two meet -- 34 yd gives 92 slots against 87 models.
+      # The 13 island shelves are walked before the outer ring, so the catalogue
+      # lands where the texture walk already goes and the perimeter takes the
+      # tail.
+      #
+      # No per_1000_yd2 and no min_spacing_yd: a rail is not a density. No
+      # edge_margin_yd either -- nothing is rejected for width here, and the
+      # count of posts wider than their own shelf comes back in the legend.
+      terrace_ledges:
+        families: lampposts
+        spacing_yd: 34.0
+        sink_yd: 0.1                     # the shelf is a flat built quad, so
+                                         # this only stops a base plate z-fighting
+
+      # A FILL, not a catalogue: the mix is drawn per slot, so there is no
+      # period to spot walking it. Island shelves and the perimeter's are
+      # separate surfaces because they are read at very different distances.
+      #
+      # `scale` multiplies the family height for THIS surface only -- every
+      # family here is shared with island_caps or outer_plateau, and shrinking
+      # it in the families block would shrink those too.
+      terrace_ledge_trees:
+        scope: islands
+        families: [felwood_tall, felwood_wide]
+        spacing_yd: 12.0
+        sink_yd: 1.0
+        scale: 0.9
+        shuffle: true
+
+      terrace_ledge_trees_outer:
+        scope: outer
+        families: [felwood_tall, felwood_wide]
+        spacing_yd: 12.0
+        sink_yd: 1.0
+        scale: 0.9
+        shuffle: true
+
+    # Explicit single-model placements. Scatter answers "how does a mass of
+    # these read" and a catalogue rail answers "which of these do I want";
+    # neither can put ONE model at ONE place, which is what marking a base is.
+    #
+    # `anchor` is the only hand-authored number: the nearest riser face to it
+    # carries the model, and yaw, height within the band and the push out of the
+    # wall all come off that face. Both anchors sit on the map-centre-facing
+    # side of each base's inner island.
+    placements:
+      - model: 'world\expansion02\doodads\dalaran\dalaran_banner_alliance_02.m2'
+        height_yd: 8.0
+        anchor: [-171.7, -0.3]
+      - model: 'world\expansion02\doodads\dalaran\dalaran_banner_horde_02.m2'
+        height_yd: 8.0
+        anchor: [171.8, -2.5]

@@ -174,8 +174,8 @@ PATCHES = [
     # 3820 Eye of the Storm: keeps its ambience, zone music, MinElevation and mask.
     ("AreaTable.dbc",    [(3820, AREA_ID, area_overrides())]),
     # 14369 is a plain per-group Stormwind row. Two rows, matching Blizzard's shape:
-    # WMOGroupID -1 is the client's whole-WMO fallback, 0 is what our 47 groups
-    # actually carry, and 0x4 is the bit Map.cpp reads to force outdoors.
+    # WMOGroupID -1 is the client's whole-WMO fallback, 0 is what every one of our
+    # groups carries, and 0x4 is the bit Map.cpp reads to force outdoors.
     ("WMOAreaTable.dbc", [(14369, WMOAREA_ID,     wmoarea_overrides(-1, 0x10)),
                           (14369, WMOAREA_ID + 1, wmoarea_overrides(0,  0x04))]),
     # 591 is map 566's light. Client-only: LightEntryfmt skips every parameter.
