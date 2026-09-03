@@ -550,6 +550,8 @@ def emit_sql(roster, column_order, blocks):
         "    `AttackIntervalMs` INT UNSIGNED NOT NULL DEFAULT 2000,",
         "    `AttackSpellId`    INT UNSIGNED NOT NULL DEFAULT 0,",
         "    `WaypointPathId`   INT UNSIGNED NOT NULL,",
+        "    `ReferencePathId`  INT UNSIGNED NOT NULL,  -- lane centreline; creep speed",
+        "                                               -- compensation divides by its legs",
         "    `DespawnMs`        INT UNSIGNED NOT NULL DEFAULT 60000,",
         "    `Lane`             TINYINT UNSIGNED NOT NULL DEFAULT 0  -- 0 none, 1 top, 2 mid, 3 bot;",
         "                                                           -- a super creep spawns only while the",
@@ -557,7 +559,7 @@ def emit_sql(roster, column_order, blocks):
         ");",
         "",
         "INSERT INTO `mod_moba_creep_data`",
-        "(`CreatureEntry`, `Map`, `Team`, `Role`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `WaypointPathId`, `DespawnMs`, `Lane`)",
+        "(`CreatureEntry`, `Map`, `Team`, `Role`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `WaypointPathId`, `ReferencePathId`, `DespawnMs`, `Lane`)",
         "VALUES",
     ]
     data_rows = []
@@ -566,7 +568,8 @@ def emit_sql(roster, column_order, blocks):
             f"-- {creep['key']} ({creep['lane']}/{creep['slot']})\n"
             f"({entry}, {creep['_map']}, {creep['team']}, {ROLE_IDS[creep['role']]}, "
             f"{creep.get('attack_range', 20)}, {creep.get('attack_interval_ms', 2000)}, "
-            f"{creep.get('attack_spell_id', 0)}, {creep['_path_id']}, {creep['despawn_ms']}, "
+            f"{creep.get('attack_spell_id', 0)}, {creep['_path_id']}, "
+            f"{creep['_ref_path_id']}, {creep['despawn_ms']}, "
             f"{LANE_IDS[creep['lane']]})")
     lines.append(",\n".join(data_rows) + ";")
 
@@ -615,6 +618,11 @@ def main():
                 fail(f'creep "{creep["key"]}": lane/slot "{creep["lane"]}/{creep["slot"]}" '
                      f"not in {lane_lock_path} -- check the name, or run gen_creep_paths.py")
             creep["_path_id"] = slot_ids["forward" if creep["team"] == 0 else "reverse"]
+            ref_ids = lane_lock.get(creep["lane"], {}).get("_centerline")
+            if not ref_ids:
+                fail(f'creep "{creep["key"]}": lane "{creep["lane"]}" has no centreline '
+                     f"path in {lane_lock_path} -- re-run gen_creep_paths.py")
+            creep["_ref_path_id"] = ref_ids["forward" if creep["team"] == 0 else "reverse"]
 
             source_cols, order = parse_vertical_dump(creep["source"])
             if column_order is None:

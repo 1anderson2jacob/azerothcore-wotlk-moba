@@ -82,6 +82,15 @@ are `TempSummon`s tracked in `_spawnedCreeps`, not the persistent `BgCreatures` 
   `WaypointMovementGenerator` always walks to node 1 of whatever path it is given,
   wherever the creature actually spawned, so two units sharing a path collide. Slots are
   declared in `lane_config.yaml` and their paths generated from it.
+- **Formation survives corners by per-leg speed, and the mechanism spans the whole
+  pipeline**: on a turn the outer slot's path is genuinely longer than the inner's, so one
+  speed for all fans a wave apart. `gen_creep_paths.py` emits a bare centreline path per
+  lane per direction alongside the slot paths, `gen_creep_roster.py` carries its id into
+  `mod_moba_creep_data.ReferencePathId`, and `BuildLegRatios` divides each slot leg by the
+  centreline leg **at the same node index** — equal time on leg *i* for every slot, whatever
+  the lane does. That index correspondence is the entire mechanism, so the two paths must
+  stay node-for-node aligned. Applied as a speed *rate* rather than a
+  `waypoint_data.velocity`, so a player's slow multiplies it instead of discarding it.
 - **Leashing is LoL-style, with no run-back** — a creep stays within a corridor of its
   own lane, resumes from where combat ended, never regresses past its furthest node, and
   stands and fights at the lane's end. Neither the engine's leash nor its home position
@@ -568,6 +577,8 @@ touch one of these areas? Read the named comment first.
 - **Stat buffs do nothing on creatures** — `Creature::UpdateStats` is a no-op. → `moba_creep_spell_gate` in `npc_moba_creep.cpp`
 - **Mechanical-type creatures are hard-immune to direct heals** → `creep_config.yaml`, `creature_type` legend
 - **Lane waypoints are emitted `move_type = RUN`**, so `speed_walk` is inert. → `creep_config.yaml`, `speed_run` legend
+- **A `waypoint_data.velocity` overrides the entire speed system** — `HasVelocity` skips `GetSpeed()`, so a creep with a path velocity ignores slows and haste completely. → `ApplyLegSpeed` in `npc_moba_creep.cpp`
+- **A slot path and its centreline reference must stay node-for-node aligned** — a size mismatch silently disables compensation for that creep and only says so in the log. → `BuildLegRatios`
 - **A `gameobject_template` copy needs its `gameobject_template_addon` row** → `DOME_ADDON_FLAGS` in `gen_base.py`
 - **Money must leave only after every item is pre-validated** → `npc_moba_store.cpp`, `TryPurchase`
 - **Armour proficiency is cumulative upward** — the check that matters is refusing a mage the plate set. → `TryPurchase`

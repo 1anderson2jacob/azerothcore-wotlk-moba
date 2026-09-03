@@ -152,6 +152,8 @@ CREATE TABLE `mod_moba_creep_data` (
     `AttackIntervalMs` INT UNSIGNED NOT NULL DEFAULT 2000,
     `AttackSpellId`    INT UNSIGNED NOT NULL DEFAULT 0,
     `WaypointPathId`   INT UNSIGNED NOT NULL,
+    `ReferencePathId`  INT UNSIGNED NOT NULL,  -- lane centreline; creep speed
+                                               -- compensation divides by its legs
     `DespawnMs`        INT UNSIGNED NOT NULL DEFAULT 60000,
     `Lane`             TINYINT UNSIGNED NOT NULL DEFAULT 0  -- 0 none, 1 top, 2 mid, 3 bot;
                                                            -- a super creep spawns only while the
@@ -159,68 +161,68 @@ CREATE TABLE `mod_moba_creep_data` (
 );
 
 INSERT INTO `mod_moba_creep_data`
-(`CreatureEntry`, `Map`, `Team`, `Role`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `WaypointPathId`, `DespawnMs`, `Lane`)
+(`CreatureEntry`, `Map`, `Team`, `Role`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `WaypointPathId`, `ReferencePathId`, `DespawnMs`, `Lane`)
 VALUES
 -- alliance_melee_right (mid/melee_right)
-(900010, 566, 0, 0, 20, 2000, 0, 900110, 60000, 2),
+(900010, 566, 0, 0, 20, 2000, 0, 900110, 900130, 60000, 2),
 -- alliance_melee_left (mid/melee_left)
-(900016, 566, 0, 0, 20, 2000, 0, 900111, 60000, 2),
+(900016, 566, 0, 0, 20, 2000, 0, 900111, 900130, 60000, 2),
 -- horde_melee_right (mid/melee_right)
-(900011, 566, 1, 0, 20, 2000, 0, 900120, 60000, 2),
+(900011, 566, 1, 0, 20, 2000, 0, 900120, 900131, 60000, 2),
 -- horde_melee_left (mid/melee_left)
-(900017, 566, 1, 0, 20, 2000, 0, 900121, 60000, 2),
+(900017, 566, 1, 0, 20, 2000, 0, 900121, 900131, 60000, 2),
 -- alliance_caster (mid/caster)
-(900012, 566, 0, 1, 20, 2000, 20793, 900100, 60000, 2),
+(900012, 566, 0, 1, 20, 2000, 20793, 900100, 900130, 60000, 2),
 -- horde_caster (mid/caster)
-(900013, 566, 1, 1, 20, 2000, 20805, 900101, 60000, 2),
+(900013, 566, 1, 1, 20, 2000, 20805, 900101, 900131, 60000, 2),
 -- alliance_siege (mid/siege)
-(900014, 566, 0, 2, 20, 2000, 0, 900112, 60000, 2),
+(900014, 566, 0, 2, 20, 2000, 0, 900112, 900130, 60000, 2),
 -- horde_siege (mid/siege)
-(900015, 566, 1, 2, 20, 2000, 0, 900122, 60000, 2),
+(900015, 566, 1, 2, 20, 2000, 0, 900122, 900131, 60000, 2),
 -- alliance_super (mid/super)
-(900018, 566, 0, 3, 20, 2000, 0, 900102, 60000, 2),
+(900018, 566, 0, 3, 20, 2000, 0, 900102, 900130, 60000, 2),
 -- horde_super (mid/super)
-(900019, 566, 1, 3, 20, 2000, 0, 900103, 60000, 2),
+(900019, 566, 1, 3, 20, 2000, 0, 900103, 900131, 60000, 2),
 -- alliance_top_melee_right (top/melee_right)
-(900020, 900, 0, 0, 20, 2000, 0, 900106, 60000, 1),
+(900020, 900, 0, 0, 20, 2000, 0, 900106, 900132, 60000, 1),
 -- alliance_top_melee_left (top/melee_left)
-(900021, 900, 0, 0, 20, 2000, 0, 900104, 60000, 1),
+(900021, 900, 0, 0, 20, 2000, 0, 900104, 900132, 60000, 1),
 -- horde_top_melee_right (top/melee_right)
-(900022, 900, 1, 0, 20, 2000, 0, 900107, 60000, 1),
+(900022, 900, 1, 0, 20, 2000, 0, 900107, 900133, 60000, 1),
 -- horde_top_melee_left (top/melee_left)
-(900023, 900, 1, 0, 20, 2000, 0, 900105, 60000, 1),
+(900023, 900, 1, 0, 20, 2000, 0, 900105, 900133, 60000, 1),
 -- alliance_top_caster (top/caster)
-(900024, 900, 0, 1, 20, 2000, 20793, 900108, 60000, 1),
+(900024, 900, 0, 1, 20, 2000, 20793, 900108, 900132, 60000, 1),
 -- horde_top_caster (top/caster)
-(900025, 900, 1, 1, 20, 2000, 20805, 900109, 60000, 1),
+(900025, 900, 1, 1, 20, 2000, 20805, 900109, 900133, 60000, 1),
 -- alliance_top_siege (top/siege)
-(900026, 900, 0, 2, 20, 2000, 0, 900113, 60000, 1),
+(900026, 900, 0, 2, 20, 2000, 0, 900113, 900132, 60000, 1),
 -- horde_top_siege (top/siege)
-(900027, 900, 1, 2, 20, 2000, 0, 900114, 60000, 1),
+(900027, 900, 1, 2, 20, 2000, 0, 900114, 900133, 60000, 1),
 -- alliance_top_super (top/super)
-(900028, 900, 0, 3, 20, 2000, 0, 900115, 60000, 1),
+(900028, 900, 0, 3, 20, 2000, 0, 900115, 900132, 60000, 1),
 -- horde_top_super (top/super)
-(900029, 900, 1, 3, 20, 2000, 0, 900116, 60000, 1),
+(900029, 900, 1, 3, 20, 2000, 0, 900116, 900133, 60000, 1),
 -- alliance_bot_melee_right (bot/melee_right)
-(900030, 900, 0, 0, 20, 2000, 0, 900119, 60000, 3),
+(900030, 900, 0, 0, 20, 2000, 0, 900119, 900134, 60000, 3),
 -- alliance_bot_melee_left (bot/melee_left)
-(900031, 900, 0, 0, 20, 2000, 0, 900117, 60000, 3),
+(900031, 900, 0, 0, 20, 2000, 0, 900117, 900134, 60000, 3),
 -- horde_bot_melee_right (bot/melee_right)
-(900032, 900, 1, 0, 20, 2000, 0, 900123, 60000, 3),
+(900032, 900, 1, 0, 20, 2000, 0, 900123, 900135, 60000, 3),
 -- horde_bot_melee_left (bot/melee_left)
-(900033, 900, 1, 0, 20, 2000, 0, 900118, 60000, 3),
+(900033, 900, 1, 0, 20, 2000, 0, 900118, 900135, 60000, 3),
 -- alliance_bot_caster (bot/caster)
-(900034, 900, 0, 1, 20, 2000, 20793, 900124, 60000, 3),
+(900034, 900, 0, 1, 20, 2000, 20793, 900124, 900134, 60000, 3),
 -- horde_bot_caster (bot/caster)
-(900035, 900, 1, 1, 20, 2000, 20805, 900125, 60000, 3),
+(900035, 900, 1, 1, 20, 2000, 20805, 900125, 900135, 60000, 3),
 -- alliance_bot_siege (bot/siege)
-(900036, 900, 0, 2, 20, 2000, 0, 900126, 60000, 3),
+(900036, 900, 0, 2, 20, 2000, 0, 900126, 900134, 60000, 3),
 -- horde_bot_siege (bot/siege)
-(900037, 900, 1, 2, 20, 2000, 0, 900127, 60000, 3),
+(900037, 900, 1, 2, 20, 2000, 0, 900127, 900135, 60000, 3),
 -- alliance_bot_super (bot/super)
-(900038, 900, 0, 3, 20, 2000, 0, 900128, 60000, 3),
+(900038, 900, 0, 3, 20, 2000, 0, 900128, 900134, 60000, 3),
 -- horde_bot_super (bot/super)
-(900039, 900, 1, 3, 20, 2000, 0, 900129, 60000, 3);
+(900039, 900, 1, 3, 20, 2000, 0, 900129, 900135, 60000, 3);
 
 DELETE FROM `creature_loot_template` WHERE `Entry` BETWEEN 900010 AND 900099;
 INSERT INTO `creature_loot_template`

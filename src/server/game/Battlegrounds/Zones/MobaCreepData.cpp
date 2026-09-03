@@ -18,7 +18,7 @@ void MobaCreepDataStore::LoadIfNeeded()
     _loaded = true;
 
     QueryResult result = WorldDatabase.Query(
-        "SELECT CreatureEntry, Team, Role, AttackRange, AttackIntervalMs, AttackSpellId, WaypointPathId, DespawnMs, Map, Lane "
+        "SELECT CreatureEntry, Team, Role, AttackRange, AttackIntervalMs, AttackSpellId, WaypointPathId, DespawnMs, Map, Lane, ReferencePathId "
         "FROM mod_moba_creep_data ORDER BY Team, Role, CreatureEntry");
 
     if (!result)
@@ -44,6 +44,7 @@ void MobaCreepDataStore::LoadIfNeeded()
         cfg.despawnMs  = fields[7].Get<uint32>();
         cfg.map        = fields[8].Get<uint32>();
         cfg.lane       = fields[9].Get<uint8>();
+        cfg.refPathId  = fields[10].Get<uint32>();
 
         _configs.push_back(cfg);
     } while (result->NextRow());

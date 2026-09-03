@@ -11,9 +11,9 @@ those and emit one combined SQL file per content type into
 
 > **Run `apps/moba/gen_all.sh`** to regenerate everything. It cds to the repo
 > root itself (generators resolve their output paths relative to it) and runs
-> `gen_creep_paths.py` before `gen_creep_roster.py` — the roster reads each
-> creep's `WaypointPathId` out of the lane lockfile, and it is the only ordering
-> constraint between generators. Each script stays runnable alone.
+> `gen_creep_paths.py` before `gen_creep_roster.py` — the roster reads each creep's
+> `WaypointPathId` and `ReferencePathId` out of the lane lockfile, and it is the only
+> ordering constraint between generators. Each script stays runnable alone.
 
 **Workflows live in `.github/MOBA_GUIDE.md`** — walking a lane, adding a creep,
 moving a tower. **Per-field semantics live in each config's own YAML header**, next to
@@ -30,7 +30,7 @@ emits a `.blend` and a client patch rather than SQL, is not part of
 |---|---|---|
 | `gen_creep_roster.py` | `maps/<mode>/creep_config.yaml` + source dumps in `sources/` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data`, `mod_moba_creep_drops`, native `creature_loot_template` rows |
 | `gen_neutral_camps.py` | `maps/<mode>/neutral_config.yaml` + source dumps in `sources/` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior/drops tables, native `creature_loot_template` rows |
-| `gen_creep_paths.py` | `maps/<mode>/lane_config.yaml` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data` |
+| `gen_creep_paths.py` | `maps/<mode>/lane_config.yaml` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data`, plus one bare centreline path per lane per direction as the speed-compensation reference |
 | `gen_tower_data.py` | `maps/<mode>/tower_config.yaml` | `mod_moba_towers.sql` — `creature_template`, models, `mod_moba_tower_data` |
 | `gen_base.py` | `maps/<mode>/base_config.yaml` | `mod_moba_base.sql` — `mod_moba_base`, the spawn-dome `gameobject_template` (+ `_addon`), plus the `game_graveyard` / `battleground_template` wiring (spawn locations and `MinPlayersPerTeam`) |
 | `gen_store.py` | `maps/<mode>/store_config.yaml` + `data/sql/base/db_world/item_template.sql` | `mod_moba_store.sql` — shopkeeper `creature_template`, models and `creature` spawn rows, plus `mod_moba_store_npc`/`_menu`/`_grant`/`_sell` (and `_itemstage` when `custom_items` is on). **Also writes `client/addons/MobaHUD/Catalog.lua`** — the only generator emitting outside `data/sql/` |
@@ -148,7 +148,9 @@ stranded.
 ## Lockfiles — machine-owned, committed, never hand-edited
 
 `lane_config.lock.json` maps each lane/slot to its permanently assigned
-forward/reverse `waypoint_data` IDs. `creep_config.lock.json`,
+forward/reverse `waypoint_data` IDs, plus a reserved `_centerline` pseudo-slot per
+lane holding the speed-compensation reference path (`gen_creep_paths.py` fails a
+config that claims that slot name). `creep_config.lock.json`,
 `neutral_config.lock.json` and `tower_config.lock.json` do the same for
 auto-assigned `creature_template` entries.
 

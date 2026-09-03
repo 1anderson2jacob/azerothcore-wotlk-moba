@@ -26,6 +26,7 @@ struct MobaCreepConfig
     uint32 intervalMs = 2000;
     uint32 spellId = 0;
     uint32 pathId = 0;
+    uint32 refPathId = 0;
     uint8 lane = MOBA_LANE_NONE;
     uint32 despawnMs = 60000;
 };

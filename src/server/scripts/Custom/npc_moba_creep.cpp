@@ -11,6 +11,7 @@
 #include "SpellAuraDefines.h"
 #include "SpellInfo.h"
 #include "WaypointMgr.h"
+#include <unordered_map>
 
 // Max 2D distance a creep may be dragged from its lane before it force-evades. The
 // engine's own 30yd leash is SKIPPED while combat stays "fresh" (Creature::CanCreatureAttack
@@ -32,6 +33,8 @@ struct npc_moba_creep : public ScriptedAI
         }
 
         _lanePath = sWaypointMgr->GetPath(_cfg->pathId);
+        BuildLegRatios();
+        me->UpdateSpeed(MOVE_RUN, false);
 
         // Stay frozen where FreezeAllCreeps() left us; the re-arm below would restart
         // the lane.
@@ -86,6 +89,10 @@ struct npc_moba_creep : public ScriptedAI
 
     void AttackStart(Unit* victim) override
     {
+        // Chasing is not lane movement -- a corner's multiplier would otherwise
+        // follow the creep into combat and skew every chase it starts there.
+        me->UpdateSpeed(MOVE_RUN, false);
+
         if (_cfg && _cfg->role == MOBA_CREEP_ROLE_CASTER)
             AttackStartCaster(victim, _cfg->range);
         else
@@ -113,6 +120,10 @@ struct npc_moba_creep : public ScriptedAI
     {
         if (nodeId > _highestReachedNodeId)
             _highestReachedNodeId = nodeId;
+
+        // Runs before the generator increments i_currentNode, so the rate is in
+        // place for the leg about to launch.
+        ApplyLegSpeed(nodeId);
     }
 
     void EnterEvadeMode(EvadeReason why) override
@@ -207,6 +218,61 @@ private:
         return false;
     }
 
+    static float NodeDist(WaypointNode const& a, WaypointNode const& b)
+    {
+        float dx = a.X - b.X;
+        float dy = a.Y - b.Y;
+        float dz = a.Z - b.Z;
+        return std::sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    // Ratio of this slot's leg to the lane centreline's leg at the same index,
+    // keyed by the node the leg LEAVES. Run speed times this makes every slot
+    // spend equal time on leg i however the lane bends -- that equal timing IS
+    // the formation. Requires the two paths to be node-for-node aligned.
+    void BuildLegRatios()
+    {
+        _legRatio.clear();
+
+        WaypointPath const* ref = sWaypointMgr->GetPath(_cfg->refPathId);
+        if (!_lanePath || !ref)
+            return;
+
+        if (_lanePath->Nodes.size() != ref->Nodes.size())
+        {
+            LOG_ERROR("scripts.ai", "npc_moba_creep: entry {} path {} has {} nodes but reference path {} has {}; speed compensation disabled.",
+                me->GetEntry(), _cfg->pathId, _lanePath->Nodes.size(), _cfg->refPathId, ref->Nodes.size());
+            return;
+        }
+
+        for (std::size_t i = 0; i + 1 < _lanePath->Nodes.size(); ++i)
+        {
+            float refLen = NodeDist(ref->Nodes[i], ref->Nodes[i + 1]);
+            if (refLen < 0.01f)
+                continue;
+
+            _legRatio[_lanePath->Nodes[i].Id] =
+                NodeDist(_lanePath->Nodes[i], _lanePath->Nodes[i + 1]) / refLen;
+        }
+    }
+
+    // Compensation rides on the speed RATE, not the spline velocity. A rate is what
+    // Unit::UpdateSpeed rebuilds from the creature's auras, so re-deriving it here
+    // each leg makes a slow multiply the corner multiplier instead of replacing it;
+    // a velocity written into the path would bypass the aura system entirely.
+    // SetSpeedRate deliberately does not notify movement generators -- the value is
+    // picked up by the next leg's own spline launch, with no extra relaunch.
+    void ApplyLegSpeed(uint32 leavingNodeId)
+    {
+        me->UpdateSpeed(MOVE_RUN, false);
+
+        auto itr = _legRatio.find(leavingNodeId);
+        if (itr == _legRatio.end())
+            return;
+
+        me->SetSpeedRate(MOVE_RUN, me->GetSpeedRate(MOVE_RUN) * itr->second);
+    }
+
     float DistanceFromLane2d(float x, float y) const
     {
         if (!_lanePath || _lanePath->Nodes.empty())
@@ -284,6 +350,7 @@ private:
     WaypointPath const* _lanePath = nullptr;
     uint32 _highestReachedNodeId = 0;
     uint32 _corridorCheckTimer = 0;
+    std::unordered_map<uint32, float> _legRatio;
 };
 
 // Heals, HoTs, absorbs and cleanses are allowed; stat buffs are rejected because

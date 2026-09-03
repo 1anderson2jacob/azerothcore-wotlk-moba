@@ -25,6 +25,7 @@ See apps/moba/README.md for the full workflow and config field reference.
 """
 
 import json
+import bisect
 import yaml
 import math
 import re
@@ -37,6 +38,7 @@ MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_creep_paths.sql")
 COORD_FMT = "{:.4f}"
 DEDUP_EPSILON = 0.5  # yards; consecutive walked points closer than this are merged
+CENTERLINE_SLOT = "_centerline"  # reserved lockfile slot name for the reference path
 
 GPS_LINE_RE = re.compile(r"X:\s*(-?[\d.]+)\s+Y:\s*(-?[\d.]+)\s+Z:\s*(-?[\d.]+)")
 
@@ -96,6 +98,9 @@ def validate_slots(slots, where):
         name = slot.get("name")
         if not isinstance(name, str) or not name:
             fail(f'{where}: every slot needs a non-empty "name"')
+        if name == CENTERLINE_SLOT:
+            fail(f'{where}: slot name "{CENTERLINE_SLOT}" is reserved for the '
+                 f"generated speed-compensation reference path")
         if name in names:
             fail(f'{where}: duplicate slot name "{name}"')
         names.add(name)
@@ -166,18 +171,56 @@ def tangents(points):
     return ts
 
 
+def arc_lengths(points):
+    """Cumulative 3D distance from the first node, one entry per node."""
+    s = [0.0]
+    for a, b in zip(points, points[1:]):
+        s.append(s[-1] + math.dist(a, b))
+    return s
+
+
+def sample_at_arc(centerline, tans, s, target):
+    """Position and unit tangent at an arc length, extrapolating past either end."""
+    if target <= 0.0:
+        x, y, z = centerline[0]
+        tx, ty = tans[0]
+        return [x + target * tx, y + target * ty, z], (tx, ty)
+
+    if target >= s[-1]:
+        over = target - s[-1]
+        x, y, z = centerline[-1]
+        tx, ty = tans[-1]
+        return [x + over * tx, y + over * ty, z], (tx, ty)
+
+    j = bisect.bisect_right(s, target) - 1
+    span = s[j + 1] - s[j]
+    f = (target - s[j]) / span if span > 1e-9 else 0.0
+    pos = [centerline[j][d] + (centerline[j + 1][d] - centerline[j][d]) * f
+           for d in range(3)]
+    tx = tans[j][0] + (tans[j + 1][0] - tans[j][0]) * f
+    ty = tans[j][1] + (tans[j + 1][1] - tans[j][1]) * f
+    norm = math.hypot(tx, ty)
+    return pos, ((tx / norm, ty / norm) if norm > 1e-6 else tans[j])
+
+
 def offset_path(centerline, lateral, longitudinal):
     """
-    Shift each node by the slot's offsets relative to local direction of
-    travel. Lateral: + = walker's own left (WoW coords: left of (dx,dy) is
-    (-dy,dx)), so identical values mirror physically between the two
-    directions. Longitudinal: + = ahead. Z is copied from the centerline.
+    One node per centerline node, placed at the slot's formation position.
+
+    Longitudinal walks the centerline ARC, not the local tangent: offsetting
+    along the tangent throws nodes off the outside of every curve, so a
+    staggered slot's path grows longer than the lane it is meant to follow.
+    Lateral: + = walker's own left (WoW coords: left of (dx,dy) is (-dy,dx)),
+    so identical values mirror physically between the two directions. Z comes
+    from the shifted arc position, so a staggered slot picks up the ramp
+    height where it actually stands.
     """
+    tans = tangents(centerline)
+    s = arc_lengths(centerline)
     out = []
-    for (x, y, z), (tx, ty) in zip(centerline, tangents(centerline)):
-        out.append([x + longitudinal * tx - lateral * ty,
-                    y + longitudinal * ty + lateral * tx,
-                    z])
+    for i in range(len(centerline)):
+        (x, y, z), (tx, ty) = sample_at_arc(centerline, tans, s, s[i] + longitudinal)
+        out.append([x - lateral * ty, y + lateral * tx, z])
     return out
 
 
@@ -260,6 +303,14 @@ def main():
             slots = lane.get("slots", cfg["slots"])
             centerline = densify(dedup_points(name, lane["points"]), cfg["max_spacing"])
             reversed_centerline = list(reversed(centerline))
+            # Speed-compensation reference: a creep divides its own leg length by
+            # the leg at the same index here, so this must stay node-for-node
+            # aligned with every slot path built off this centerline.
+            ref_fwd, ref_rev, _ = get_path_ids(
+                lock, name, CENTERLINE_SLOT, alloc, assigned_log)
+            generated.append((ref_fwd, f"{name} / centreline / forward", centerline))
+            generated.append((ref_rev, f"{name} / centreline / reverse", reversed_centerline))
+
             for slot in slots:
                 fwd_id, rev_id, fresh = get_path_ids(
                     lock, name, slot["name"], alloc, assigned_log)
