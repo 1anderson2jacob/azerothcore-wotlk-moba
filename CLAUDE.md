@@ -83,6 +83,7 @@ Claude MUST NOT — these are Jacob's; hand him the exact command and wait for w
 - Run `make install`
 - Modify anything outside the repo (worldserver.conf in env/dist, system config, Homebrew)
 - Run `apps/moba/setup.sh` (it writes `env/dist` — a Jacob-only op)
+- Write, delete, execute SQL, or run any of the above **through `ctx_execute` / `ctx_execute_file` / `ctx_batch_execute`** — the sandbox executes outside the permission deny-list, which structurally cannot see these tools. Every MUST NOT above holds inside them. They are for read-only analysis only: grep, parse, count, summarize.
 
 ### Decision rules
 
@@ -157,6 +158,7 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 - **DEFEAT is not observable solo.** `npc_moba_tower::JustDied` hands `OnTowerDestroyed` the KILLER's team, so any core you destroy — your own included — resolves the winner to your team and sends you VICTORY. Testing the defeat path needs a second player on the losing side, or enemy creeps finishing your base unassisted.
 - Test character: GM level 3, level 80. Useful: `.gps`, `.morph <id>` / `.demorph`, `.damage <n>`, `.character level 80`
 - **Addon Lua**: `luajit -e "assert(loadfile('<f>'))"` (a syntax error and a never-loaded file look identical in-game: silence, then a nil) and `cd client/addons/MobaHUD && luacheck .` — from the repo root it never finds `.luacheckrc` and reports hundreds of phantom warnings (0-warning baseline). Not Homebrew `lua` — it is 5.5 and accepts syntax 3.3.5 rejects.
+- **Search with `rg`, never Bash `grep`/`find`** — the `Grep`/`Glob` tools are already ripgrep; `rg` is allowlisted so Bash search stays prompt-free (`rg --files -g '<glob>'` for filename matching, `rg -P` for lookarounds — BSD grep has no `-P`). **Pass `--hidden` when the target may be in `.github/`** — plain `rg` skips hidden dirs, so `MOBA_GUIDE.md` and every `MOBA_*_PLAN.md` are invisible without it. `rg` obeys `.gitignore`, which correctly includes the `Custom/` re-inclusions on `.gitignore:121-122`.
 - Claude cannot see the game client or the worldserver console — ask Jacob to relay output and in-game observations
 
 ## Conventions & lessons learned

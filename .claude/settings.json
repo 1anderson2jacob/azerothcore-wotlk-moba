@@ -35,6 +35,7 @@
       "Bash(rm *)"
     ],
     "allow": [
+      "Bash(rg *)",
       "Bash(python3 -m json.tool *)",
       "Bash(python3 apps/codestyle/codestyle-cpp.py *)",
       "Bash(python3 apps/codestyle/codestyle-sql.py *)"
