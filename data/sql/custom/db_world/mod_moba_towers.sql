@@ -21,12 +21,6 @@ INSERT INTO `creature_template`
  `type`, `type_flags`, `MovementType`, `HealthModifier`, `ArmorModifier`,
  `RegenHealth`, `CreatureImmunitiesId`, `flags_extra`, `ScriptName`, `VerifiedBuild`)
 VALUES
-(900000, 'Alliance Tower', 'MOBA Objective', 80, 80, 84, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 8, 5, 0, 0, 0, 'npc_moba_tower', 0),
-(900002, 'Alliance Inhibitor', 'MOBA Objective', 80, 80, 84, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 10, 5, 0, 0, 0, 'npc_moba_tower', 0),
-(900004, 'Alliance Base', 'MOBA Objective', 80, 80, 84, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 15, 5, 0, 0, 0, 'npc_moba_tower', 0),
-(900001, 'Horde Tower', 'MOBA Objective', 80, 80, 83, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 8, 5, 0, 0, 0, 'npc_moba_tower', 0),
-(900003, 'Horde Inhibitor', 'MOBA Objective', 80, 80, 83, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 10, 5, 0, 0, 0, 'npc_moba_tower', 0),
-(900005, 'Horde Base', 'MOBA Objective', 80, 80, 83, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 15, 5, 0, 0, 0, 'npc_moba_tower', 0),
 (900006, 'Alliance Outer Tower', 'MOBA Objective', 80, 80, 84, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 8, 5, 0, 0, 0, 'npc_moba_tower', 0),
 (900406, 'Alliance Inner Tower', 'MOBA Objective', 80, 80, 84, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 8, 5, 0, 0, 0, 'npc_moba_tower', 0),
 (900007, 'Alliance Outer Tower', 'MOBA Objective', 80, 80, 84, 0, 1.0, 1.14286, 1, 1, 32768, 2048, 9, 0, 0, 8, 5, 0, 0, 0, 'npc_moba_tower', 0),
@@ -50,12 +44,6 @@ DELETE FROM `creature` WHERE (`id` BETWEEN 900000 AND 900009 OR `id` BETWEEN 900
 DELETE FROM `creature_template_model` WHERE (`CreatureID` BETWEEN 900000 AND 900009 OR `CreatureID` BETWEEN 900400 AND 900499);
 INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)
 VALUES
-(900000, 0, 27101, 3.0, 1, 0),
-(900002, 0, 1460, 0.75, 1, 0),
-(900004, 0, 11659, 2.0, 1, 0),
-(900001, 0, 18505, 2.0, 1, 0),
-(900003, 0, 1461, 0.75, 1, 0),
-(900005, 0, 11659, 2.0, 1, 0),
 (900006, 0, 27101, 3.0, 1, 0),
 (900406, 0, 27101, 3.0, 1, 0),
 (900007, 0, 27101, 3.0, 1, 0),
@@ -95,12 +83,6 @@ CREATE TABLE `mod_moba_tower_data` (
 INSERT INTO `mod_moba_tower_data`
 (`CreatureEntry`, `Map`, `Team`, `Tier`, `Lane`, `GuardedByEntry`, `Kind`, `RespawnMs`, `PosX`, `PosY`, `PosZ`, `Orientation`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `TeamGold`, `LastHitGold`)
 VALUES
-(900000, 566, 0, 0, 2, 0, 0, 0, 2285.5596, 1587.9965, 1165.4397, 3.2774656, 40, 1500, 9053, 3000, 1500),
-(900002, 566, 0, 1, 2, 900000, 1, 120000, 2320.745, 1584.3153, 1169.2806, 4.106839, 0, 1500, 0, 0, 1500),
-(900004, 566, 0, 2, 0, 900002, 2, 0, 2354.7302, 1587.6167, 1171.2659, 0.89613223, 0, 1500, 0, 0, 0),
-(900001, 566, 1, 0, 2, 0, 0, 0, 2056.0195, 1547.1702, 1162.6882, 0.21284086, 40, 1500, 9053, 3000, 1500),
-(900003, 566, 1, 1, 2, 900001, 1, 120000, 2018.5479, 1549.687, 1168.0171, 0.04476848, 0, 1500, 0, 0, 1500),
-(900005, 566, 1, 2, 0, 900003, 2, 0, 1983.9092, 1547.2158, 1170.3706, 5.8048787, 0, 1500, 0, 0, 0),
 (900006, 900, 0, 0, 1, 0, 0, 0, -50.83, 50.63, 0.0, 5.8423, 40, 1500, 9053, 3000, 1500),
 (900406, 900, 0, 0, 1, 900006, 0, 0, -112.57, 76.65, 0.0, 6.0756, 40, 1500, 9053, 3000, 1500),
 (900007, 900, 0, 0, 3, 0, 0, 0, -55.6, -73.5, 0.0, 0.2628, 40, 1500, 9053, 3000, 1500),

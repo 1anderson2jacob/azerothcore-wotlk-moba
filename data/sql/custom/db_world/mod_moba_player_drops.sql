@@ -27,5 +27,4 @@ CREATE TABLE `mod_moba_player_drops` (
 INSERT INTO `mod_moba_player_drops`
 (`Map`, `Idx`, `Type`, `Spell`, `DurationMs`, `Copper`, `Item`, `Count`, `Chance`)
 VALUES
-(566, 0, 1, 0, 0, 10000, 0, 1, 100),
 (900, 0, 1, 0, 0, 10000, 0, 1, 100);

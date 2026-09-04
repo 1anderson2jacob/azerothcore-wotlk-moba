@@ -2,7 +2,7 @@
 
 Generators and per-map config for the battleground's data-driven content. Each
 map/mode is a self-contained bundle under `apps/moba/maps/<mode>/` (e.g.
-`maps/eye_of_the_storm/`) holding that map's `*_config.yaml`; the generators glob
+`maps/twisted_treeline_v2/`) holding that map's `*_config.yaml`; the generators glob
 those and emit one combined SQL file per content type into
 `data/sql/custom/db_world/` (auto-applied on worldserver boot), each carrying a
 "GENERATED — do not hand-edit" header.
@@ -28,8 +28,8 @@ emits a `.blend` and a client patch rather than SQL, is not part of
 
 | Generator | Reads | Writes |
 |---|---|---|
-| `gen_creep_roster.py` | `maps/<mode>/creep_config.yaml` + source dumps in `sources/` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data`, `mod_moba_creep_drops`, native `creature_loot_template` rows |
-| `gen_neutral_camps.py` | `maps/<mode>/neutral_config.yaml` + source dumps in `sources/` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior/drops tables, native `creature_loot_template` rows |
+| `gen_creep_roster.py` | `maps/<mode>/creep_config.yaml` + `data/sql/base/db_world/creature_template.sql` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data`, `mod_moba_creep_drops`, native `creature_loot_template` rows |
+| `gen_neutral_camps.py` | `maps/<mode>/neutral_config.yaml` + `data/sql/base/db_world/creature_template.sql` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior/drops tables, native `creature_loot_template` rows |
 | `gen_creep_paths.py` | `maps/<mode>/lane_config.yaml` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data`, plus one bare centreline path per lane per direction as the speed-compensation reference |
 | `gen_tower_data.py` | `maps/<mode>/tower_config.yaml` | `mod_moba_towers.sql` — `creature_template`, models, `mod_moba_tower_data` |
 | `gen_base.py` | `maps/<mode>/base_config.yaml` | `mod_moba_base.sql` — `mod_moba_base`, the spawn-dome `gameobject_template` (+ `_addon`), plus the `game_graveyard` / `battleground_template` wiring (spawn locations and `MinPlayersPerTeam`) |
@@ -69,7 +69,11 @@ difficulty-entry references and `IconName` cleared, `RegenHealth = 0` (damage
 persists between fights, LoL-style), faction from team, and
 `minlevel = maxlevel = level`.
 
-Source dumps live in `apps/moba/sources/` as committed, immutable reference data.
+Source creatures are named by `creature_template` entry id and read from the
+committed base dump `data/sql/base/db_world/creature_template.sql`. The baseline
+therefore tracks upstream: each generator pins the rows it used by digest in its
+lockfile, so a merge that retunes a source creature fails the run until
+`--rebless-sources`.
 
 ## `drops` — on-death rewards (minion + player configs)
 

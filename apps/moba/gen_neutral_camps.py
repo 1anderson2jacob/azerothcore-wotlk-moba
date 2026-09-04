@@ -56,15 +56,17 @@ import json
 import yaml
 from pathlib import Path
 
-# Shared machinery: dump parsing, SQL quoting, entry locking, drops. Note
-# parse_vertical_dump validates the CREEP generator's override columns; the
-# extra columns this generator stamps are checked in build_template_row.
+# Shared machinery: SQL quoting, entry locking, source pinning, drops. Note
+# validate_source_columns checks the CREEP generator's override list, which
+# covers every column this generator stamps too.
 from gen_creep_roster import (apply_loot_overrides, build_drop_rows,
-                              emit_drops_table_sql, emit_loot_template_sql,
-                              fail, get_entry, note, parse_vertical_dump,
-                              resolve_units, sql_value, validate_drops)
+                              check_source_digest, emit_drops_table_sql,
+                              emit_loot_template_sql, fail, get_entry, note,
+                              resolve_units, sql_value, validate_drops,
+                              validate_source_columns)
 
 import id_alloc
+import sql_dump
 
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_neutrals.sql")
@@ -108,6 +110,9 @@ def validate_config(cfg, path):
         if "creature_type" in mob and not isinstance(mob["creature_type"], int):
             fail(f'mob "{key}": "creature_type" must be an integer '
                  "(enum CreatureType; 1 = Beast, 7 = Humanoid)")
+        if not isinstance(mob["source"], int) or isinstance(mob["source"], bool):
+            fail(f'mob "{key}": "source" must be a creature_template entry id '
+                 "(integer), e.g. 2279")
         if mob["display_id"] == 0:
             note(f'WARNING: mob "{key}" has display_id 0 (placeholder) -- '
                  f'invisible in-game; pick one with .morph and fill it in')
@@ -187,8 +192,6 @@ def resolve_camp_ranges(cfg):
 # ------------------------------------------------------------------ sql emit
 
 def build_template_row(mob, entry, source_cols):
-    if "detection_range" not in source_cols:
-        fail(f'{mob["source"]}: missing expected column detection_range')
     row = dict(source_cols)
     row.update({
         "entry": str(entry),
@@ -250,7 +253,7 @@ def emit_sql(roster, camps, column_order, blocks):
     rows = []
     for mob, entry, template_row in roster:
         values = ",".join(sql_value(c, template_row[c]) for c in column_order)
-        rows.append(f"-- {mob['key']} (from {Path(mob['source']).name})\n({values})")
+        rows.append(f"-- {mob['key']} (from {mob['_source_name']} #{mob['source']})\n({values})")
     lines.append(",\n".join(rows) + ";")
 
     lines += [
@@ -378,7 +381,10 @@ def main():
     assigned_log = []
     roster = []  # (mob, entry, template_row); mob carries _map/_aggro_range/_leash_range
     camps_out = []
-    column_order = None
+    if not sql_dump.CREATURE_TEMPLATE_SQL.is_file():
+        fail(f"{sql_dump.CREATURE_TEMPLATE_SQL} not found -- run from the repo root")
+    column_order = sql_dump.creature_template_columns()
+    validate_source_columns(column_order)
     for cp in configs:
         cfg = yaml.safe_load(cp.read_text())
         cfg["mobs"] = resolve_units(cfg, cp, "mobs", "mob", NEUTRAL_UNIT_FORBIDDEN_FIELDS)
@@ -392,12 +398,12 @@ def main():
             if mob["key"] not in ranges:
                 continue  # placed in no camp; warned in validate_config
 
-            source_cols, order = parse_vertical_dump(mob["source"])
-            if column_order is None:
-                column_order = order
-            elif order != column_order:
-                fail(f'source dumps disagree on column order ("{mob["source"]}" vs earlier) '
-                     f"-- were they taken from the same schema?")
+            source_cols, _cols, digest = sql_dump.load_creature_row(mob["source"])
+            if source_cols is None:
+                fail(f'mob "{mob["key"]}": source creature {mob["source"]} not found '
+                     f"in {sql_dump.CREATURE_TEMPLATE_SQL}")
+            check_source_digest(lock, mob["source"], digest, f'mob "{mob["key"]}"')
+            mob["_source_name"] = source_cols["name"]
 
             entry, _ = get_entry(lock, mob["key"], alloc, assigned_log)
             entries_by_key[mob["key"]] = entry

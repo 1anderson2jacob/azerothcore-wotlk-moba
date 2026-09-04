@@ -41,7 +41,6 @@ CREATE TABLE `mod_moba_base` (
 
 INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`, `StartingGold`, `PassiveTickMs`, `PassiveCopper`, `FirstBloodGold`, `ShutdownPerStreak`, `ShutdownCapGold`, `MultiKillWindowMs`, `SpreeMin`, `AceMinTeam`, `SurrenderMinMs`, `SurrenderVoteMs`, `SurrenderCooldownMs`)
 VALUES
-(566, 10000, 1500, 60000, 9000, 4500, 1000, 10, 10, 20, 15000, 10000, 60000, 900400, 900401, 15000, 5000, 100, 5000, 5000, 40000, 10000, 3, 2, 60000, 15000, 60000),
 (900, 10000, 1500, 60000, 9000, 4500, 1000, 10, 10, 20, 15000, 10000, 60000, 900402, 900403, 15000, 5000, 100, 5000, 5000, 40000, 10000, 3, 2, 60000, 15000, 60000);
 
 -- Spawn dome gameobjects. The whole block is cleared, not just the entries
@@ -53,8 +52,6 @@ INSERT INTO `gameobject_template`
  `Data10`, `Data11`, `Data12`, `Data13`, `Data14`, `Data15`, `Data16`, `Data17`, `Data18`,
  `Data19`, `Data20`, `Data21`, `Data22`, `Data23`, `AIName`, `ScriptName`, `VerifiedBuild`)
 VALUES
-(900400, 0, 7203, 'eye_of_the_storm spawn dome (Alliance)', '', '', '', 0.116009, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0),
-(900401, 0, 7203, 'eye_of_the_storm spawn dome (Horde)', '', '', '', 0.116009, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0),
 (900402, 0, 7203, 'twisted_treeline_v2 spawn dome (Alliance)', '', '', '', 0.116009, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0),
 (900403, 0, 7203, 'twisted_treeline_v2 spawn dome (Horde)', '', '', '', 0.116009, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, '', '', 0);
 
@@ -64,13 +61,8 @@ DELETE FROM `gameobject_template_addon` WHERE `entry` BETWEEN 900400 AND 900409;
 INSERT INTO `gameobject_template_addon`
 (`entry`, `faction`, `flags`, `mingold`, `maxgold`, `artkit0`, `artkit1`, `artkit2`, `artkit3`)
 VALUES
-(900400, 1375, 48, 0, 0, 0, 0, 0, 0),
-(900401, 1375, 48, 0, 0, 0, 0, 0, 0),
 (900402, 1375, 48, 0, 0, 0, 0, 0, 0),
 (900403, 1375, 48, 0, 0, 0, 0, 0, 0);
-
--- Spawn wiring for map 566 (eye_of_the_storm) SKIPPED -- active: false.
--- Its content rows above stay live and inert; battleground_template 7 belongs to the active bundle.
 
 -- Spawn wiring for map 900 (twisted_treeline_v2)
 -- StartMaxDist stays 0 ON PURPOSE. It is the core's prep-phase leash

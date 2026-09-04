@@ -25,9 +25,10 @@ Later runs reuse them, so re-tuning a creep never changes its entry, and
 re-blocking the owner never disturbs one already assigned. Do not hand-edit
 the lockfile.
 
-Source dumps: verbatim output of
-    mysql -E -u acore -pacore acore_world -e \
-        "SELECT * FROM creature_template WHERE entry=<id>" > sources/creature_template_<id>.txt
+Source creatures: a creep's "source" is a creature_template entry id, read from
+data/sql/base/db_world/creature_template.sql (see sql_dump.py). Each row's stats
+are pinned by a digest in the lockfile, so an upstream retune fails the run
+rather than silently restatting creeps; --rebless-sources accepts the new values.
 
 Overrides ALWAYS enforced in code (the hard-won checklist from
 .github/MOBA_GUIDE.md, so it can't be forgotten): entry, name/subname,
@@ -62,6 +63,9 @@ import sys
 from pathlib import Path
 
 import id_alloc
+import sql_dump
+
+REBLESS_SOURCES = "--rebless-sources" in sys.argv
 
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_creeps.sql")
@@ -74,8 +78,6 @@ ROLE_IDS = {"melee": 0, "caster": 1, "siege": 2, "super": 3}
 LANE_IDS = {"none": 0, "top": 1, "mid": 2, "bot": 3}
 STRING_COLUMNS = {"name", "subname", "IconName", "AIName", "ScriptName"}
 NUMBER_RE = re.compile(r"^-?\d+(\.\d+)?$")
-DUMP_LINE_RE = re.compile(r"^\s*(\w+): ?(.*)$")
-DUMP_ROW_HEADER_RE = re.compile(r"^\*+ *\d+\. row *\*+$")
 
 CREEP_REQUIRED = ["key", "name", "subname", "team", "role", "source", "display_id",
                   "display_scale", "level", "health_modifier", "armor_modifier",
@@ -85,6 +87,17 @@ CASTER_REQUIRED = ["attack_range", "attack_interval_ms", "attack_spell_id"]
 # that carried them would resolve to the same waypoint path and spawn on top of
 # each other (shipped once as super minions riding the siege slot).
 CREEP_UNIT_FORBIDDEN_FIELDS = ["key", "lane", "slot"]
+# Optional per-creep column overrides: config key -> creature_template column.
+# An absent key leaves the source creature's own value.
+CREEP_COLUMN_OVERRIDES = {
+    "rank": "rank",
+    "creature_type": "type",
+    "speed_walk": "speed_walk",
+    "speed_run": "speed_run",
+    "damage_modifier": "DamageModifier",
+    "aggro_range": "detection_range",
+    "swing_time_ms": "BaseAttackTime",
+}
 # unit_flags override: OR in UNIT_FLAG_PLAYER_CONTROLLED (0x8) so players can cast
 # helpful spells (heals/buffs) on their own minions. The WoW client silently self-casts
 # a helpful spell aimed at a plain friendly NPC; this is the flag the engine puts on the
@@ -117,7 +130,8 @@ OVERRIDDEN_COLUMNS = ["entry", "name", "subname", "minlevel", "maxlevel", "facti
                       "npcflag", "lootid", "pickpocketloot", "skinloot", "mingold", "maxgold",
                       "flags_extra", "VehicleId", "AIName", "ScriptName", "HealthModifier",
                       "ArmorModifier", "RegenHealth", "movementId", "CreatureImmunitiesId",
-                      "unit_flags", "type", "speed_walk", "speed_run", "VerifiedBuild"]
+                      "unit_flags", "type", "speed_walk", "speed_run", "DamageModifier",
+                      "detection_range", "BaseAttackTime", "VerifiedBuild"]
 
 
 def fail(msg):
@@ -211,6 +225,17 @@ def validate_config(cfg, path):
         if "creature_type" in creep and not isinstance(creep["creature_type"], int):
             fail(f'creep "{key}": "creature_type" must be an integer '
                  "(enum CreatureType; 7 = Humanoid, 9 = Mechanical)")
+        for field in ("damage_modifier", "aggro_range"):
+            if field in creep and (not isinstance(creep[field], (int, float))
+                                   or creep[field] < 0):
+                fail(f'creep "{key}": "{field}" must be a number >= 0')
+        if "swing_time_ms" in creep and (not isinstance(creep["swing_time_ms"], int)
+                                         or creep["swing_time_ms"] <= 0):
+            fail(f'creep "{key}": "swing_time_ms" must be a positive integer '
+                 "(milliseconds between melee swings)")
+        if not isinstance(creep["source"], int) or isinstance(creep["source"], bool):
+            fail(f'creep "{key}": "source" must be a creature_template entry id '
+                 "(integer), e.g. 1914")
         if creep["lane"] not in LANE_IDS:
             fail(f'creep "{key}": "lane" must be one of {sorted(LANE_IDS)} -- it is '
                  "matched against the inhibitor's lane to pick which lane fields super "
@@ -240,34 +265,6 @@ def validate_composition(creeps):
                  "battleground for a team with no wave units")
 
 
-# --------------------------------------------------------------- source dumps
-
-def parse_vertical_dump(path):
-    """Parse `mysql -E` vertical output into (dict col->raw value, ordered cols)."""
-    if not Path(path).is_file():
-        fail(f"source dump not found: {path}")
-    cols = {}
-    order = []
-    for line in Path(path).read_text().splitlines():
-        stripped = line.strip()
-        if not stripped or DUMP_ROW_HEADER_RE.match(stripped):
-            continue
-        m = DUMP_LINE_RE.match(line)
-        if not m:
-            fail(f"{path}: unparseable line: {line!r}")
-        col, value = m.group(1), m.group(2)
-        if col in cols:
-            fail(f"{path}: column {col} appears twice -- multiple rows in the dump?")
-        cols[col] = value
-        order.append(col)
-    if len(order) < 50:
-        fail(f"{path}: only {len(order)} columns -- expected a full creature_template row")
-    for col in OVERRIDDEN_COLUMNS:
-        if col not in cols:
-            fail(f"{path}: missing expected column {col}")
-    return cols, order
-
-
 # ---------------------------------------------------------------- id locking
 
 def get_entry(lock, key, alloc, assigned_log):
@@ -284,6 +281,26 @@ def get_entry(lock, key, alloc, assigned_log):
     entries[key] = entry
     assigned_log.append((key, entry))
     return entry, True
+
+
+def validate_source_columns(cols):
+    for col in OVERRIDDEN_COLUMNS:
+        if col not in cols:
+            fail(f"{sql_dump.CREATURE_TEMPLATE_SQL}: no column {col} -- upstream changed "
+                 "creature_template; the generator's override list needs updating")
+
+
+def check_source_digest(lock, entry, digest, label):
+    """Pin a source creature's stats. The baseline tracks data/sql/base, which
+    moves on upstream merges -- without this a `git pull` silently restats every
+    creep built on the changed creature."""
+    sources = lock.setdefault("sources", {})
+    known = sources.get(str(entry))
+    if known and known != digest and not REBLESS_SOURCES:
+        fail(f"{label}: source creature {entry} changed upstream ({known} -> {digest}). "
+             "Re-run with --rebless-sources to accept the new stats.")
+    sources[str(entry)] = digest
+
 
 # ------------------------------------------------------- on-death drops (shared)
 
@@ -467,14 +484,9 @@ def build_template_row(creep, entry, source_cols):
         "unit_flags": str(int(source_cols["unit_flags"]) | CREEP_UNIT_FLAG_PLAYER_CONTROLLED),
         "VerifiedBuild": "0",
     })
-    # Optional per-creep overrides (default: source creature's value)
-    if "rank" in creep:
-        row["rank"] = str(creep["rank"])
-    if "creature_type" in creep:
-        row["type"] = str(creep["creature_type"])
-    for field in ("speed_walk", "speed_run"):
+    for field, column in CREEP_COLUMN_OVERRIDES.items():
         if field in creep:
-            row[field] = str(creep[field])
+            row[column] = str(creep[field])
     apply_loot_overrides(row, entry, source_cols, creep.get("drops", []))
     return row
 
@@ -507,7 +519,7 @@ def emit_sql(roster, column_order, blocks):
     rows = []
     for creep, entry, template_row in roster:
         values = ",".join(sql_value(c, template_row[c]) for c in column_order)
-        rows.append(f"-- {creep['key']} (from {Path(creep['source']).name})\n({values})")
+        rows.append(f"-- {creep['key']} (from {creep['_source_name']} #{creep['source']})\n({values})")
     lines.append(",\n".join(rows) + ";")
 
     lines += [
@@ -598,7 +610,10 @@ def main():
 
     assigned_log = []
     roster = []  # (creep, entry, template_row); creep carries _map / _path_id
-    column_order = None
+    if not sql_dump.CREATURE_TEMPLATE_SQL.is_file():
+        fail(f"{sql_dump.CREATURE_TEMPLATE_SQL} not found -- run from the repo root")
+    column_order = sql_dump.creature_template_columns()
+    validate_source_columns(column_order)
     for cp in configs:
         cfg = yaml.safe_load(cp.read_text())
         cfg["creeps"] = resolve_units(cfg, cp, "creeps", "creep", CREEP_UNIT_FORBIDDEN_FIELDS)
@@ -624,12 +639,12 @@ def main():
                      f"path in {lane_lock_path} -- re-run gen_creep_paths.py")
             creep["_ref_path_id"] = ref_ids["forward" if creep["team"] == 0 else "reverse"]
 
-            source_cols, order = parse_vertical_dump(creep["source"])
-            if column_order is None:
-                column_order = order
-            elif order != column_order:
-                fail(f'source dumps disagree on column order ("{creep["source"]}" vs earlier) '
-                     "-- were they taken from the same schema?")
+            source_cols, _cols, digest = sql_dump.load_creature_row(creep["source"])
+            if source_cols is None:
+                fail(f'creep "{creep["key"]}": source creature {creep["source"]} not found '
+                     f"in {sql_dump.CREATURE_TEMPLATE_SQL}")
+            check_source_digest(lock, creep["source"], digest, f'creep "{creep["key"]}"')
+            creep["_source_name"] = source_cols["name"]
 
             entry, _ = get_entry(lock, creep["key"], alloc, assigned_log)
             roster.append((creep, entry, build_template_row(creep, entry, source_cols)))

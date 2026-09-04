@@ -21,5 +21,11 @@
     "horde_top_melee_right": 900022,
     "horde_top_siege": 900027,
     "horde_top_super": 900029
+  },
+  "sources": {
+    "11683": "da31a92776060c3f",
+    "1914": "2ed19766b3201561",
+    "2279": "f1cadd6ad261a91f",
+    "34775": "fb334900c6c2b06c"
   }
 }

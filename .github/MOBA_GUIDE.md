@@ -365,8 +365,8 @@ the other way. Run `gen_creep_paths.py`; deploy. Path IDs come from the lockfile
 so re-walking an existing lane needs no `mod_moba_creep_data` changes. Full field
 and lockfile reference: `apps/moba/README.md`.
 
-**Add a creep type** — dump the source creature to `apps/moba/sources/`, add a
-`units:` entry to `creep_config.yaml` (equipment item IDs come from the source's
+**Add a creep type** — add a `units:` entry to `creep_config.yaml` naming the
+source creature's entry id in `source:` (equipment item IDs come from the source's
 `creature_equip_template` row — weapons aren't in `creature_template`, and melee
 swing unarmed without them), then a `creeps:` row placing it: `key`, `unit`,
 `lane`, `slot`. A unit says what a creep is, the row says where it walks, so
@@ -429,8 +429,8 @@ camps with different ranges fails the generator — use distinct keys.
 `apps/moba/README.md`). Run that config's generator; deploy — full restart, since drops
 load once per process. By convention only a camp's `_large` mob carries a buff.
 
-**Add a mob type** — a block in `mobs`, like adding a creep; a new source dump
-only if the existing baseline doesn't fit (all current camp mobs share the
+**Add a mob type** — a block in `mobs`, like adding a creep; a different source
+entry only if the existing baseline doesn't fit (all current camp mobs share the
 creep melee source — identity is name + `display_id` + `display_scale`).
 
 ## Recipes: base (spawn, respawn, recall, fountain, surrender)

@@ -94,7 +94,7 @@ Claude MUST NOT — these are Jacob's; hand him the exact command and wait for w
 
 ### Project mode & teaching goals
 
-- **This is a prototype.** Favor the fastest path to something playable and testable over polish; placeholder data and deferred cleanup are normal. Performance at scale and upstreamability are out of scope until the gameplay proves out.
+- **Past prototype.** The gameplay has proven out, so correctness and polish count. Placeholder data and deferred cleanup are no longer free — they need a reason and an entry in "Deferred / known-untidy".
 - **Teaching is part of the job.** Jacob is using this project to learn AzerothCore, C++, SQL, and the surrounding tooling. Explain the "why" behind designs and engine mechanics, not just the "what"; when a bug hunt uncovers engine internals, spell them out; prefer walking Jacob through doing things himself over doing them invisibly.
 
 ## What this project is

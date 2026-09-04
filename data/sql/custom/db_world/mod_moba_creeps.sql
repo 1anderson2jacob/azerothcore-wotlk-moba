@@ -16,65 +16,45 @@ DELETE FROM `creature_template` WHERE `entry` BETWEEN 900010 AND 900099;
 INSERT INTO `creature_template`
 (`entry`, `difficulty_entry_1`, `difficulty_entry_2`, `difficulty_entry_3`, `KillCredit1`, `KillCredit2`, `name`, `subname`, `IconName`, `gossip_menu_id`, `minlevel`, `maxlevel`, `exp`, `faction`, `npcflag`, `speed_walk`, `speed_run`, `speed_swim`, `speed_flight`, `detection_range`, `rank`, `dmgschool`, `DamageModifier`, `BaseAttackTime`, `RangeAttackTime`, `BaseVariance`, `RangeVariance`, `unit_class`, `unit_flags`, `unit_flags2`, `dynamicflags`, `family`, `type`, `type_flags`, `lootid`, `pickpocketloot`, `skinloot`, `PetSpellDataId`, `VehicleId`, `mingold`, `maxgold`, `AIName`, `MovementType`, `HoverHeight`, `HealthModifier`, `ManaModifier`, `ArmorModifier`, `ExperienceModifier`, `RacialLeader`, `movementId`, `RegenHealth`, `CreatureImmunitiesId`, `flags_extra`, `ScriptName`, `VerifiedBuild`)
 VALUES
--- alliance_melee_right (from creature_template_2279.txt)
-(900010,0,0,0,0,0,'Alliance Footman','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,0,0,1,2000,2000,1,1,1,8,2048,0,0,7,0,900010,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- alliance_melee_left (from creature_template_2279.txt)
-(900016,0,0,0,0,0,'Alliance Footman','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,0,0,1,2000,2000,1,1,1,8,2048,0,0,7,0,900016,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_melee_right (from creature_template_2279.txt)
-(900011,0,0,0,0,0,'Horde Grunt','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,0,0,1,2000,2000,1,1,1,8,2048,0,0,7,0,900011,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_melee_left (from creature_template_2279.txt)
-(900017,0,0,0,0,0,'Horde Grunt','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,0,0,1,2000,2000,1,1,1,8,2048,0,0,7,0,900017,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- alliance_caster (from creature_template_1914.txt)
-(900012,0,0,0,0,0,'Alliance Mage','MOBA Minion',NULL,0,80,80,0,84,0,1,0.98571,1,1,18,0,0,1,2000,2000,1,1,8,8,2048,0,0,7,0,0,0,0,0,0,0,0,'',1,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_caster (from creature_template_11683.txt)
-(900013,0,0,0,0,0,'Horde Shaman','MOBA Minion',NULL,0,80,80,0,83,0,1,0.98571,1,1,20,0,0,1,2000,2000,1,1,8,32776,2048,0,0,7,0,0,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- alliance_siege (from creature_template_34775.txt)
-(900014,0,0,0,0,0,'Alliance Demolisher','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_siege (from creature_template_34775.txt)
-(900015,0,0,0,0,0,'Horde Demolisher','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- alliance_super (from creature_template_34775.txt)
-(900018,0,0,0,0,0,'Alliance Super Minion','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.6,1,0.5,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_super (from creature_template_34775.txt)
-(900019,0,0,0,0,0,'Horde Super Minion','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.6,1,0.5,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- alliance_top_melee_right (from creature_template_2279.txt)
+-- alliance_top_melee_right (from Alliance Battleguard #2279)
 (900020,0,0,0,0,0,'Alliance Footman','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,0,0,1,2000,2000,1,1,1,8,2048,0,0,7,0,900020,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- alliance_top_melee_left (from creature_template_2279.txt)
+-- alliance_top_melee_left (from Alliance Battleguard #2279)
 (900021,0,0,0,0,0,'Alliance Footman','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,0,0,1,2000,2000,1,1,1,8,2048,0,0,7,0,900021,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_top_melee_right (from creature_template_2279.txt)
+-- horde_top_melee_right (from Alliance Battleguard #2279)
 (900022,0,0,0,0,0,'Horde Grunt','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,0,0,1,2000,2000,1,1,1,8,2048,0,0,7,0,900022,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_top_melee_left (from creature_template_2279.txt)
+-- horde_top_melee_left (from Alliance Battleguard #2279)
 (900023,0,0,0,0,0,'Horde Grunt','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,0,0,1,2000,2000,1,1,1,8,2048,0,0,7,0,900023,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- alliance_top_caster (from creature_template_1914.txt)
+-- alliance_top_caster (from Dalaran Mage #1914)
 (900024,0,0,0,0,0,'Alliance Mage','MOBA Minion',NULL,0,80,80,0,84,0,1,0.98571,1,1,18,0,0,1,2000,2000,1,1,8,8,2048,0,0,7,0,0,0,0,0,0,0,0,'',1,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_top_caster (from creature_template_11683.txt)
+-- horde_top_caster (from Warsong Shaman #11683)
 (900025,0,0,0,0,0,'Horde Shaman','MOBA Minion',NULL,0,80,80,0,83,0,1,0.98571,1,1,20,0,0,1,2000,2000,1,1,8,32776,2048,0,0,7,0,0,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- alliance_top_siege (from creature_template_34775.txt)
+-- alliance_top_siege (from Demolisher #34775)
 (900026,0,0,0,0,0,'Alliance Demolisher','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_top_siege (from creature_template_34775.txt)
+-- horde_top_siege (from Demolisher #34775)
 (900027,0,0,0,0,0,'Horde Demolisher','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- alliance_top_super (from creature_template_34775.txt)
+-- alliance_top_super (from Demolisher #34775)
 (900028,0,0,0,0,0,'Alliance Super Minion','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.6,1,0.5,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_top_super (from creature_template_34775.txt)
+-- horde_top_super (from Demolisher #34775)
 (900029,0,0,0,0,0,'Horde Super Minion','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.6,1,0.5,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- alliance_bot_melee_right (from creature_template_2279.txt)
+-- alliance_bot_melee_right (from Alliance Battleguard #2279)
 (900030,0,0,0,0,0,'Alliance Footman','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,0,0,1,2000,2000,1,1,1,8,2048,0,0,7,0,900030,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- alliance_bot_melee_left (from creature_template_2279.txt)
+-- alliance_bot_melee_left (from Alliance Battleguard #2279)
 (900031,0,0,0,0,0,'Alliance Footman','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,0,0,1,2000,2000,1,1,1,8,2048,0,0,7,0,900031,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_bot_melee_right (from creature_template_2279.txt)
+-- horde_bot_melee_right (from Alliance Battleguard #2279)
 (900032,0,0,0,0,0,'Horde Grunt','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,0,0,1,2000,2000,1,1,1,8,2048,0,0,7,0,900032,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_bot_melee_left (from creature_template_2279.txt)
+-- horde_bot_melee_left (from Alliance Battleguard #2279)
 (900033,0,0,0,0,0,'Horde Grunt','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,0,0,1,2000,2000,1,1,1,8,2048,0,0,7,0,900033,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- alliance_bot_caster (from creature_template_1914.txt)
+-- alliance_bot_caster (from Dalaran Mage #1914)
 (900034,0,0,0,0,0,'Alliance Mage','MOBA Minion',NULL,0,80,80,0,84,0,1,0.98571,1,1,18,0,0,1,2000,2000,1,1,8,8,2048,0,0,7,0,0,0,0,0,0,0,0,'',1,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_bot_caster (from creature_template_11683.txt)
+-- horde_bot_caster (from Warsong Shaman #11683)
 (900035,0,0,0,0,0,'Horde Shaman','MOBA Minion',NULL,0,80,80,0,83,0,1,0.98571,1,1,20,0,0,1,2000,2000,1,1,8,32776,2048,0,0,7,0,0,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- alliance_bot_siege (from creature_template_34775.txt)
+-- alliance_bot_siege (from Demolisher #34775)
 (900036,0,0,0,0,0,'Alliance Demolisher','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_bot_siege (from creature_template_34775.txt)
+-- horde_bot_siege (from Demolisher #34775)
 (900037,0,0,0,0,0,'Horde Demolisher','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- alliance_bot_super (from creature_template_34775.txt)
+-- alliance_bot_super (from Demolisher #34775)
 (900038,0,0,0,0,0,'Alliance Super Minion','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.6,1,0.5,1,0,0,0,0,2097152,'npc_moba_creep',0),
--- horde_bot_super (from creature_template_34775.txt)
+-- horde_bot_super (from Demolisher #34775)
 (900039,0,0,0,0,0,'Horde Super Minion','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.6,1,0.5,1,0,0,0,0,2097152,'npc_moba_creep',0);
 
 -- Creeps spawn from C++, never from `creature` rows, so this normally deletes
@@ -86,16 +66,6 @@ DELETE FROM `creature` WHERE `id` BETWEEN 900010 AND 900099;
 DELETE FROM `creature_template_model` WHERE `CreatureID` BETWEEN 900010 AND 900099;
 INSERT INTO `creature_template_model` (`CreatureID`, `Idx`, `CreatureDisplayID`, `DisplayScale`, `Probability`, `VerifiedBuild`)
 VALUES
-(900010, 0, 164, 1.0, 1, 0),
-(900016, 0, 164, 1.0, 1, 0),
-(900011, 0, 496, 1.0, 1, 0),
-(900017, 0, 496, 1.0, 1, 0),
-(900012, 0, 3559, 1.0, 1, 0),
-(900013, 0, 11865, 1.0, 1, 0),
-(900014, 0, 27658, 1.0, 1, 0),
-(900015, 0, 27658, 1.0, 1, 0),
-(900018, 0, 8395, 1.5, 1, 0),
-(900019, 0, 12818, 1.5, 1, 0),
 (900020, 0, 164, 1.0, 1, 0),
 (900021, 0, 164, 1.0, 1, 0),
 (900022, 0, 496, 1.0, 1, 0),
@@ -120,12 +90,6 @@ VALUES
 DELETE FROM `creature_equip_template` WHERE `CreatureID` BETWEEN 900010 AND 900099;
 INSERT INTO `creature_equip_template` (`CreatureID`, `ID`, `ItemID1`, `ItemID2`, `ItemID3`, `VerifiedBuild`)
 VALUES
-(900010, 1, 1899, 143, 0, 0),
-(900016, 1, 1899, 143, 0, 0),
-(900011, 1, 2183, 2051, 0, 0),
-(900017, 1, 2183, 2051, 0, 0),
-(900012, 1, 2177, 0, 0, 0),
-(900013, 1, 5303, 0, 0, 0),
 (900020, 1, 1899, 143, 0, 0),
 (900021, 1, 1899, 143, 0, 0),
 (900022, 1, 2183, 2051, 0, 0),
@@ -163,26 +127,6 @@ CREATE TABLE `mod_moba_creep_data` (
 INSERT INTO `mod_moba_creep_data`
 (`CreatureEntry`, `Map`, `Team`, `Role`, `AttackRange`, `AttackIntervalMs`, `AttackSpellId`, `WaypointPathId`, `ReferencePathId`, `DespawnMs`, `Lane`)
 VALUES
--- alliance_melee_right (mid/melee_right)
-(900010, 566, 0, 0, 20, 2000, 0, 900110, 900130, 60000, 2),
--- alliance_melee_left (mid/melee_left)
-(900016, 566, 0, 0, 20, 2000, 0, 900111, 900130, 60000, 2),
--- horde_melee_right (mid/melee_right)
-(900011, 566, 1, 0, 20, 2000, 0, 900120, 900131, 60000, 2),
--- horde_melee_left (mid/melee_left)
-(900017, 566, 1, 0, 20, 2000, 0, 900121, 900131, 60000, 2),
--- alliance_caster (mid/caster)
-(900012, 566, 0, 1, 20, 2000, 20793, 900100, 900130, 60000, 2),
--- horde_caster (mid/caster)
-(900013, 566, 1, 1, 20, 2000, 20805, 900101, 900131, 60000, 2),
--- alliance_siege (mid/siege)
-(900014, 566, 0, 2, 20, 2000, 0, 900112, 900130, 60000, 2),
--- horde_siege (mid/siege)
-(900015, 566, 1, 2, 20, 2000, 0, 900122, 900131, 60000, 2),
--- alliance_super (mid/super)
-(900018, 566, 0, 3, 20, 2000, 0, 900102, 900130, 60000, 2),
--- horde_super (mid/super)
-(900019, 566, 1, 3, 20, 2000, 0, 900103, 900131, 60000, 2),
 -- alliance_top_melee_right (top/melee_right)
 (900020, 900, 0, 0, 20, 2000, 0, 900106, 900132, 60000, 1),
 -- alliance_top_melee_left (top/melee_left)
@@ -228,10 +172,6 @@ DELETE FROM `creature_loot_template` WHERE `Entry` BETWEEN 900010 AND 900099;
 INSERT INTO `creature_loot_template`
 (`Entry`, `Item`, `Reference`, `Chance`, `QuestRequired`, `LootMode`, `GroupId`, `MinCount`, `MaxCount`, `Comment`)
 VALUES
-(900010, 33470, 0, 100, 0, 1, 0, 1, 1, 'alliance_melee_right (moba drop)'),
-(900016, 33470, 0, 100, 0, 1, 0, 1, 1, 'alliance_melee_left (moba drop)'),
-(900011, 33470, 0, 100, 0, 1, 0, 1, 1, 'horde_melee_right (moba drop)'),
-(900017, 33470, 0, 100, 0, 1, 0, 1, 1, 'horde_melee_left (moba drop)'),
 (900020, 33470, 0, 100, 0, 1, 0, 1, 1, 'alliance_top_melee_right (moba drop)'),
 (900021, 33470, 0, 100, 0, 1, 0, 1, 1, 'alliance_top_melee_left (moba drop)'),
 (900022, 33470, 0, 100, 0, 1, 0, 1, 1, 'horde_top_melee_right (moba drop)'),
@@ -268,34 +208,6 @@ CREATE TABLE `mod_moba_creep_drops` (
 INSERT INTO `mod_moba_creep_drops`
 (`CreatureEntry`, `Idx`, `Type`, `Spell`, `DurationMs`, `Copper`, `Chance`, `Item`, `Sell`)
 VALUES
--- alliance_melee_right
-(900010, 0, 1, 0, 0, 5000, 100, 0, 0),
--- alliance_melee_right
-(900010, 1, 2, 0, 0, 0, 100, 33470, 100),
--- alliance_melee_left
-(900016, 0, 1, 0, 0, 5000, 100, 0, 0),
--- alliance_melee_left
-(900016, 1, 2, 0, 0, 0, 100, 33470, 100),
--- horde_melee_right
-(900011, 0, 1, 0, 0, 5000, 100, 0, 0),
--- horde_melee_right
-(900011, 1, 2, 0, 0, 0, 100, 33470, 100),
--- horde_melee_left
-(900017, 0, 1, 0, 0, 5000, 100, 0, 0),
--- horde_melee_left
-(900017, 1, 2, 0, 0, 0, 100, 33470, 100),
--- alliance_caster
-(900012, 0, 1, 0, 0, 5000, 100, 0, 0),
--- horde_caster
-(900013, 0, 1, 0, 0, 5000, 100, 0, 0),
--- alliance_siege
-(900014, 0, 1, 0, 0, 5000, 100, 0, 0),
--- horde_siege
-(900015, 0, 1, 0, 0, 5000, 100, 0, 0),
--- alliance_super
-(900018, 0, 1, 0, 0, 8000, 100, 0, 0),
--- horde_super
-(900019, 0, 1, 0, 0, 8000, 100, 0, 0),
 -- alliance_top_melee_right
 (900020, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- alliance_top_melee_right

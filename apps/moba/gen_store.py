@@ -58,6 +58,7 @@ from pathlib import Path
 import yaml
 
 import id_alloc
+from sql_dump import parse_tuple_at, unquote
 
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_store.sql")
@@ -136,53 +137,6 @@ def stock_entry(entry):
 def item_spec(spec):
     """One `items:` leaf -- a bare entry id, or a table overriding cost/count/name."""
     return {"entry": spec} if isinstance(spec, int) else dict(spec)
-
-
-def parse_tuple_at(data, start):
-    """Split the SQL VALUES tuple beginning at data[start] == '(' into raw
-    fields. Returns None if it is not a well-formed tuple."""
-    if data[start] != "(":
-        return None
-    fields, cur, in_quote = [], [], False
-    i = start + 1
-    n = len(data)
-    while i < n:
-        c = data[i]
-        if in_quote:
-            if c == "\\":
-                cur.append(data[i:i + 2])
-                i += 2
-                continue
-            if c == "'":
-                in_quote = False
-            cur.append(c)
-            i += 1
-            continue
-        if c == "'":
-            in_quote = True
-            cur.append(c)
-            i += 1
-            continue
-        if c == ",":
-            fields.append("".join(cur))
-            cur = []
-            i += 1
-            continue
-        if c == ")":
-            fields.append("".join(cur))
-            return fields
-        if c == "\n":       # a tuple never spans rows in these dumps
-            return None
-        cur.append(c)
-        i += 1
-    return None
-
-
-def unquote(s):
-    s = s.strip()
-    if s.startswith("'") and s.endswith("'"):
-        s = s[1:-1]
-    return s.replace("\\'", "'").replace("\\\\", "\\")
 
 
 def load_items(entries):

@@ -11,13 +11,23 @@
 #                   set `key`, `lane`, or `slot`: those place a creep.
 #   team            0 = Alliance, 1 = Horde
 #   role            melee | caster | siege | super  (caster needs the attack_* fields)
+#   source          creature_template entry id this copies stats from. Pinned by
+#                   digest in the lockfile -- an upstream retune fails the run
+#                   until you re-run with --rebless-sources.
 #   lane / slot     must already exist in lane_config.lock.json; unique per team
-#   rank            optional; overrides source rank (siege uses 1 = elite)
+#   rank            optional; overrides source rank (siege uses 1 = elite).
+#                   Elite compounds with the *_modifier values -- the engine
+#                   folds rank into health AND damage on top of them.
 #   creature_type   optional; overrides source type (enum CreatureType).
 #                   Mechanical (9) creatures are immune to direct heals.
 #   speed_walk      optional; overrides source speed (multiplier, 1.0 = baseline).
 #   speed_run       Lane paths use move_type RUN, so speed_run is what holds
 #                   formation -- mismatched sources drift apart.
+#   aggro_range     optional; yards, same meaning as in neutral_config.yaml. The
+#                   engine floors it at 5 and scales by Rate.Creature.Aggro;
+#                   0 disables proximity aggro, so the creep only fights back.
+#   swing_time_ms   optional; melee swing timer. NOT the caster cast cadence --
+#                   that is attack_interval_ms.
 #   *_modifier      multiplier on the source creature's stat (0.15 = 15%)
 #   attack_range    yards; caster-only
 #   attack_*_ms     milliseconds
@@ -35,7 +45,7 @@ units:
     subname: MOBA Minion
     team: 0
     role: melee
-    source: apps/moba/sources/creature_template_2279.txt
+    source: 2279
     display_id: 164
     display_scale: 1.0
     level: 80
@@ -52,7 +62,7 @@ units:
     subname: MOBA Minion
     team: 1
     role: melee
-    source: apps/moba/sources/creature_template_2279.txt
+    source: 2279
     display_id: 496
     display_scale: 1.0
     level: 80
@@ -69,7 +79,7 @@ units:
     subname: MOBA Minion
     team: 0
     role: caster
-    source: apps/moba/sources/creature_template_1914.txt
+    source: 1914
     display_id: 3559
     display_scale: 1.0
     level: 80
@@ -89,7 +99,7 @@ units:
     subname: MOBA Minion
     team: 1
     role: caster
-    source: apps/moba/sources/creature_template_11683.txt
+    source: 11683
     display_id: 11865
     display_scale: 1.0
     level: 80
@@ -109,7 +119,7 @@ units:
     subname: MOBA Minion
     team: 0
     role: siege
-    source: apps/moba/sources/creature_template_34775.txt
+    source: 34775
     display_id: 27658
     display_scale: 1.0
     level: 80
@@ -128,7 +138,7 @@ units:
     subname: MOBA Minion
     team: 1
     role: siege
-    source: apps/moba/sources/creature_template_34775.txt
+    source: 34775
     display_id: 27658
     display_scale: 1.0
     level: 80
@@ -147,7 +157,7 @@ units:
     subname: MOBA Minion
     team: 0
     role: super
-    source: apps/moba/sources/creature_template_34775.txt
+    source: 34775
     display_id: 8395
     display_scale: 1.5
     level: 80
@@ -166,7 +176,7 @@ units:
     subname: MOBA Minion
     team: 1
     role: super
-    source: apps/moba/sources/creature_template_34775.txt
+    source: 34775
     display_id: 12818
     display_scale: 1.5
     level: 80

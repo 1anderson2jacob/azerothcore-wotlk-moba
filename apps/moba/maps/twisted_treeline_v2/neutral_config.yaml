@@ -9,6 +9,10 @@
 #                                  merged (a row restating `drops` replaces the
 #                                  list; `drops: []` means none). A unit may not
 #                                  set `key`.
+#   source                         creature_template entry id this copies stats
+#                                  from. Pinned by digest in the lockfile -- an
+#                                  upstream retune fails the run until you
+#                                  re-run with --rebless-sources.
 #   respawn_ms / initial_spawn_ms  milliseconds
 #   tier                           0 = ordinary camp. Nonzero marks a boss, which
 #                                  the kill feed announces (B: payload). It selects
@@ -28,7 +32,7 @@
 # wraiths spread outward from centre; GOLEMS SPREAD NORTH -- outward puts them into
 # the jungle wall the camp is pinched against.
 #
-# DISPLAY IDS ARE PLACEHOLDERS carried over from the eye_of_the_storm bundle --
+# DISPLAY IDS ARE PLACEHOLDERS inherited from the original EotS roster --
 # proven to render, but wrong for the art direction (Ghostlands/Plaguelands dead
 # elegance). Audition replacements in-game with .morph <id> and swap them here.
 
@@ -105,7 +109,7 @@ camps:
 units:
   jungle_large:
     subname: MOBA Jungle
-    source: apps/moba/sources/creature_template_2279.txt
+    source: 2279
     display_scale: 1.5
     level: 80
     creature_type: 1
@@ -116,7 +120,7 @@ units:
 
   jungle_small:
     subname: MOBA Jungle
-    source: apps/moba/sources/creature_template_2279.txt
+    source: 2279
     display_scale: 1.0
     level: 80
     creature_type: 1
@@ -169,7 +173,7 @@ mobs:
   - key: rosham_bo
     name: Rosham Bo
     subname: The Terror from Below
-    source: apps/moba/sources/creature_template_2279.txt
+    source: 2279
     display_id: 20746
     display_scale: 1.0
     level: 85
