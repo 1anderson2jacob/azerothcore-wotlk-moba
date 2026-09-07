@@ -11,7 +11,6 @@
 #include "World.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
-#include "WorldStatePackets.h"
 #include "MobaTowerData.h"
 #include "MobaCreepData.h"
 #include "MobaBaseData.h"
@@ -43,13 +42,15 @@ namespace
 
 void BattlegroundMOBAScore::BuildObjectivesBlock(WorldPacket& data)
 {
-    data << uint32(1); // Objectives Count
-    data << uint32(0);
+    // Zero, not CreepKills: the 3.3.5 client draws scoreboard columns only for the
+    // battlegrounds it ships, so a value sent under a custom id renders nowhere --
+    // tested. A client-patch column unblocks it, but note the scoreboard is public:
+    // wiring CreepKills here also ends the HUD's owner-only CS.
+    data << uint32(0); // Objectives Count
 }
 
 BattlegroundMOBA::BattlegroundMOBA()
 {
-    m_BuffChange = true;
     BgObjects.resize(BG_MOBA_OBJECT_MAX);
 }
 
@@ -122,8 +123,6 @@ void BattlegroundMOBA::StartingEventOpenDoors()
 {
     SpawnBGObject(BG_MOBA_OBJECT_DOOR_A, RESPAWN_ONE_DAY);
     SpawnBGObject(BG_MOBA_OBJECT_DOOR_H, RESPAWN_ONE_DAY);
-
-    StartTimedAchievement(ACHIEVEMENT_TIMED_TYPE_EVENT, BG_MOBA_EVENT_START_BATTLE);
 
     _bgEvents.ScheduleEvent(EVENT_MOBA_SPAWN_WAVE, Milliseconds(MOBA_WAVE_INTERVAL_MS));
 
@@ -1264,10 +1263,6 @@ void BattlegroundMOBA::OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Pl
     // from this structure alone.
     RefreshStructureLocks();
 
-    m_TeamScores[winnerTeamId]++;
-    UpdateWorldState(winnerTeamId == TEAM_ALLIANCE ? WORLD_STATE_BATTLEGROUND_EY_ALLIANCE_RESOURCES : WORLD_STATE_BATTLEGROUND_EY_HORDE_RESOURCES,
-        static_cast<uint32>(m_TeamScores[winnerTeamId]));
-
     if (itr->kind == MOBA_STRUCTURE_CORE)
     {
         FreezeAllCreeps();
@@ -1561,18 +1556,15 @@ bool BattlegroundMOBA::UpdatePlayerScore(Player* player, uint32 type, uint32 val
     return true;
 }
 
-void BattlegroundMOBA::FillInitialWorldStates(WorldPackets::WorldState::InitWorldStates& packet)
-{
-    packet.Worldstates.reserve(2);
-    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_EY_HORDE_RESOURCES, GetTeamScore(TEAM_HORDE));
-    packet.Worldstates.emplace_back(WORLD_STATE_BATTLEGROUND_EY_ALLIANCE_RESOURCES, GetTeamScore(TEAM_ALLIANCE));
-}
-
 GraveyardStruct const* BattlegroundMOBA::GetClosestGraveyard(Player* player)
 {
+    MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId());
+    if (!cfg)
+        return nullptr;
+
     return sGraveyard->GetGraveyard(player->GetBgTeamId() == TEAM_ALLIANCE
-        ? BG_MOBA_GRAVEYARD_MAIN_ALLIANCE
-        : BG_MOBA_GRAVEYARD_MAIN_HORDE);
+        ? cfg->graveyardAlliance
+        : cfg->graveyardHorde);
 }
 
 void BattlegroundMOBA::StartRespawnTimer(Player* player, bool instant /*= false*/)
@@ -1985,9 +1977,9 @@ void BattlegroundMOBA::BroadcastNotice(uint32 code, uint32 arg)
 
 // TEAM_NEUTRAL is a real outcome -- Battleground::GetPrematureWinner returns it when
 // neither side still fields enough players -- and there is no honest victory or defeat
-// line for it. Unreachable while MinPlayersPerTeam is 1 (EotS's is, deliberately), but
-// kept: a mode with a real minimum reaches it, and without it that match ends on a
-// frozen bar that never says why.
+// line for it. Unreachable while min_players_per_team is 1 (base_config.yaml's is,
+// deliberately), but kept: a mode with a real minimum reaches it, and without it that
+// match ends on a frozen bar that never says why.
 void BattlegroundMOBA::BroadcastMatchResult(TeamId winnerTeamId)
 {
     if (winnerTeamId != TEAM_ALLIANCE && winnerTeamId != TEAM_HORDE)

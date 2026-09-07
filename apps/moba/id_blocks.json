@@ -10,6 +10,16 @@
       "source": "-"
     }
   },
+  "battleground_template": {
+    "base_slot": {
+      "blocks": [
+        "12-19"
+      ],
+      "enumerated": false,
+      "note": "hand-assigned in maps/*/base_config.yaml as battleground_template_id; gen_base.py window-clears the block. ONE number in three places: this row's ID, the BattlegroundTypeId enumerator in SharedDefines.h, and the BattlemasterList.dbc row id -- server copy in mod_moba_bg_map.sql, client copy written by apps/moba/wmo/dbc_tool.py. Deliberately NOT enumerated: an INACTIVE bundle may legally declare the same slot as the active one, so a reader would report a false collision -- gen_base.py's active_by_slot check is what enforces uniqueness. Stock BattlemasterList.dbc holds 1-11, 30 and 32; the block stops at 19 because an id of 32 or more breaks SetHolidayWeekends' `1 << bgtype`.",
+      "source": "gen_base.py"
+    }
+  },
   "creature": {
     "store": {
       "blocks": [
@@ -50,6 +60,15 @@
       "source": "gen_tower_data.py"
     }
   },
+  "game_graveyard": {
+    "base_spawn": {
+      "blocks": [
+        "900500-900509"
+      ],
+      "note": "hand-assigned in maps/*/base_config.yaml under spawn.<team>.graveyard_id; the generated SQL clears the whole block. Six-digit ids are safe here where map_dbc's are not -- GameGraveyard keeps an unordered_map, not an index array, so a high id costs one hash entry. Eye of the Storm's 1103/1104 were borrowed before this block existed and are NOT in it; mod_moba_restore_eots.sql put them back on map 566.",
+      "source": "gen_base.py"
+    }
+  },
   "gameobject_template": {
     "base_dome": {
       "blocks": [
@@ -85,8 +104,8 @@
         "200-209"
       ],
       "enumerated": false,
-      "note": "hand-assigned, nothing allocates here. 200 = map 900's only bracket; stock PvpDifficulty.dbc runs to id 108. Small ids for the same reason as map_dbc: DBCStorage sizes its index table to max(id)+1. RangeIndex is a different id space and is NOT covered by this block -- it is the bracket index, and must stay under MAX_BATTLEGROUND_BRACKETS (16) because BattlegroundQueue arrays are dimensioned by it.",
-      "source": "-"
+      "note": "hand-assigned, nothing allocates here. 200 = map 900's only bracket; stock PvpDifficulty.dbc runs to id 108. Small ids for the same reason as map_dbc: DBCStorage sizes its index table to max(id)+1. RangeIndex is a different id space and is NOT covered by this block -- it is the bracket index, and must stay under MAX_BATTLEGROUND_BRACKETS (16) because BattlegroundQueue arrays are dimensioned by it. Two copies now: the server's row in mod_moba_bg_map.sql and the client's, written by dbc_tool.py. Both must carry the same MapID, RangeIndex and level range -- the client uses its copy to decide whether the PvP frame will let you queue at all.",
+      "source": "gen: mod_moba_bg_map.sql + apps/moba/wmo/dbc_tool.py"
     }
   },
   "mapdifficulty_dbc": {

@@ -22,8 +22,9 @@
 #include "BattlegroundAV.h"
 #include "BattlegroundBE.h"
 #include "BattlegroundDS.h"
-#include "BattlegroundMOBA.h"
+#include "BattlegroundEY.h"
 #include "BattlegroundIC.h"
+#include "BattlegroundMOBA.h"
 #include "BattlegroundNA.h"
 #include "BattlegroundQueue.h"
 #include "BattlegroundRL.h"
@@ -985,6 +986,7 @@ std::unordered_map<int, BattlegroundQueueTypeId> BattlegroundMgr::bgToQueue =
     { BATTLEGROUND_AB, BATTLEGROUND_QUEUE_AB},
     { BATTLEGROUND_EY, BATTLEGROUND_QUEUE_EY},
     { BATTLEGROUND_SA, BATTLEGROUND_QUEUE_SA},
+    { BATTLEGROUND_TT, BATTLEGROUND_QUEUE_TT},
     { BATTLEGROUND_IC, BATTLEGROUND_QUEUE_IC},
     { BATTLEGROUND_RB, BATTLEGROUND_QUEUE_RB},
     // Arena Battlegrounds
@@ -1009,6 +1011,7 @@ std::unordered_map<int, BattlegroundTypeId> BattlegroundMgr::queueToBg =
     { BATTLEGROUND_QUEUE_2v2,   BATTLEGROUND_AA },
     { BATTLEGROUND_QUEUE_3v3,   BATTLEGROUND_AA },
     { BATTLEGROUND_QUEUE_5v5,   BATTLEGROUND_AA },
+    { BATTLEGROUND_QUEUE_TT,    BATTLEGROUND_TT },
 };
 
 std::unordered_map<int, Battleground*> BattlegroundMgr::bgtypeToBattleground =
@@ -1018,11 +1021,12 @@ std::unordered_map<int, Battleground*> BattlegroundMgr::bgtypeToBattleground =
     { BATTLEGROUND_AB, new BattlegroundAB },
     { BATTLEGROUND_NA, new BattlegroundNA },
     { BATTLEGROUND_BE, new BattlegroundBE },
-    { BATTLEGROUND_EY, new BattlegroundMOBA },
+    { BATTLEGROUND_EY, new BattlegroundEY },
     { BATTLEGROUND_RL, new BattlegroundRL },
     { BATTLEGROUND_SA, new BattlegroundSA },
     { BATTLEGROUND_DS, new BattlegroundDS },
     { BATTLEGROUND_RV, new BattlegroundRV },
+    { BATTLEGROUND_TT, new BattlegroundMOBA },
     { BATTLEGROUND_IC, new BattlegroundIC },
     { BATTLEGROUND_AA, new Battleground },
     { BATTLEGROUND_RB, new Battleground },
@@ -1035,11 +1039,12 @@ std::unordered_map<int, bgRef> BattlegroundMgr::bgTypeToTemplate =
     { BATTLEGROUND_AB, [](Battleground * bg_t) -> Battleground* { return new BattlegroundAB(*(BattlegroundAB*)bg_t); } },
     { BATTLEGROUND_NA, [](Battleground * bg_t) -> Battleground* { return new BattlegroundNA(*(BattlegroundNA*)bg_t); } },
     { BATTLEGROUND_BE, [](Battleground * bg_t) -> Battleground* { return new BattlegroundBE(*(BattlegroundBE*)bg_t); } },
-    { BATTLEGROUND_EY, [](Battleground * bg_t) -> Battleground* { return new BattlegroundMOBA(*(BattlegroundMOBA*)bg_t); } },
+    { BATTLEGROUND_EY, [](Battleground * bg_t) -> Battleground* { return new BattlegroundEY(*(BattlegroundEY*)bg_t); } },
     { BATTLEGROUND_RL, [](Battleground * bg_t) -> Battleground* { return new BattlegroundRL(*(BattlegroundRL*)bg_t); } },
     { BATTLEGROUND_SA, [](Battleground * bg_t) -> Battleground* { return new BattlegroundSA(*(BattlegroundSA*)bg_t); } },
     { BATTLEGROUND_DS, [](Battleground * bg_t) -> Battleground* { return new BattlegroundDS(*(BattlegroundDS*)bg_t); } },
     { BATTLEGROUND_RV, [](Battleground * bg_t) -> Battleground* { return new BattlegroundRV(*(BattlegroundRV*)bg_t); } },
+    { BATTLEGROUND_TT, [](Battleground * bg_t) -> Battleground* { return new BattlegroundMOBA(*(BattlegroundMOBA*)bg_t); } },
     { BATTLEGROUND_IC, [](Battleground * bg_t) -> Battleground* { return new BattlegroundIC(*(BattlegroundIC*)bg_t); } },
 
     { BATTLEGROUND_RB, [](Battleground * bg_t) -> Battleground* { return new Battleground(*bg_t); }, },

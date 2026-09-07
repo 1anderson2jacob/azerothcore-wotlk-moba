@@ -4,7 +4,6 @@
 #include "Battleground.h"
 #include "BattlegroundScore.h"
 #include "EventMap.h"
-#include "WorldStateDefines.h"
 #include "ObjectGuid.h"
 #include "MobaNeutralData.h"
 #include "MobaCreepData.h"
@@ -20,12 +19,6 @@
 constexpr char MOBA_HUD_ADDON_PREFIX[]  = "MobaHUD";
 constexpr char MOBA_SHOP_ADDON_PREFIX[] = "MobaShop";
 
-enum BG_MOBA_Graveyards
-{
-    BG_MOBA_GRAVEYARD_MAIN_ALLIANCE     = 1103,
-    BG_MOBA_GRAVEYARD_MAIN_HORDE        = 1104,
-};
-
 enum BG_MOBA_CreatureTypes
 {
     BG_MOBA_CREATURE_FIXED_MAX      = 0 // towers take dynamic slots from 0; see SetupBattleground
@@ -36,11 +29,6 @@ enum BG_MOBA_ObjectTypes
     BG_MOBA_OBJECT_DOOR_A                         = 0,
     BG_MOBA_OBJECT_DOOR_H                         = 1,
     BG_MOBA_OBJECT_MAX                            = 2
-};
-
-enum BG_MOBA_Score
-{
-    BG_MOBA_EVENT_START_BATTLE            = 13180, // Achievement: Flurry
 };
 
 // PostUpdateImpl dispatches the ranged ids with >= tests in DESCENDING order, so the
@@ -225,7 +213,6 @@ public:
     // is written only on MOBA_SURRENDER_TOO_EARLY and MOBA_SURRENDER_ON_COOLDOWN.
     BG_MOBA_SurrenderResult HandleSurrenderRequest(Player* player, bool agree, uint32& secondsRemaining);
     bool UpdatePlayerScore(Player* player, uint32 type, uint32 value, bool doAddHonor = true) override;
-    void FillInitialWorldStates(WorldPackets::WorldState::InitWorldStates& packet) override;
 
     std::vector<MobaTowerState>& GetTowers() { return _towers; }
 

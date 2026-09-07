@@ -3745,6 +3745,7 @@ enum BattlegroundTypeId : uint8
     BATTLEGROUND_SA            = 9, // Strand of the Ancients
     BATTLEGROUND_DS            = 10, // Dalaran Sewers
     BATTLEGROUND_RV            = 11, // Ring of Valor
+    BATTLEGROUND_TT            = 12, // Twisted Treeline -- must stay under 32: SetHolidayWeekends shifts an int by this
     BATTLEGROUND_IC            = 30, // Isle of Conquest
     BATTLEGROUND_RB            = 32 // Random Battleground
 };
@@ -3884,6 +3885,7 @@ enum BattlegroundQueueTypeId : uint8
     BATTLEGROUND_QUEUE_2v2       = 8,
     BATTLEGROUND_QUEUE_3v3       = 9,
     BATTLEGROUND_QUEUE_5v5       = 10,
+    BATTLEGROUND_QUEUE_TT        = 11,
     MAX_BATTLEGROUND_QUEUE_TYPES = 20,
 };
 

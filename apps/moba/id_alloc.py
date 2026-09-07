@@ -39,6 +39,8 @@ LEDGER_PATH = MOBA_DIR / "id_blocks.json"
 CREATURE_TEMPLATE = "creature_template"
 CREATURE_SPAWN = "creature"          # the guid column, not the entry column
 GAMEOBJECT_TEMPLATE = "gameobject_template"
+GAME_GRAVEYARD = "game_graveyard"
+BATTLEGROUND_TEMPLATE = "battleground_template"
 WAYPOINT_DATA = "waypoint_data"
 ITEM_TEMPLATE = "item_template"
 # New blocks are this wide and start on a multiple of it. ID space is not scarce
@@ -103,6 +105,15 @@ def _read_domes():
                 yield Assignment(GAMEOBJECT_TEMPLATE, dome[key], "base_dome", key, path)
 
 
+def _read_graveyards():
+    for path in sorted(MAPS_DIR.glob("*/base_config.yaml")):
+        spawn = _load_yaml(path).get("spawn") or {}
+        for team in ("alliance", "horde"):
+            gid = (spawn.get(team) or {}).get("graveyard_id")
+            if isinstance(gid, int):
+                yield Assignment(GAME_GRAVEYARD, gid, "base_spawn", team, path)
+
+
 def _read_entry_locks(pattern, owner):
     """creep and neutral lockfiles share one shape: {"entries": {key: id}}."""
     for path in sorted(MAPS_DIR.glob(pattern)):
@@ -131,7 +142,7 @@ def _read_creep_paths():
 # item_template has no reader: a copy's entry is its source entry + 900000,
 # derived from the catalog at emit time and never recorded anywhere. The ledger
 # reserves the mirror; there is nothing to enumerate.
-READERS = (_read_towers, _read_shopkeepers, _read_domes,
+READERS = (_read_towers, _read_shopkeepers, _read_domes, _read_graveyards,
            _read_creeps, _read_neutrals, _read_creep_paths)
 
 

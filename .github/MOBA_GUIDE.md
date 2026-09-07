@@ -36,7 +36,7 @@ time (a caster spell "not updating" that was actually a stale server).
 `Interface/AddOns/`, then `/reload`. No build, no restart.
 
 Then in-game: `.debug bg` (**required after every restart**, or the solo queue
-won't pop), queue for EotS, confirm.
+won't pop), queue for Twisted Treeline, confirm.
 
 **Ad-hoc `UPDATE`s** are fine for live experimentation, but fold the values back into
 `apps/moba/maps/<mode>/*.yaml`. Two different risks, and the second is the nasty one:
@@ -625,7 +625,10 @@ index to somewhere else.
   battleground *type id*, its start locations resolve once at load
   (`BattlegroundMgr.cpp:527`), and the map comes from `BattlemasterList.dbc` `mapid[0]`.
   Content tables are all `Map`-keyed and coexist happily; the slot does not. Two maps
-  queueable at once needs a second battleground type id, which needs a client DBC patch.
+  queueable at once needs a second battleground type id, which needs a client DBC patch:
+  slot 12 is the worked example — `mod_moba_bg_map.sql` server-side, and `dbc_tool.py`'s
+  `BattlemasterList.dbc` plus `PvpDifficulty.dbc` rows client-side. Both client rows are
+  required, and `dbc_tool.py` says why the second one is.
   `base_config.yaml`'s `active:` flag is what keeps one bundle owning the slot.
 - **Adding a column to a generated SQL table is a two-part trap.** The C++ store's
   `SELECT` names the new column, so a *stale* generated `.sql` (which recreates the old
@@ -692,8 +695,8 @@ C++ or are allocation policy:
 
 | What | Value |
 |---|---|
-| BG map id (all content rows are tagged with it) | 566 (hijacked EotS) |
-| Graveyard DB IDs | 1103 (Alliance), 1104 (Horde) — reused vanilla EotS rows |
+| BG map id (all content rows are tagged with it) | 900 (Twisted Treeline) |
+| Graveyard DB IDs | 900500 (Alliance), 900501 (Horde) — `mod_moba_base.GraveyardAlliance`/`GraveyardHorde` |
 | Wave cadence | every 30s; every 3rd wave adds siege (`BattlegroundMOBA.cpp`) |
 | Creep lane corridor | 40 yd, players only; +15 yd self-evade headroom (`npc_moba_creep.cpp`) |
 | HUD resync cadence | 10s (`MOBA_HUD_RESYNC_MS`) |

@@ -39,6 +39,21 @@ ROOT_WMO_ID = 9000
 WMOAREA_ID  = 51200            # +1 is the per-group row
 LIGHT_ID    = 3000
 EXPANSION   = 2                # WotLK
+# The battleground slot. These must match the server's copy of the row in
+# data/sql/custom/db_world/mod_moba_bg_map.sql, and the levels must ALSO match
+# battleground_template's MinLvl/MaxLvl (base_config.yaml min_level/max_level).
+# This row is what decides whether the PvP frame OFFERS the battleground, so a
+# client offering a wider range than the server accepts queues into a silent refusal.
+BG_ID        = 12
+BG_MAX_GROUP = 3               # 3v3
+BG_MIN_LEVEL = 61
+BG_MAX_LEVEL = 80
+# The queue bracket, mirroring pvpdifficulty_dbc row 200 in that same SQL file. Wider
+# than BG_MIN/MAX_LEVEL on purpose -- stock Eye of the Storm ships the same mismatch
+# (BattlemasterList 61-80, PvpDifficulty 61-85).
+PVPDIFF_ID   = 200
+PVPDIFF_MIN  = 61
+PVPDIFF_MAX  = 85
 
 
 def open_archives():
@@ -167,6 +182,26 @@ def wmoarea_overrides(group_id, flags):
     return ov
 
 
+def bml_overrides():
+    # 32 fields: 0 ID, 1-8 MapID_1..8, 9 InstanceType, 10 GroupsAllowed, 11-26 Name x16,
+    # 27 Name_Lang_Mask, 28 MaxGroupSize, 29 HolidayWorldState, 30 Minlevel, 31 Maxlevel.
+    # MapID_2..8 are deliberately untouched: row 7 already carries -1 in all seven, and
+    # the core registers a battleground by map only while mapid[1] == -1.
+    ov = {1: ("i", MAP_ID), 28: ("i", BG_MAX_GROUP), 29: ("i", 0),
+          30: ("i", BG_MIN_LEVEL), 31: ("i", BG_MAX_LEVEL)}
+    for c in range(11, 27):                                      # Name, all 16 slots
+        ov[c] = ("s", MAP_NAME)
+    return ov
+
+
+def pvpdiff_overrides():
+    # 6 fields: 0 ID, 1 MapID, 2 RangeIndex, 3 MinLevel, 4 MaxLevel, 5 Difficulty.
+    # One wide bracket at RangeIndex 0, mirroring the server's row so both sides agree
+    # on which bracket a player lands in.
+    return {1: ("i", MAP_ID), 2: ("i", 0),
+            3: ("i", PVPDIFF_MIN), 4: ("i", PVPDIFF_MAX), 5: ("i", 0)}
+
+
 # file, [(clone_from, new_id, overrides), ...]
 PATCHES = [
     # 566 Eye of the Storm: instanceType 3, PVP 1 -- the closest stock analogue.
@@ -180,6 +215,14 @@ PATCHES = [
                           (14369, WMOAREA_ID + 1, wmoarea_overrides(0,  0x04))]),
     # 591 is map 566's light. Client-only: LightEntryfmt skips every parameter.
     ("Light.dbc",        [(591, LIGHT_ID, {1: ("i", MAP_ID)})]),
+    # 7 Eye of the Storm: a one-map 61-80 battleground, the same shape as ours, so the
+    # clone carries MapID_2..8 = -1, InstanceType 3 and the locale mask unexamined.
+    ("BattlemasterList.dbc", [(7, BG_ID, bml_overrides())]),
+    # 52 is Eye of the Storm's first bracket (map 566, RangeIndex 0, 61-69). Without a
+    # bracket for our map the client's GetBattlegroundInfo returns canEnter = nil: the
+    # battleground lists by name and refuses the queue, because the client has nowhere
+    # to place the player's level.
+    ("PvpDifficulty.dbc", [(52, PVPDIFF_ID, pvpdiff_overrides())]),
 ]
 
 

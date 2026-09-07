@@ -44,6 +44,8 @@ struct MobaBaseConfig
     uint32 surrenderMinMs = 0;          // earliest a surrender vote may start, from doors open; 0 = no gate
     uint32 surrenderVoteMs = 15000;     // how long a vote stays open before silence fails it
     uint32 surrenderCooldownMs = 60000; // after a failed vote, before that team may start another
+    uint32 graveyardAlliance = 0;       // game_graveyard id the team releases to
+    uint32 graveyardHorde = 0;
 };
 
 // Loads `mod_moba_base` once per process, keyed by map id.

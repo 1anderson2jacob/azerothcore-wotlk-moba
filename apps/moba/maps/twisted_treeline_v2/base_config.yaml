@@ -9,9 +9,12 @@
 # needs a runtime binding rather than a config field.
 
 map: 900
-battleground_template_id: 7          # EotS slot this mode hijacks
-active: true                         # owns slot 7 (the hijacked EotS battleground)
-min_players_per_team: 1              # a MOBA keeps playing 4v5 rather than forfeiting
+battleground_template_id: 12         # its own slot; the same number is the BattlemasterList.dbc row id
+active: true                         # owns slot 12
+min_players_per_team: 1              # a MOBA keeps playing 2v3 rather than forfeiting
+max_players_per_team: 3              # 3v3
+min_level: 61                        # the bracket in mod_moba_bg_map.sql may not start below this
+max_level: 80
 
 kill_credit_window_ms: 15000         # last-hit window for kill credit
 assist_window_ms: 10000              # recent-damage window that grants an assist
@@ -46,14 +49,14 @@ spawn:
   # the island the base wraps around.
   radius: 20
   dome: {alliance_entry: 900402, horde_entry: 900403}
-  # Graveyards 1103/1104 are REUSED, not freshly allocated: BattlegroundMOBA.h
-  # hardcodes those two ids in GetClosestGraveyard. New ids mean making that
-  # per-map data first -- two mod_moba_base columns and a C++ read.
+  # Graveyards are this map's own, from id_blocks.json's game_graveyard/base_spawn
+  # block. Eye of the Storm's 1103/1104 were borrowed while this mode hijacked its
+  # queue slot; mod_moba_restore_eots.sql put them back on map 566.
   # z 3.5 = the measured platform top (3.000) plus clearance. The map is a WMO with
   # no terrain under it, so a z BELOW the collision floor drops a releasing player
   # into the void rather than snapping them up; erring high costs a harmless step.
-  alliance: {graveyard_id: 1103, x: -196.80025, y:  0.3477315, z: 3.5, o: 6.2737}
-  horde:    {graveyard_id: 1104, x:  197.60576, y: -0.386557,  z: 3.5, o: 3.1396}
+  alliance: {graveyard_id: 900500, x: -196.80025, y:  0.3477315, z: 3.5, o: 6.2737}
+  horde:    {graveyard_id: 900501, x:  197.60576, y: -0.386557,  z: 3.5, o: 3.1396}
 
 # Match economy. All copper -- the match wallet mirrors the coin denomination
 # rather than being a separate resource, so these read against store_config

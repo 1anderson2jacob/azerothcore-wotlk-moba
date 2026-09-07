@@ -5,12 +5,12 @@ MOBA base generator.
 Reads per-map base configs (apps/moba/maps/<mode>/base_config.yaml) and
 generates data/sql/custom/db_world/mod_moba_base.sql: the map-keyed mod_moba_base table
 (respawn timing, recall cast times, fountain healing), the per-map spawn wiring
-(game_graveyard coordinates plus the battleground_template start-location /
-orientation that back them), and the spawn dome gameobject_template (+ _addon) rows.
+(the game_graveyard rows a team releases to plus the battleground_template queue
+slot that names them), and the spawn dome gameobject_template (+ _addon) rows.
 
 "Base" here means the team's base -- everything anchored to it. Tunables live in
 the table; the base LOCATION is written into game_graveyard /
-battleground_template, which the server already reads via GetTeamStartPosition /
+battleground_template, which the server reads via GetTeamStartPosition and
 GetClosestGraveyard (see MobaBaseData.{h,cpp}).
 
 spawn.radius drives BOTH halves of the base bubble from one number: the dome GOs'
@@ -66,9 +66,20 @@ def validate(cfg, path):
     active = cfg.get("active", True)
     if not isinstance(active, bool):
         fail(f'{path}: "active" must be true or false')
+    # These four mirror LoadBattlegroundTemplates' own rejections, which drop the
+    # battleground with a `sql.sql` error rather than failing the generator.
     mppt = cfg.get("min_players_per_team")
     if not isinstance(mppt, int) or mppt < 1:
         fail(f'{path}: "min_players_per_team" must be an integer >= 1')
+    xppt = cfg.get("max_players_per_team")
+    if not isinstance(xppt, int) or xppt < mppt:
+        fail(f'{path}: "max_players_per_team" must be an integer >= min_players_per_team')
+    for k in ("min_level", "max_level"):
+        v = cfg.get(k)
+        if not isinstance(v, int) or not 1 <= v <= 80:
+            fail(f'{path}: "{k}" must be an integer between 1 and 80')
+    if cfg["min_level"] > cfg["max_level"]:
+        fail(f'{path}: "min_level" must not exceed "max_level"')
     window = cfg.get("kill_credit_window_ms")
     if window is not None and (not isinstance(window, int) or window < 0):
         fail(f'{path}: "kill_credit_window_ms" must be a non-negative integer (ms; 0 = disabled)')
@@ -177,11 +188,11 @@ def load_configs():
                  f"active: true on the bundle that owns the slot")
 
     id_alloc.validate_owner(id_alloc.GAMEOBJECT_TEMPLATE, "base_dome")
+    id_alloc.validate_owner(id_alloc.GAME_GRAVEYARD, "base_spawn")
     return configs
 
 
-def emit(configs, blocks):
-    dome_window = id_alloc.sql_window(blocks, "`entry`")
+def emit(configs, dome_window, grave_window, slot_window):
     lines = [
         "-- ============================================================",
         "-- GENERATED FILE -- do not hand-edit.",
@@ -221,10 +232,12 @@ def emit(configs, blocks):
         "    `AceMinTeam`          INT UNSIGNED NOT NULL DEFAULT 2,     -- smallest wiped team that counts as an ace (0 = ace off)",
         "    `SurrenderMinMs`      INT UNSIGNED NOT NULL DEFAULT 0,     -- earliest a surrender vote may start, from doors open (0 = no gate, not 'off')",
         "    `SurrenderVoteMs`     INT UNSIGNED NOT NULL DEFAULT 15000, -- how long a surrender vote stays open before silence fails it",
-        "    `SurrenderCooldownMs` INT UNSIGNED NOT NULL DEFAULT 60000  -- after a failed vote, before that team may start another (0 = none)",
+        "    `SurrenderCooldownMs` INT UNSIGNED NOT NULL DEFAULT 60000, -- after a failed vote, before that team may start another (0 = none)",
+        "    `GraveyardAlliance`   INT UNSIGNED NOT NULL DEFAULT 0,     -- game_graveyard id the Alliance releases to",
+        "    `GraveyardHorde`      INT UNSIGNED NOT NULL DEFAULT 0      -- game_graveyard id the Horde releases to",
         ");",
         "",
-        "INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`, `StartingGold`, `PassiveTickMs`, `PassiveCopper`, `FirstBloodGold`, `ShutdownPerStreak`, `ShutdownCapGold`, `MultiKillWindowMs`, `SpreeMin`, `AceMinTeam`, `SurrenderMinMs`, `SurrenderVoteMs`, `SurrenderCooldownMs`)",
+        "INSERT INTO `mod_moba_base` (`Map`, `RespawnBaseMs`, `RespawnPerMinMs`, `RespawnCapMs`, `RecallCastMs`, `RecallEmpoweredCastMs`, `FountainTickMs`, `FountainHpPct`, `FountainManaPct`, `FountainRadius`, `KillCreditWindowMs`, `AssistWindowMs`, `AssistBuffMaxDurationMs`, `DomeEntryAlliance`, `DomeEntryHorde`, `StartingGold`, `PassiveTickMs`, `PassiveCopper`, `FirstBloodGold`, `ShutdownPerStreak`, `ShutdownCapGold`, `MultiKillWindowMs`, `SpreeMin`, `AceMinTeam`, `SurrenderMinMs`, `SurrenderVoteMs`, `SurrenderCooldownMs`, `GraveyardAlliance`, `GraveyardHorde`)",
         "VALUES",
     ]
     rows = []
@@ -257,7 +270,9 @@ def emit(configs, blocks):
             f"{streaks.get('ace_min_team', 2)}, "
             f"{surrender.get('min_match_ms', 0)}, "
             f"{surrender.get('vote_duration_ms', 15000)}, "
-            f"{surrender.get('vote_cooldown_ms', 60000)})")
+            f"{surrender.get('vote_cooldown_ms', 60000)}, "
+            f"{cfg['spawn']['alliance']['graveyard_id']}, "
+            f"{cfg['spawn']['horde']['graveyard_id']})")
     lines.append(",\n".join(rows) + ";")
 
     # One dome pair per map, sized from that map's spawn.radius. Copies of
@@ -302,12 +317,40 @@ def emit(configs, blocks):
         f"({entry}, {DOME_ADDON_FACTION}, {DOME_ADDON_FLAGS}, 0, 0, 0, 0, 0, 0)"
         for entry in dome_entries) + ";")
 
+    # Graveyards for EVERY bundle, active or not. The ids are per-map now, so an
+    # inactive bundle's rows sit inert instead of contending for a shared id.
+    lines += [
+        "",
+        "-- Team start graveyards. Player::RepopAtGraveyard teleports to ClosestGrave->Map,",
+        "-- so a row left on the wrong map throws a releasing player clean out of the",
+        "-- battleground. The whole block is cleared, not just the rows being inserted.",
+        f"DELETE FROM `game_graveyard` WHERE {grave_window};",
+        "INSERT INTO `game_graveyard` (`ID`, `Map`, `x`, `y`, `z`, `Comment`) VALUES",
+    ]
+    grave_rows = []
+    for path, cfg in configs:
+        mode = path.parent.name
+        for team, key in (("Alliance", "alliance"), ("Horde", "horde")):
+            g = cfg["spawn"][key]
+            grave_rows.append(
+                f"({g['graveyard_id']}, {cfg['map']}, {g['x']}, {g['y']}, {g['z']}, "
+                f"'{mode} start ({team})')")
+    lines.append(",\n".join(grave_rows) + ";")
+
+    lines += [
+        "",
+        "-- The queue slot: one row per ACTIVE bundle. Its ID is also the BattlegroundTypeId",
+        "-- enumerator and the BattlemasterList.dbc row id -- see mod_moba_bg_map.sql.",
+        "-- The block is cleared first, so a bundle that goes inactive leaves no queueable",
+        "-- slot behind.",
+        f"DELETE FROM `battleground_template` WHERE {slot_window};",
+    ]
     for path, cfg in configs:
         mode = path.parent.name
         if not cfg.get("active", True):
             lines += [
                 "",
-                f"-- Spawn wiring for map {cfg['map']} ({mode}) SKIPPED -- active: false.",
+                f"-- Queue slot for map {cfg['map']} ({mode}) SKIPPED -- active: false.",
                 f"-- Its content rows above stay live and inert; battleground_template "
                 f"{cfg['battleground_template_id']} belongs to the active bundle.",
             ]
@@ -317,33 +360,37 @@ def emit(configs, blocks):
         a, h = spawn["alliance"], spawn["horde"]
         lines += [
             "",
-            f"-- Spawn wiring for map {cfg['map']} ({mode})",
+            f"-- Queue slot for map {cfg['map']} ({mode})",
             "-- StartMaxDist stays 0 ON PURPOSE. It is the core's prep-phase leash",
             "-- (Battleground::_CheckSafePositions), which teleports players back to spawn",
             "-- every 9s -- wrong for a base you are meant to walk around in. The dome holds",
             "-- players in; the radius lives in mod_moba_base.FountainRadius.",
             "-- MinPlayersPerTeam is 1 ON PURPOSE: Battleground::GetPrematureWinner forfeits a",
-            "-- team that drops below it, and a MOBA keeps playing 4v5. Stock EotS ships 8.",
-            (f"UPDATE battleground_template SET "
-             f"AllianceStartLoc = {a['graveyard_id']}, AllianceStartO = {a['o']}, "
-             f"HordeStartLoc = {h['graveyard_id']}, HordeStartO = {h['o']}, "
-             f"StartMaxDist = 0, "
-             f"MinPlayersPerTeam = {cfg['min_players_per_team']} "
-             f"WHERE ID = {cfg['battleground_template_id']};"),
-            "-- Map moves with the coordinates. Player::RepopAtGraveyard teleports to",
-            "-- ClosestGrave->Map, so a graveyard left on the old map throws a releasing",
-            "-- player clean out of the battleground.",
-            f"UPDATE game_graveyard SET Map = {cfg['map']}, x = {a['x']}, y = {a['y']}, z = {a['z']} WHERE ID = {a['graveyard_id']};",
-            f"UPDATE game_graveyard SET Map = {cfg['map']}, x = {h['x']}, y = {h['y']}, z = {h['z']} WHERE ID = {h['graveyard_id']};",
+            "-- team that drops below it, and a MOBA keeps playing 2v3. It is NOT what lets a",
+            "-- lone tester start a match -- BattlegroundQueue forces 1 while .debug bg is on.",
+            "INSERT INTO `battleground_template`",
+            "(`ID`, `MinPlayersPerTeam`, `MaxPlayersPerTeam`, `MinLvl`, `MaxLvl`,",
+            " `AllianceStartLoc`, `AllianceStartO`, `HordeStartLoc`, `HordeStartO`,",
+            " `StartMaxDist`, `Weight`, `ScriptName`, `Comment`) VALUES",
+            (f"({cfg['battleground_template_id']}, {cfg['min_players_per_team']}, "
+             f"{cfg['max_players_per_team']}, {cfg['min_level']}, {cfg['max_level']}, "
+             f"{a['graveyard_id']}, {a['o']}, {h['graveyard_id']}, {h['o']}, "
+             f"0, 1, '', '{mode} (MOBA)');"),
         ]
     return "\n".join(lines) + "\n"
 
 
 def main():
     configs = load_configs()
-    blocks = id_alloc.Registry().blocks_of(id_alloc.GAMEOBJECT_TEMPLATE, "base_dome")
+    registry = id_alloc.Registry()
+    dome_window = id_alloc.sql_window(
+        registry.blocks_of(id_alloc.GAMEOBJECT_TEMPLATE, "base_dome"), "`entry`")
+    grave_window = id_alloc.sql_window(
+        registry.blocks_of(id_alloc.GAME_GRAVEYARD, "base_spawn"), "`ID`")
+    slot_window = id_alloc.sql_window(
+        registry.blocks_of(id_alloc.BATTLEGROUND_TEMPLATE, "base_slot"), "`ID`")
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(emit(configs, blocks))
+    OUTPUT.write_text(emit(configs, dome_window, grave_window, slot_window))
     maps = ", ".join(str(c["map"]) for _, c in configs)
     print(f"Wrote {OUTPUT} ({len(configs)} map(s): {maps}).")
     print("Restart worldserver — the SQL auto-applies from data/sql/custom/db_world on boot.")

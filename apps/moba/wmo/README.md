@@ -184,7 +184,7 @@ apps/moba/wmo/mpq_pack ~/Games/wow335/Data/enUS/patch-enUS-4.MPQ \
                        $PROJECT World DBFilesClient
 ```
 
-File count = groups + root + WDT + 4 DBCs.
+File count = groups + root + WDT + 6 DBCs.
 
 ### 8. Extract
 

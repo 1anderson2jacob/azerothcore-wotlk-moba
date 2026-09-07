@@ -99,9 +99,9 @@ Claude MUST NOT — these are Jacob's; hand him the exact command and wait for w
 
 ## What this project is
 
-A MOBA-style battleground on the Eye of the Storm map: towers, lanes, destroy-the-base win condition.
+A MOBA-style battleground on Twisted Treeline, a custom map: towers, lanes, destroy-the-base win condition.
 
-**Core approach:** the EotS battleground slot is hijacked. The client queues for EotS normally; the server instantiates `BattlegroundMOBA` instead of `BattlegroundEY`. No client patch needed. A standalone battleground ID (via a `BattlemasterList.dbc` client patch) comes only after gameplay stabilizes.
+**Core approach:** Twisted Treeline is its own battleground — `BATTLEGROUND_TT` = 12, map 900, with its own `BattlemasterList.dbc` and `PvpDifficulty.dbc` rows in the MPQ client patch. Eye of the Storm is stock and untouched. The client patch is required, not optional: without those two rows the PvP frame either cannot list the battleground or lists it unqueueable.
 
 GitHub: `1anderson2jacob/azerothcore-wotlk-moba`, branch `moba-battleground` (`upstream` = official azerothcore).
 
@@ -114,7 +114,7 @@ Neither is duplicated here. Read them when the task needs them.
 
 | System | Code | Config → generated SQL |
 |---|---|---|
-| Battleground class | `Battlegrounds/Zones/BattlegroundMOBA.{h,cpp}` (constructed by `BattlegroundMgr.cpp`'s `BATTLEGROUND_EY` factory) | — |
+| Battleground class | `Battlegrounds/Zones/BattlegroundMOBA.{h,cpp}` (constructed by `BattlegroundMgr.cpp`'s `BATTLEGROUND_TT` factory) | — |
 | Towers / inhibitors / base | `Zones/MobaTowerData.{h,cpp}`, `scripts/Custom/npc_moba_tower.cpp` + `moba_tower_aggro.cpp` | `tower_config.yaml` → `gen_tower_data.py` → `mod_moba_towers.sql` (creature templates + models + per-map placement) |
 | Lane creeps | `Zones/MobaCreepData.{h,cpp}`, `scripts/Custom/npc_moba_creep.cpp` | `creep_config.yaml` → `gen_creep_roster.py` → `mod_moba_creeps.sql`; lanes: `lane_config.yaml` → `gen_creep_paths.py` → `mod_moba_creep_paths.sql` |
 | Respawn, recall, fountain, spawn dome | `Zones/MobaBaseData.{h,cpp}`, `scripts/Custom/moba_respawn.cpp` + `moba_recall.cpp` | `base_config.yaml` → `gen_base.py` → `mod_moba_base.sql` |
@@ -179,7 +179,7 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 - `AddCreature(entry, type, x, y, z, o, respawntime = 0, transport = nullptr)` — no TeamId param; faction comes from the template. **That `respawntime = 0` does not mean "never respawn"**: the setter runs only when the argument is non-zero, so the default leaves `Creature`'s own `m_respawnDelay(300)` + `m_corpseDelay(60)` in place and the creature quietly returns ~6 minutes after dying. Structures pass `DAY` to suppress it. One that came back this way was still flagged `destroyed` in `_towers` — alive and attackable, but inert to every code path that mattered, which is why it went unnoticed for so long.
 - **"Who destroyed it" and "whose enemy benefits" are different questions.** `npc_moba_tower::JustDied` hands `OnTowerDestroyed` the *killer's* team, not the owner's enemy. The two agree in a real push and diverge the moment an own-team unit lands the blow — so any flag set on destruction and cleared later (super minions) must derive **both** ends from the structure's owner, or it leaks for the rest of the match.
 - Fork-authored files carry **no GPL header** — the root `LICENSE` covers them. Upstream files we modify keep theirs; add one back only when upstreaming.
-- The original `BattlegroundEY.{h,cpp}` is untouched — reference for how spawning/worldstates worked before the strip-down.
+- The original `BattlegroundEY.{h,cpp}` is untouched and live again on slot 7 — also the reference for how spawning/worldstates worked before the strip-down.
 
 ## Documentation standards
 
@@ -207,7 +207,7 @@ Configuring from scratch needs these (Homebrew keg-only libs; also in `conf/conf
 ## Deferred / known-untidy
 
 - Tower `DisplayScale` 5.0 too large; tower positions temporary (mid-lane placement planned, via `.gps`)
-- **Client-patch bundle** — all blocked on the same MPQ/DBC work, so do them together: the recall tooltip still reads "Returns you to \<bind\>"; recall and fountain have no custom spell visuals; custom battle sounds (a doors-open cue and a first-wave-only cue — two `PlaySoundToAll` calls, ~10 min once `SoundEntries.dbc` rows exist); Twisted Treeline music; the leftover EotS grey point-icons; the item shop's `custom_items` flag (`Item.dbc` rows for the `+900000` copies) **and the same treatment for drop items, which retires the match-granted ledger entirely** — correct tooltip sell prices come free with that (3.3.5 reads them from the server's item query, and `gen_store.py` already stamps each copy's `SellPrice`), and cannot be right before it, since until then the value is per-grant rather than per-entry.
+- **Client-patch bundle** — the DBC/MPQ pipeline is live now (`apps/moba/wmo/dbc_tool.py` plus step 7 of `apps/moba/wmo/README.md`), so these are unbuilt rather than blocked: the recall tooltip still reads "Returns you to \<bind\>"; recall and fountain have no custom spell visuals; custom battle sounds (a doors-open cue and a first-wave-only cue — two `PlaySoundToAll` calls, ~10 min once `SoundEntries.dbc` rows exist); Twisted Treeline music; the item shop's `custom_items` flag (`Item.dbc` rows for the `+900000` copies) **and the same treatment for drop items, which retires the match-granted ledger entirely** — correct tooltip sell prices come free with that (3.3.5 reads them from the server's item query, and `gen_store.py` already stamps each copy's `SellPrice`), and cannot be right before it, since until then the value is per-grant rather than per-entry.
 - Shop bag-space check counts empty slots only (`GetFreeInventorySpace`), so buying a stack of consumables with a full bag is refused even when a partial stack could absorb them
 - **The match-granted ledger drifts** — `_grantedCounts` grows on grant and shrinks only on sell or exit, so consuming or destroying a granted item leaves the claim behind, and it is then spent on the player's own copies of the same entry. Reproduced both on the sell path and the exit sweep. Deferred on purpose: an in-server ratchet was designed and rejected in favour of cloning drop items with the client patch, which deletes the ledger instead of patching it. Repro and rejected approaches in `.github/MOBA_SHOP_SELL_PLAN.md`.
 - Equipped items cannot be sold — the Lua→engine slot mapping cannot name EQUIPMENT_SLOT_*` by construction. Unequip first.

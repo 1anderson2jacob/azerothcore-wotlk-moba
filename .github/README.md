@@ -10,19 +10,17 @@ You spend that gold at a shop in your own base — starting gear, consumables, r
 
 The gold is a match wallet, not your character's money, and everything the match hands you is taken back when you leave. Nothing that happens in here follows your character out.
 
-**Live today:** one lane (mid), three structures a side, five jungle camps. Level 61–80, up to 15 a side.
+**Live today:** one lane (mid), three structures a side, five jungle camps. Level 61–80, 3v3.
 
 ## How it works
 
-No client patch. The server hijacks the Eye of the Storm battleground slot — the client queues for EotS as normal and gets `BattlegroundMOBA` instead of `BattlegroundEY`. The one optional install is the **MobaHUD** addon (`client/addons/MobaHUD/`), which draws the HUD bar, kill feed and shop panel; without it the match plays, but the shop is unreachable.
-
-A standalone battleground ID needs a `BattlemasterList.dbc` patch and is planned alongside the custom map.
+Twisted Treeline is its own battleground: type id 12, on custom map 900. Eye of the Storm is stock and untouched. The client needs the MPQ patch — `apps/moba/wmo/README.md` builds it — which carries the map plus the `BattlemasterList.dbc` and `PvpDifficulty.dbc` rows the PvP frame needs to offer the battleground at all. The **MobaHUD** addon (`client/addons/MobaHUD/`) is optional: without it the match plays, but the shop is unreachable.
 
 ## Roadmap
 
 Shipped:
 
-- [x] `BattlegroundEY` cloned to `BattlegroundMOBA`, wired onto the EotS slot
+- [x] `BattlegroundEY` cloned to `BattlegroundMOBA`, wired onto its own battleground slot
 - [x] Netherstorm flag system stripped
 - [x] Capture-point scoring stripped
 - [x] Attackable towers with turret AI
@@ -53,7 +51,7 @@ Shipped:
 Next, in order:
 
 - [x] Custom map — Twisted Treeline, map 900 (dressing pass outstanding)
-- [ ] Standalone battleground ID via a `BattlemasterList.dbc` patch — bundles with the map work
+- [x] Standalone battleground ID — type id 12, its own `BattlemasterList.dbc` and `PvpDifficulty.dbc` rows
 - [ ] Client-patch bundle — recall tooltip and animation, fountain visuals, sounds, music
 - [ ] Lane and neutral mob gold pass
 - [ ] Player kill rewards and bounties — values, scaling, assist-gold split
@@ -69,8 +67,8 @@ Code and doc chores that don't change gameplay. Not the roadmap above, and not C
 - [x] `GetBgTeamId` vs `GetTeamId` audit across `BattlegroundMOBA`
 - [x] Split `MobaHUD.lua` into one file per UI over a shared `Core` namespace
 - [ ] Remove all creep types being set to beast
-- [ ] `BG_MOBA_Score` holds only the Flurry achievement ID — decide whether EotS achievements should fire at all
-- [ ] Remove leftover `m_BuffChange = true` from the `BattlegroundMOBA` constructor
+- [x] `BG_MOBA_Score` and its Flurry achievement timer removed — EotS achievements don't fire in Twisted Treeline
+- [x] Removed leftover `m_BuffChange = true` from the `BattlegroundMOBA` constructor
 
 ## Building and running
 
