@@ -17,12 +17,14 @@ to work on a live map, instead of a guess.
 Needs pywowlib's compiled StormLib binding, so run with python3.10.
 Overrides: WOW_DATA, WBS_ROOT, WBS_PROJECT.
 """
-import os, struct, sys
+import glob, json, os, struct, sys
 
 DATA    = os.environ.get("WOW_DATA", os.path.expanduser("~/Games/wow335/Data"))
 WBS     = os.environ.get("WBS_ROOT", os.path.expanduser("~/tools/blender-wow-studio"))
 PROJECT = os.environ.get("WBS_PROJECT", os.path.expanduser("~/tools/wbs-project"))
 STORM   = os.path.join(WBS, "io_scene_wmo/pywowlib/archives/mpq/native")
+ITEM_COPY_DIR = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), os.pardir, "item_copies"))
 
 # DBCs live in the locale archives, not the base ones -- searched newest first.
 ARCHIVES = ["enUS/patch-enUS-3.MPQ", "enUS/patch-enUS-2.MPQ", "enUS/patch-enUS.MPQ",
@@ -202,6 +204,24 @@ def pvpdiff_overrides():
             3: ("i", PVPDIFF_MIN), 4: ("i", PVPDIFF_MAX), 5: ("i", 0)}
 
 
+def item_copy_rows():
+    """(src, copy, {}) for every entry in apps/moba/item_copies/*.json.
+
+    One manifest per generator, so two of them cannot clobber each other -- the
+    build-side twin of the mod_moba_item_copy table. A source claimed by two owners
+    still yields one row: both resolve it through the same offset. Item.dbc is
+    re-read from the stock MPQ on every run, so an emptied manifest reclaims its
+    rows rather than stranding them in the staging dir.
+    """
+    rows = {}
+    for path in sorted(glob.glob(os.path.join(ITEM_COPY_DIR, "*.json"))):
+        with open(path) as f:
+            m = json.load(f)
+        for src in m["sources"]:
+            rows[src + m["offset"]] = (src, src + m["offset"], {})
+    return [rows[k] for k in sorted(rows)]
+
+
 # file, [(clone_from, new_id, overrides), ...]
 PATCHES = [
     # 566 Eye of the Storm: instanceType 3, PVP 1 -- the closest stock analogue.
@@ -223,6 +243,11 @@ PATCHES = [
     # battleground lists by name and refuses the queue, because the client has nowhere
     # to place the player's level.
     ("PvpDifficulty.dbc", [(52, PVPDIFF_ID, pvpdiff_overrides())]),
+    # One row per copied item entry, from the generators' manifests. A PURE clone --
+    # no overrides -- because the two fields whose absence breaks a copy in the
+    # client, DisplayInfoID and InventoryType, are exactly what a clone carries
+    # across untouched.
+    ("Item.dbc", item_copy_rows()),
 ]
 
 

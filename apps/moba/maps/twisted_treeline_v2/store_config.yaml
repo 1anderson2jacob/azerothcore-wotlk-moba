@@ -25,7 +25,7 @@ map: 900
 # world drop -- but the client cannot render an item whose entry is absent from
 # its Item.dbc (question-mark icon, zero suffix stats), so this stays off until
 # the client patch ships those rows. Server-side everything works either way.
-custom_items: false
+custom_items: true
 
 # Suffix menu order. `id` is the ItemRandomSuffix.dbc id the vendor stamps onto
 # the base item; `name` is only the menu label. gen_store.py verifies each id

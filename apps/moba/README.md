@@ -33,7 +33,7 @@ emits a `.blend` and a client patch rather than SQL, is not part of
 | `gen_creep_paths.py` | `maps/<mode>/lane_config.yaml` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data`, plus one bare centreline path per lane per direction as the speed-compensation reference |
 | `gen_tower_data.py` | `maps/<mode>/tower_config.yaml` | `mod_moba_towers.sql` — `creature_template`, models, `mod_moba_tower_data` |
 | `gen_base.py` | `maps/<mode>/base_config.yaml` | `mod_moba_base.sql` — `mod_moba_base`, the spawn-dome `gameobject_template` (+ `_addon`), the per-map `game_graveyard` rows, plus the `battleground_template` queue slot itself (team sizes, level range, start locations) |
-| `gen_store.py` | `maps/<mode>/store_config.yaml` + `data/sql/base/db_world/item_template.sql` | `mod_moba_store.sql` — shopkeeper `creature_template`, models and `creature` spawn rows, plus `mod_moba_store_npc`/`_menu`/`_grant`/`_sell` (and `_itemstage` when `custom_items` is on). **Also writes `client/addons/MobaHUD/Catalog.lua`** — the only generator emitting outside `data/sql/` |
+| `gen_store.py` | `maps/<mode>/store_config.yaml` + `data/sql/base/db_world/item_template.sql` | `mod_moba_store.sql` — shopkeeper `creature_template`, models and `creature` spawn rows, plus `mod_moba_store_npc`/`_menu`/`_grant`/`_sell`/`_version`, and the `item_template` copies + `mod_moba_item_copy` rows when `custom_items` is on. **Also writes `client/addons/MobaHUD/Catalog.lua`**, and `item_copies/store.json` — see Item copies |
 | `gen_player_drops.py` | `maps/<mode>/player_config.yaml` | `mod_moba_player_drops.sql` — the `Map`-keyed `mod_moba_player_drops` table, granted directly to the killer (no native loot) |
 | `id_alloc.py` | `id_blocks.json` + every `*.lock.json` and hand-assigned config field | nothing — it is the ID registry the others allocate through; `--audit` prints and checks the whole picture |
 
@@ -165,6 +165,35 @@ block — all regenerate the same IDs, and
 
 **Deleting a lockfile makes the next run assign fresh IDs to everything**, which
 orphans every reference already in the DB. Don't.
+
+## Item copies — `item_copies/`
+
+Gear the battleground hands out is a fork-owned clone of a stock item at
+`source entry + 900000`, so a copy carries its own `SellPrice` and `Bonding` and
+can never be confused with a player's own stock. The offset is deliberate rather
+than allocated: two generators cloning the same source reach the same entry without
+coordinating, which is what keeps a sold sword and a dropped sword one stackable
+row.
+
+That makes 900000-999999 a namespace several generators write into, and
+`id_blocks.json` cannot referee it — a copy's entry is dictated by its source, so
+the block cannot be split into per-generator windows. Two owner-keyed registries do
+the refereeing instead:
+
+| | Lives in | Answers |
+|---|---|---|
+| **Tracker** | `mod_moba_item_copy` — a DB table, created if absent and never dropped | which copies does this generator own? |
+| **Manifest** | `item_copies/<owner>.json` — one file per generator, committed | which sources does the client patch need rows for? |
+
+A generated `.sql` reclaims only the copies its own tracker rows name, sparing any
+a second owner still claims. It must not clear the whole range: the updater
+re-applies only files whose hash changed, so a generator whose file is untouched
+never runs again to rebuild rows another file deleted.
+
+`apps/moba/wmo/dbc_tool.py` unions every manifest into `Item.dbc` rows, cloned with
+no overrides. Those rows are not optional — without them a copy has no icon, no
+equip slot and no suffix scaling in the client; the mechanism is commented at the
+`Item.dbc` entry in that file's `PATCHES`.
 
 ## Reusing `gen_creep_paths.py` elsewhere
 
