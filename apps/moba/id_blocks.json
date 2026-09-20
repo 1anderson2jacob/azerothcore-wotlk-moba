@@ -84,8 +84,8 @@
         "900000-999999"
       ],
       "enumerated": false,
-      "note": "NOT a dense window: a copy's entry is its SOURCE entry + 900000, so this block is a sparse mirror of the whole stock item space. Nothing allocates here and there is nothing to enumerate -- the block exists so a future allocator cannot wander in. The client-patch drop-item copies will land here too, under the same offset.",
-      "source": "gen_store.py"
+      "note": "NOT a dense window: a copy's entry is its SOURCE entry + 900000, so this block is a sparse mirror of the whole stock item space. Nothing allocates here and there is nothing to enumerate -- the block exists so a future allocator cannot wander in. Several generators write into it; the tracker table and per-owner manifests that referee them are described in apps/moba/README.md under Item copies.",
+      "source": "item_copy.py -- every generator that grants an item"
     }
   },
   "map_dbc": {

@@ -172,14 +172,14 @@ DELETE FROM `creature_loot_template` WHERE `Entry` BETWEEN 900010 AND 900099;
 INSERT INTO `creature_loot_template`
 (`Entry`, `Item`, `Reference`, `Chance`, `QuestRequired`, `LootMode`, `GroupId`, `MinCount`, `MaxCount`, `Comment`)
 VALUES
-(900020, 33470, 0, 100, 0, 1, 0, 1, 1, 'alliance_top_melee_right (moba drop)'),
-(900021, 33470, 0, 100, 0, 1, 0, 1, 1, 'alliance_top_melee_left (moba drop)'),
-(900022, 33470, 0, 100, 0, 1, 0, 1, 1, 'horde_top_melee_right (moba drop)'),
-(900023, 33470, 0, 100, 0, 1, 0, 1, 1, 'horde_top_melee_left (moba drop)'),
-(900030, 33470, 0, 100, 0, 1, 0, 1, 1, 'alliance_bot_melee_right (moba drop)'),
-(900031, 33470, 0, 100, 0, 1, 0, 1, 1, 'alliance_bot_melee_left (moba drop)'),
-(900032, 33470, 0, 100, 0, 1, 0, 1, 1, 'horde_bot_melee_right (moba drop)'),
-(900033, 33470, 0, 100, 0, 1, 0, 1, 1, 'horde_bot_melee_left (moba drop)');
+(900020, 933470, 0, 100, 0, 1, 0, 1, 1, 'alliance_top_melee_right (moba drop)'),
+(900021, 933470, 0, 100, 0, 1, 0, 1, 1, 'alliance_top_melee_left (moba drop)'),
+(900022, 933470, 0, 100, 0, 1, 0, 1, 1, 'horde_top_melee_right (moba drop)'),
+(900023, 933470, 0, 100, 0, 1, 0, 1, 1, 'horde_top_melee_left (moba drop)'),
+(900030, 933470, 0, 100, 0, 1, 0, 1, 1, 'alliance_bot_melee_right (moba drop)'),
+(900031, 933470, 0, 100, 0, 1, 0, 1, 1, 'alliance_bot_melee_left (moba drop)'),
+(900032, 933470, 0, 100, 0, 1, 0, 1, 1, 'horde_bot_melee_right (moba drop)'),
+(900033, 933470, 0, 100, 0, 1, 0, 1, 1, 'horde_bot_melee_left (moba drop)');
 
 -- Drops, rolled and delivered by BattlegroundMOBA::GrantDeathDrops at
 -- the killing blow. Type 0 = buff (aura on the killer), 1 = gold
@@ -211,19 +211,19 @@ VALUES
 -- alliance_top_melee_right
 (900020, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- alliance_top_melee_right
-(900020, 1, 2, 0, 0, 0, 100, 33470, 100),
+(900020, 1, 2, 0, 0, 0, 100, 933470, 100),
 -- alliance_top_melee_left
 (900021, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- alliance_top_melee_left
-(900021, 1, 2, 0, 0, 0, 100, 33470, 100),
+(900021, 1, 2, 0, 0, 0, 100, 933470, 100),
 -- horde_top_melee_right
 (900022, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- horde_top_melee_right
-(900022, 1, 2, 0, 0, 0, 100, 33470, 100),
+(900022, 1, 2, 0, 0, 0, 100, 933470, 100),
 -- horde_top_melee_left
 (900023, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- horde_top_melee_left
-(900023, 1, 2, 0, 0, 0, 100, 33470, 100),
+(900023, 1, 2, 0, 0, 0, 100, 933470, 100),
 -- alliance_top_caster
 (900024, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- horde_top_caster
@@ -239,19 +239,19 @@ VALUES
 -- alliance_bot_melee_right
 (900030, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- alliance_bot_melee_right
-(900030, 1, 2, 0, 0, 0, 100, 33470, 100),
+(900030, 1, 2, 0, 0, 0, 100, 933470, 100),
 -- alliance_bot_melee_left
 (900031, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- alliance_bot_melee_left
-(900031, 1, 2, 0, 0, 0, 100, 33470, 100),
+(900031, 1, 2, 0, 0, 0, 100, 933470, 100),
 -- horde_bot_melee_right
 (900032, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- horde_bot_melee_right
-(900032, 1, 2, 0, 0, 0, 100, 33470, 100),
+(900032, 1, 2, 0, 0, 0, 100, 933470, 100),
 -- horde_bot_melee_left
 (900033, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- horde_bot_melee_left
-(900033, 1, 2, 0, 0, 0, 100, 33470, 100),
+(900033, 1, 2, 0, 0, 0, 100, 933470, 100),
 -- alliance_bot_caster
 (900034, 0, 1, 0, 0, 5000, 100, 0, 0),
 -- horde_bot_caster
@@ -264,3 +264,54 @@ VALUES
 (900038, 0, 1, 0, 0, 8000, 100, 0, 0),
 -- horde_bot_super
 (900039, 0, 1, 0, 0, 8000, 100, 0, 0);
+
+-- ============================================================
+-- Custom item copies: entry = source entry + 900000.
+-- mod_moba_item_copy is SHARED -- several generators write into
+-- 900000-999999, and a source claimed by two of them resolves to ONE row.
+-- Hence CREATE ... IF NOT EXISTS and a per-owner DELETE; this table is never
+-- dropped. The updater re-applies only files whose hash changed, so a
+-- generator that clears another's rows may not see them rebuilt.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `mod_moba_item_copy` (
+    `Entry` INT UNSIGNED NOT NULL,
+    `Owner` VARCHAR(32) NOT NULL,
+    PRIMARY KEY (`Entry`, `Owner`)
+);
+
+-- Reclaim this generator's previous copies, sparing any a second owner
+-- still claims.
+DELETE it FROM `item_template` it
+    JOIN `mod_moba_item_copy` mine ON mine.`Entry` = it.`entry` AND mine.`Owner` = 'creeps'
+    LEFT JOIN `mod_moba_item_copy` other ON other.`Entry` = it.`entry` AND other.`Owner` <> 'creeps'
+WHERE other.`Entry` IS NULL;
+
+DELETE FROM `mod_moba_item_copy` WHERE `Owner` = 'creeps';
+
+-- Cloned through a temporary table rather than a column list: CREATE ... LIKE
+-- carries whatever schema the server actually has, so an upstream column add
+-- flows through untouched. DBUpdater::ApplyFile invokes the mysql CLI once per
+-- file, so one session spans these statements and the TEMPORARY table lives.
+DROP TEMPORARY TABLE IF EXISTS `_moba_item_copy`;
+CREATE TEMPORARY TABLE `_moba_item_copy` LIKE `item_template`;
+
+INSERT INTO `_moba_item_copy` SELECT * FROM `item_template` WHERE `entry` IN (33470);
+
+UPDATE `_moba_item_copy`
+   SET `SellPrice` = CASE `entry`
+           WHEN 33470 THEN 100
+           ELSE `SellPrice`
+       END;
+
+-- Renumber LAST. MySQL evaluates a multi-column SET left to right, so a CASE
+-- on `entry` folded into the UPDATE above would read the incremented value.
+UPDATE `_moba_item_copy` SET `entry` = `entry` + 900000;
+
+-- Rewrite rather than skip: another owner may already hold this entry from
+-- the same source, and this run's overrides are the current ones.
+DELETE FROM `item_template` WHERE `entry` IN (933470);
+INSERT INTO `item_template` SELECT * FROM `_moba_item_copy`;
+DROP TEMPORARY TABLE `_moba_item_copy`;
+
+INSERT INTO `mod_moba_item_copy` (`Entry`, `Owner`) VALUES
+(933470, 'creeps');

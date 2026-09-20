@@ -256,11 +256,12 @@ filters. Generated per map from `store_config.yaml` → `gen_store.py` →
   caster-only suffixes and the wand's absence from physical bundles fall out of the data.
 - **Charged last, all-or-nothing** — bag space for the whole bundle, then every item
   pre-validated, and only then does money leave. Gotcha index.
-- **Everything granted is tracked and stripped**, by GUID *plus* a per-entry count. The
-  pair is a workaround for `custom_items` being off: grants use stock entries, which are
-  ambiguous. Cloning the catalog *and* drop items retires the bookkeeping entirely;
-  `custom_items` alone does not, because looted drops keep stock entries. Known-untidy in
-  `CLAUDE.md`.
+- **Everything granted is stripped on exit, and entry alone says what to take.** Every
+  grant channel mints a fork-owned copy at `source + 900000`, so nothing the match hands
+  over can be confused with a player's own stock — which is what retired the GUID *plus*
+  per-entry ledger this used to need. → `IsMatchItem` / `RemovePlayer` in
+  `BattlegroundMOBA.cpp`. The one exception is the recall Hearthstone, a real stock item
+  the player keeps.
 - **Sell is drag-and-drop, and only for what the match gave you.** 3.3.5 gives Lua no
   item GUIDs and `GetCursorInfo` no source slot, so the addon hooks
   `PickupContainerItem` to remember where the cursor item came from and sends bag, slot
@@ -584,9 +585,9 @@ touch one of these areas? Read the named comment first.
 - **Armour proficiency is cumulative upward** — the check that matters is refusing a mage the plate set. → `TryPurchase`
 - **Faction-locked items test the player's NATIVE race, not their BG team** → the faction guard in `gen_store.py`'s `build()`
 - **Sell prices are per unit** — a whole node's price on each item it grants is a money printer. → `note_sell` in `gen_store.py`
-- **Splitting a stack clones it under a new GUID** — tracking granted items needs a GUID set *and* a per-entry count. → `_grantedItems` / `_grantedCounts` in `BattlegroundMOBA.h`
 - **Generators clear by reserved BLOCK, not by current roster** — a `DELETE` built from the roster can never name an entry the config no longer has, so a dropped mob's rows would live forever. All six generators do this. → `sql_window` in `id_alloc.py`
-- **Copy whole rows through a staging table, not a hand-listed column set** → `emit_item_copies` in `gen_store.py`
+- **Copy whole rows through a staging table, not a hand-listed column set** → `emit_copy_sql` in `item_copy.py`
+- **A custom item with the right name, price and loot-window icon but a blank BAG icon means the play copy of the client patch is stale** — the first three are server-sent, the bag icon comes from `Item.dbc`. → step 7 of `apps/moba/wmo/README.md`
 - **The 3.3.5 client relocates its player object on a map change** — field changes made in the exit tick never arrive. → `RemovePlayer`
 - **A Texture whose path does not resolve draws nothing at all** — no error, no placeholder square. → `headerBand` in `Shop.lua`
 - **`toplevel="true"` raises only the frame that was clicked** → `sellZone`'s `OnUpdate` in `Shop.lua`

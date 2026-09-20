@@ -67,9 +67,12 @@ from gen_creep_roster import (apply_loot_overrides, build_drop_rows,
 
 import id_alloc
 import sql_dump
+from item_copy import emit_copy_sql, write_manifest
 
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_neutrals.sql")
+# Ownership tag in mod_moba_item_copy, and the manifest's filename.
+COPY_OWNER = "neutrals"
 
 
 MOB_REQUIRED = ["key", "name", "subname", "source", "display_id", "display_scale",
@@ -355,14 +358,16 @@ def emit_sql(roster, camps, column_order, blocks):
                          f"({entry}, {mob['_map']}, {mob['_aggro_range']}, {mob['_leash_range']})")
     lines.append(",\n".join(data_rows) + ";")
 
-    grant_rows, loot_rows = [], []
+    grant_rows, loot_rows, copies = [], [], []
     for mob, entry, _ in roster:
-        grant, loot = build_drop_rows(mob["key"], entry, mob.get("drops", []))
+        grant, loot, copied = build_drop_rows(mob["key"], entry, mob.get("drops", []))
         grant_rows += grant
         loot_rows += loot
+        copies += copied
     lines += emit_loot_template_sql(loot_window, loot_rows)
     lines += emit_drops_table_sql("mod_moba_neutral_drops", grant_rows)
-    return "\n".join(lines) + "\n"
+    lines += emit_copy_sql(COPY_OWNER, copies)
+    return "\n".join(lines) + "\n", copies
 
 
 # ---------------------------------------------------------------------- main
@@ -430,9 +435,13 @@ def main():
         cp.with_suffix(".lock.json").write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(emit_sql(roster, camps_out, column_order, alloc.blocks))
+    sql, copies = emit_sql(roster, camps_out, column_order, alloc.blocks)
+    OUTPUT.write_text(sql)
+    sources = sorted({src for src, _sell in copies})
+    manifest = write_manifest(COPY_OWNER, sources)
 
     print(f"\nWrote {OUTPUT} ({len(roster)} mobs, {len(camps_out)} camps across {len(configs)} map(s)).")
+    print(f"Wrote {manifest} ({len(sources)} item copies).")
     if assigned_log:
         print("Newly assigned creature entries (now locked):")
         for key, entry in assigned_log:

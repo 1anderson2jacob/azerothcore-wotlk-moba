@@ -1417,11 +1417,11 @@ INSERT INTO `mod_moba_store_version` (`Map`, `Hash`) VALUES
 
 -- ============================================================
 -- Custom item copies: entry = source entry + 900000.
--- mod_moba_item_copy is SHARED with gen_player_drops.py -- both write into
--- 900000-999999, and a source item claimed by both resolves to ONE row.
--- Hence CREATE ... IF NOT EXISTS and a per-owner DELETE; this table is
--- never dropped. The updater re-applies only files whose hash changed, so
--- a generator that clears the other's rows may not see them rebuilt.
+-- mod_moba_item_copy is SHARED -- several generators write into
+-- 900000-999999, and a source claimed by two of them resolves to ONE row.
+-- Hence CREATE ... IF NOT EXISTS and a per-owner DELETE; this table is never
+-- dropped. The updater re-applies only files whose hash changed, so a
+-- generator that clears another's rows may not see them rebuilt.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS `mod_moba_item_copy` (
     `Entry` INT UNSIGNED NOT NULL,

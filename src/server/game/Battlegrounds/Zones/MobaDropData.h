@@ -32,6 +32,8 @@ struct MobaDropInfo
 // Loads mod_moba_creep_drops + mod_moba_neutral_drops once per process. Only buff/gold
 // rows live here; "item" drops are native creature_loot_template rows. One store for
 // both minion kinds: by the time a drop is granted, which AI died no longer matters.
+// It also reads the PRICES out of mod_moba_player_drops, whose rows are
+// MobaPlayerDropDataStore's -- there, a type-2 row is the grant as well as the price.
 class MobaDropDataStore
 {
 public:
@@ -48,7 +50,8 @@ private:
 
     bool _loaded = false;
     std::unordered_map<uint32, std::vector<MobaDropInfo>> _byEntry;
-    // Flattened across both tables: sell price is a property of the ITEM.
+    // Flattened across every table that prices a drop: sell price is a property of the
+    // ITEM, so two of them disagreeing is a config bug rather than two valid prices.
     std::unordered_map<uint32, uint32> _sellByItem;
 };
 

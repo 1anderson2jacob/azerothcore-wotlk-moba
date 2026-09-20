@@ -50,7 +50,6 @@ Usage (from the repo root):
 """
 
 import hashlib
-import json
 import re
 import sys
 from collections import defaultdict
@@ -59,6 +58,8 @@ from pathlib import Path
 import yaml
 
 import id_alloc
+from item_copy import (BIND_WHEN_PICKED_UP, ITEM_ENTRY_OFFSET, emit_copy_sql,
+                       stock_entry, write_manifest)
 from sql_dump import parse_tuple_at, unquote
 
 MAPS_DIR = Path(__file__).parent / "maps"
@@ -99,15 +100,8 @@ MAX_USABLE_REQ_LEVEL = 80            # a fixed item above this can never be equi
 ITEM_FLAG2_FACTION_HORDE    = 0x1
 ITEM_FLAG2_FACTION_ALLIANCE = 0x2
 
-# Custom copy entry = source entry + this offset (36063 -> 936063). Deterministic,
-# so re-runs are stable without a lockfile and the mapping stays readable.
-ITEM_ENTRY_OFFSET = 900000
-BIND_WHEN_PICKED_UP = 1          # ItemBondingType; binds in _StoreItem, no client prompt
-
-# Ownership tag in mod_moba_item_copy. gen_player_drops.py writes copies into the
-# same window under its own tag, and neither may clear the other's rows.
+# Ownership tag in mod_moba_item_copy, and the manifest's filename.
 COPY_OWNER = "store"
-COPY_MANIFEST = Path("apps/moba/item_copies") / f"{COPY_OWNER}.json"
 
 
 def fail(msg):
@@ -127,17 +121,6 @@ def lua_str(s):
     """Lua string literal. Item names carry apostrophes freely; escaping quotes
     and backslashes too is belt-and-braces against a future rename."""
     return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-
-def stock_entry(entry):
-    """The item_template entry a grant was cloned from.
-
-    Grants carry the custom copy when custom_items is on, and those entries have
-    no item_template.sql row. Every metadata lookup goes through here so the
-    +900000 relationship lives in exactly one place -- see the plan's decision on
-    the stock/copy mapping.
-    """
-    return entry - ITEM_ENTRY_OFFSET if entry >= ITEM_ENTRY_OFFSET else entry
 
 
 def item_spec(spec):
@@ -466,8 +449,7 @@ def build(configs):
                          for entry, copper in sorted(item_sell.items()))
 
         if custom_items:
-            item_copies.extend((entry, entry + ITEM_ENTRY_OFFSET, item_sell.get(entry, 0))
-                               for entry in sorted(cfg_items))
+            item_copies.extend((entry, item_sell.get(entry)) for entry in sorted(cfg_items))
 
     return npc_rows, menu_rows, grant_rows, sell_rows, tabs_meta, item_copies
 
@@ -576,95 +558,6 @@ def emit_catalog(menu_rows, grant_rows, tabs_meta):
     lines.append("}")
 
     return "\n".join(lines) + "\n", hashes
-
-
-def emit_item_copies(item_copies):
-    """SQL for the fork-owned item_template copies -- and the cleanup when there
-    are none, so turning `custom_items` off reclaims what a previous run wrote."""
-    # SellPrice is a property of the ENTRY now, while mod_moba_store_sell stays
-    # keyed per map -- so two maps pricing one item differently cannot both reach
-    # the tooltip. Fail rather than let whichever map sorts last win silently.
-    by_copy = {}
-    for src, copy, sell in item_copies:
-        prev = by_copy.get(copy)
-        if prev is not None and prev[1] != sell:
-            fail(f"item {src} carries two sell prices ({prev[1]} and {sell} "
-                 f"copper) across maps; SellPrice is per entry, so one copy "
-                 f"cannot hold both")
-        by_copy[copy] = (src, sell)
-    rows = [(src, copy, sell) for copy, (src, sell) in sorted(by_copy.items())]
-
-    owner = sql_str(COPY_OWNER)
-    lines = [
-        "",
-        "-- ============================================================",
-        "-- Custom item copies: entry = source entry + 900000.",
-        "-- mod_moba_item_copy is SHARED with gen_player_drops.py -- both write into",
-        "-- 900000-999999, and a source item claimed by both resolves to ONE row.",
-        "-- Hence CREATE ... IF NOT EXISTS and a per-owner DELETE; this table is",
-        "-- never dropped. The updater re-applies only files whose hash changed, so",
-        "-- a generator that clears the other's rows may not see them rebuilt.",
-        "-- ============================================================",
-        "CREATE TABLE IF NOT EXISTS `mod_moba_item_copy` (",
-        "    `Entry` INT UNSIGNED NOT NULL,",
-        "    `Owner` VARCHAR(32) NOT NULL,",
-        "    PRIMARY KEY (`Entry`, `Owner`)",
-        ");",
-        "",
-        "-- Reclaim this generator's previous copies, sparing any a second owner",
-        "-- still claims.",
-        "DELETE it FROM `item_template` it",
-        f"    JOIN `mod_moba_item_copy` mine ON mine.`Entry` = it.`entry`"
-        f" AND mine.`Owner` = {owner}",
-        f"    LEFT JOIN `mod_moba_item_copy` other ON other.`Entry` = it.`entry`"
-        f" AND other.`Owner` <> {owner}",
-        "WHERE other.`Entry` IS NULL;",
-        "",
-        f"DELETE FROM `mod_moba_item_copy` WHERE `Owner` = {owner};",
-    ]
-
-    if not rows:
-        return lines
-
-    sources = ", ".join(str(src) for src, _copy, _sell in rows)
-    copies = ", ".join(str(copy) for _src, copy, _sell in rows)
-
-    lines += [
-        "",
-        "-- Cloned through a temporary table rather than a column list: CREATE ... LIKE",
-        "-- carries whatever schema the server actually has, so an upstream column add",
-        "-- flows through untouched. DBUpdater::ApplyFile invokes the mysql CLI once per",
-        "-- file, so one session spans these statements and the TEMPORARY table lives.",
-        "DROP TEMPORARY TABLE IF EXISTS `_moba_item_copy`;",
-        "CREATE TEMPORARY TABLE `_moba_item_copy` LIKE `item_template`;",
-        "",
-        f"INSERT INTO `_moba_item_copy` SELECT * FROM `item_template`"
-        f" WHERE `entry` IN ({sources});",
-        "",
-        "UPDATE `_moba_item_copy`",
-        f"   SET `Bonding` = {BIND_WHEN_PICKED_UP},",
-        "       `SellPrice` = CASE `entry`",
-    ]
-    lines += [f"           WHEN {src} THEN {sell}" for src, _copy, sell in rows]
-    lines += [
-        "           ELSE `SellPrice`",
-        "       END;",
-        "",
-        "-- Renumber LAST. MySQL evaluates a multi-column SET left to right, so a CASE",
-        "-- on `entry` folded into the UPDATE above would read the incremented value.",
-        f"UPDATE `_moba_item_copy` SET `entry` = `entry` + {ITEM_ENTRY_OFFSET};",
-        "",
-        "-- Rewrite rather than skip: another owner may already hold this entry from",
-        "-- the same source, and this run's overrides are the current ones.",
-        f"DELETE FROM `item_template` WHERE `entry` IN ({copies});",
-        "INSERT INTO `item_template` SELECT * FROM `_moba_item_copy`;",
-        "DROP TEMPORARY TABLE `_moba_item_copy`;",
-        "",
-        "INSERT INTO `mod_moba_item_copy` (`Entry`, `Owner`) VALUES",
-    ]
-    lines.append(",\n".join(f"({copy}, {owner})" for _src, copy, _sell in rows) + ";")
-
-    return lines
 
 
 def emit(npc_rows, menu_rows, grant_rows, sell_rows, item_copies, tmpl_blocks,
@@ -844,7 +737,7 @@ def emit(npc_rows, menu_rows, grant_rows, sell_rows, item_copies, tmpl_blocks,
         f"({map_id}, '{catalog_hashes[map_id]}')"
         for map_id in sorted(catalog_hashes)) + ";")
 
-    lines += emit_item_copies(item_copies)
+    lines += emit_copy_sql(COPY_OWNER, item_copies, bonding=BIND_WHEN_PICKED_UP)
 
     return "\n".join(lines) + "\n"
 
@@ -862,16 +755,11 @@ def main():
                            catalog_hashes))
     CATALOG_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     CATALOG_OUTPUT.write_text(catalog_text)
-    COPY_MANIFEST.parent.mkdir(parents=True, exist_ok=True)
-    COPY_MANIFEST.write_text(json.dumps({
-        "owner": COPY_OWNER,
-        "offset": ITEM_ENTRY_OFFSET,
-        "sources": sorted({src for src, _copy, _sell in item_copies}),
-    }, indent=2) + "\n")
+    manifest = write_manifest(COPY_OWNER, (src for src, _sell in item_copies))
 
     print(f"Wrote {OUTPUT}")
     print(f"Wrote {CATALOG_OUTPUT}")
-    print(f"Wrote {COPY_MANIFEST}")
+    print(f"Wrote {manifest}")
     for path, map_id, tab_id, v, purchases in tabs_meta:
         print(f"  map {map_id} tab {tab_id} ({v['key']}): "
               f"{len(v['categories'])} categories, {purchases} purchase nodes")

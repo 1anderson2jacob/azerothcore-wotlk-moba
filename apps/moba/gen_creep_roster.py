@@ -44,12 +44,13 @@ config optionally overrides the source creature's rank (0=normal, 1=elite),
 
 Loot columns are driven by the optional per-creature "drops" list (machinery
 shared with gen_neutral_camps.py): "item" drops become native
-creature_loot_template rows (and set lootid = entry); "buff"/"gold" drops
-become mod_moba_*_drops rows consumed by BattlegroundMOBA::GrantDeathDrops;
-mingold/maxgold are always 0 (gold is injected in C++ so it can carry a
-chance coefficient); flags_extra gains NO_PLAYER_DAMAGE_REQ on loot-bearing
-mobs so a pure last hit rewards loot. Attribution (killing blow, killer's
-team) is fixed up in the JustDied handlers, not here.
+creature_loot_template rows pointing at a fork-owned item copy (and set
+lootid = entry); "buff"/"gold" drops become mod_moba_*_drops rows consumed by
+BattlegroundMOBA::GrantDeathDrops; mingold/maxgold are always 0 (gold is
+injected in C++ so it can carry a chance coefficient); flags_extra gains
+NO_PLAYER_DAMAGE_REQ on loot-bearing mobs so a pure last hit rewards loot.
+Attribution (killing blow, killer's team) is fixed up in the JustDied handlers,
+not here.
 
 
 Usage (from the repo root):
@@ -64,11 +65,14 @@ from pathlib import Path
 
 import id_alloc
 import sql_dump
+from item_copy import copy_entry, emit_copy_sql, write_manifest
 
 REBLESS_SOURCES = "--rebless-sources" in sys.argv
 
 MAPS_DIR = Path(__file__).parent / "maps"
 OUTPUT = Path("data/sql/custom/db_world/mod_moba_creeps.sql")
+# Ownership tag in mod_moba_item_copy, and the manifest's filename.
+COPY_OWNER = "creeps"
 
 ROLE_IDS = {"melee": 0, "caster": 1, "siege": 2, "super": 3}
 # Lane -> mod_moba_creep_data.Lane. Matches MobaLane in MobaTowerData.h and LANE_NAMES
@@ -113,6 +117,9 @@ CREEP_UNIT_FLAG_PLAYER_CONTROLLED = 0x8
 # native loot system (creature_loot_template, whose Chance column the engine rolls)
 # and additionally emits a type-2 drops row IF it carries a `sell` price, which
 # is the only way a looted item can be sold back at the shop.
+#
+# An "item" drop hands over the fork-owned COPY, never the stock entry -- that is
+# what lets the exit sweep take it back without touching a player's own stock.
 #
 # "gold" goes into the CORPSE, so the last hitter walks up and collects it.
 # "team_gold"/"team_buff" are paid straight to the killer's whole team with no
@@ -365,25 +372,31 @@ def apply_loot_overrides(row, entry, source_cols, drops):
 
 
 def build_drop_rows(key, entry, drops):
-    """One creature's drops -> (mod_moba_*_drops rows, creature_loot_template rows)."""
-    grant, loot = [], []
+    """One creature's drops -> (mod_moba_*_drops rows, creature_loot_template rows,
+    (source item, sell price) pairs for the copies)."""
+    grant, loot, copies = [], [], []
     for drop in drops:
         chance = f"{drop.get('chance', 1.0) * 100:g}"
         if drop["type"] == "item":
             count = drop.get("count", 1)
-            loot.append(f"({entry}, {drop['item']}, 0, {chance}, 0, 1, 0, "
+            # The loot row and the sell row learn the copy entry HERE, together. The
+            # sell lookup keys on the entry the player ends up holding, so the two
+            # diverging would leave every dropped item unsellable.
+            item = copy_entry(drop["item"])
+            copies.append((drop["item"], drop.get("sell")))
+            loot.append(f"({entry}, {item}, 0, {chance}, 0, 1, 0, "
                         f"{count}, {count}, '{key} (moba drop)')")
             # A PRICED item drop also gets a drops row. Type 2 grants nothing --
             # the loot row above hands the item over -- it exists only to carry
             # the sell-back price. No price, no row, and the item cannot be sold.
             if drop.get("sell"):
                 grant.append(f"-- {key}\n({entry}, {len(grant)}, {DROP_TYPE_IDS['item']}, "
-                             f"0, 0, 0, {chance}, {drop['item']}, {drop['sell']})")
+                             f"0, 0, 0, {chance}, {item}, {drop['sell']})")
         else:
             grant.append(f"-- {key}\n({entry}, {len(grant)}, {DROP_TYPE_IDS[drop['type']]}, "
                          f"{drop.get('spell', 0)}, {drop.get('duration_ms', 0)}, "
                          f"{drop.get('copper', 0)}, {chance}, 0, 0)")
-    return grant, loot
+    return grant, loot, copies
 
 
 def emit_loot_template_sql(window, loot_rows):
@@ -585,14 +598,16 @@ def emit_sql(roster, column_order, blocks):
             f"{LANE_IDS[creep['lane']]})")
     lines.append(",\n".join(data_rows) + ";")
 
-    grant_rows, loot_rows = [], []
+    grant_rows, loot_rows, copies = [], [], []
     for creep, entry, _ in roster:
-        grant, loot = build_drop_rows(creep["key"], entry, creep.get("drops", []))
+        grant, loot, copied = build_drop_rows(creep["key"], entry, creep.get("drops", []))
         grant_rows += grant
         loot_rows += loot
+        copies += copied
     lines += emit_loot_template_sql(loot_window, loot_rows)
     lines += emit_drops_table_sql("mod_moba_creep_drops", grant_rows)
-    return "\n".join(lines) + "\n"
+    lines += emit_copy_sql(COPY_OWNER, copies)
+    return "\n".join(lines) + "\n", copies
 
 
 # ---------------------------------------------------------------------- main
@@ -655,9 +670,13 @@ def main():
         cp.with_suffix(".lock.json").write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(emit_sql(roster, column_order, alloc.blocks))
+    sql, copies = emit_sql(roster, column_order, alloc.blocks)
+    OUTPUT.write_text(sql)
+    sources = sorted({src for src, _sell in copies})
+    manifest = write_manifest(COPY_OWNER, sources)
 
     print(f"\nWrote {OUTPUT} ({len(roster)} creeps across {len(configs)} map(s)).")
+    print(f"Wrote {manifest} ({len(sources)} item copies).")
     if assigned_log:
         print("Newly assigned creature entries (now locked):")
         for key, entry in assigned_log:

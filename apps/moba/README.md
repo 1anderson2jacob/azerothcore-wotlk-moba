@@ -28,13 +28,13 @@ emits a `.blend` and a client patch rather than SQL, is not part of
 
 | Generator | Reads | Writes |
 |---|---|---|
-| `gen_creep_roster.py` | `maps/<mode>/creep_config.yaml` + `data/sql/base/db_world/creature_template.sql` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data`, `mod_moba_creep_drops`, native `creature_loot_template` rows |
-| `gen_neutral_camps.py` | `maps/<mode>/neutral_config.yaml` + `data/sql/base/db_world/creature_template.sql` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior/drops tables, native `creature_loot_template` rows |
+| `gen_creep_roster.py` | `maps/<mode>/creep_config.yaml` + `data/sql/base/db_world/creature_template.sql` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data`, `mod_moba_creep_drops`, native `creature_loot_template` rows, and the `item_template` copies + `mod_moba_item_copy` rows behind its item drops. Also writes `item_copies/creeps.json` — see Item copies |
+| `gen_neutral_camps.py` | `maps/<mode>/neutral_config.yaml` + `data/sql/base/db_world/creature_template.sql` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior/drops tables, native `creature_loot_template` rows, and the `item_template` copies + `mod_moba_item_copy` rows behind its item drops. Also writes `item_copies/neutrals.json` — see Item copies |
 | `gen_creep_paths.py` | `maps/<mode>/lane_config.yaml` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data`, plus one bare centreline path per lane per direction as the speed-compensation reference |
 | `gen_tower_data.py` | `maps/<mode>/tower_config.yaml` | `mod_moba_towers.sql` — `creature_template`, models, `mod_moba_tower_data` |
 | `gen_base.py` | `maps/<mode>/base_config.yaml` | `mod_moba_base.sql` — `mod_moba_base`, the spawn-dome `gameobject_template` (+ `_addon`), the per-map `game_graveyard` rows, plus the `battleground_template` queue slot itself (team sizes, level range, start locations) |
 | `gen_store.py` | `maps/<mode>/store_config.yaml` + `data/sql/base/db_world/item_template.sql` | `mod_moba_store.sql` — shopkeeper `creature_template`, models and `creature` spawn rows, plus `mod_moba_store_npc`/`_menu`/`_grant`/`_sell`/`_version`, and the `item_template` copies + `mod_moba_item_copy` rows when `custom_items` is on. **Also writes `client/addons/MobaHUD/Catalog.lua`**, and `item_copies/store.json` — see Item copies |
-| `gen_player_drops.py` | `maps/<mode>/player_config.yaml` | `mod_moba_player_drops.sql` — the `Map`-keyed `mod_moba_player_drops` table, granted directly to the killer (no native loot) |
+| `gen_player_drops.py` | `maps/<mode>/player_config.yaml` | `mod_moba_player_drops.sql` — the `Map`-keyed `mod_moba_player_drops` table, granted directly to the killer (no native loot), plus the `item_template` copies + `mod_moba_item_copy` rows behind its item drops. Also writes `item_copies/player_drops.json` — see Item copies |
 | `id_alloc.py` | `id_blocks.json` + every `*.lock.json` and hand-assigned config field | nothing — it is the ID registry the others allocate through; `--audit` prints and checks the whole picture |
 
 Pipeline constants (output paths) live in the generators, not the configs — each
@@ -110,8 +110,10 @@ and the `NO_PLAYER_DAMAGE_REQ` `flags_extra` bit; rationale in the generator's d
 
 Player kill drops (`player_config.yaml`) reuse this exact schema but skip native
 loot entirely — `item` is a rolled `AddItem` grant too, landing in
-`mod_moba_player_drops` alongside buff/gold instead of `creature_loot_template`.
-Delivered by `GrantPlayerKillDrops` at the resolved kill.
+`mod_moba_player_drops` alongside buff/gold instead of `creature_loot_template`,
+`sell` included. Delivered by `GrantPlayerKillDrops` at the resolved kill, and
+priced by `MobaDropDataStore` rather than by that table's own store — one item has
+one sell price whatever dropped it.
 
 ## ID allocation — `id_blocks.json`
 

@@ -13,7 +13,6 @@
 #include "SharedDefines.h"
 #include "ItemEnchantmentMgr.h"
 #include "ObjectMgr.h"
-#include <algorithm>
 
 namespace
 {
@@ -176,10 +175,6 @@ namespace
                 // bind to you" prompt and stops gear being traded to a teammate.
                 // Redundant once custom_items ships with BIND_WHEN_PICKED_UP.
                 item->SetBinding(true);
-
-                // Nothing else tracks these; the battleground destroys exactly these
-                // GUIDs on exit.
-                moba->RecordGrantedItem(player, item, grant.count);
 
                 player->SendNewItem(item, grant.count, true, false);
             }
@@ -432,8 +427,7 @@ private:
             return;
         }
 
-        uint32 owed = moba->GetGrantedCount(player, item->GetEntry());
-        if (!owed)
+        if (!BattlegroundMOBA::IsMatchItem(item->GetEntry()))
         {
             moba->SendShopMessage(player, "ERR:Only items from this match can be sold.");
             return;
@@ -446,12 +440,11 @@ private:
             return;
         }
 
-        // Sell only what the match gave; the rest of the stack is the player's own.
-        // DestroyItemCount ZEROES its count argument, so price it first.
-        uint32 sellCount = std::min(item->GetCount(), owed);
+        // The whole stack is ours: a copy entry cannot merge with stock the player
+        // brought in. DestroyItemCount ZEROES its count argument, so price it first.
+        uint32 sellCount = item->GetCount();
         uint32 payout    = unitPrice * sellCount;
 
-        moba->ForgetGrantedItem(player, item, sellCount);
         player->DestroyItemCount(item, sellCount, true);
 
         if (payout)
@@ -461,28 +454,8 @@ private:
     }
 };
 
-// Creep and neutral item drops ride the NATIVE loot system, so they never pass through
-// TryPurchase and GrantDeathDrops never sees them. Recording them here is what lets
-// RemovePlayer strip them on exit, and what makes them sellable. The recall Hearthstone
-// escapes it by construction: AddPlayer hands that over with AddItem, not loot.
-class moba_loot_playerscript : public PlayerScript
-{
-public:
-    moba_loot_playerscript() : PlayerScript("moba_loot_playerscript", { PLAYERHOOK_ON_LOOT_ITEM }) { }
-
-    // For a stackable, `item` is the MERGED stack -- so a player who brought their own
-    // copy of a dropped item has the whole stack recorded, and loses it on exit. Stock
-    // entries stay ambiguous until custom_items ships.
-    void OnPlayerLootItem(Player* player, Item* item, uint32 count, ObjectGuid /*lootguid*/) override
-    {
-        if (BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground()))
-            moba->RecordGrantedItem(player, item, count);
-    }
-};
-
 void AddSC_npc_moba_store()
 {
     new npc_moba_store();
     new moba_shop_playerscript();
-    new moba_loot_playerscript();
 }

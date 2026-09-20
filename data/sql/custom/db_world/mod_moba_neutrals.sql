@@ -218,3 +218,26 @@ VALUES
 (900215, 0, 3, 0, 0, 40000, 100, 0, 0),
 -- rosham_bo
 (900215, 1, 4, 48469, 180000, 0, 100, 0, 0);
+
+-- ============================================================
+-- Custom item copies: entry = source entry + 900000.
+-- mod_moba_item_copy is SHARED -- several generators write into
+-- 900000-999999, and a source claimed by two of them resolves to ONE row.
+-- Hence CREATE ... IF NOT EXISTS and a per-owner DELETE; this table is never
+-- dropped. The updater re-applies only files whose hash changed, so a
+-- generator that clears another's rows may not see them rebuilt.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `mod_moba_item_copy` (
+    `Entry` INT UNSIGNED NOT NULL,
+    `Owner` VARCHAR(32) NOT NULL,
+    PRIMARY KEY (`Entry`, `Owner`)
+);
+
+-- Reclaim this generator's previous copies, sparing any a second owner
+-- still claims.
+DELETE it FROM `item_template` it
+    JOIN `mod_moba_item_copy` mine ON mine.`Entry` = it.`entry` AND mine.`Owner` = 'neutrals'
+    LEFT JOIN `mod_moba_item_copy` other ON other.`Entry` = it.`entry` AND other.`Owner` <> 'neutrals'
+WHERE other.`Entry` IS NULL;
+
+DELETE FROM `mod_moba_item_copy` WHERE `Owner` = 'neutrals';

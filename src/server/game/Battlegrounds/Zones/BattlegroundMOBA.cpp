@@ -1,4 +1,5 @@
 #include "BattlegroundMOBA.h"
+#include "Bag.h"
 #include "BattlegroundMgr.h"
 #include "Chat.h"
 #include "Creature.h"
@@ -38,6 +39,36 @@ namespace
     constexpr uint32 MOBA_INHIB_RESPAWN_WARN_MS = 10000; // "respawning soon" lead time
     constexpr uint32 MOBA_WAVE_INTERVAL_MS = 30000; // lane-creep wave cadence
     constexpr uint32 MOBA_WAVE_WARN_MS     = 10000; // "minions incoming" lead time
+
+    // Slot walk mirrors Player::DestroyConjuredItems: backpack, then bag contents, then
+    // equipped items and the bags themselves. The equipped pass is not optional --
+    // granted gear is worn, and the ledger this replaced needed a second pass for it too.
+    bool DestroyMatchItems(Player* player)
+    {
+        bool destroyed = false;
+
+        auto take = [&](uint8 bag, uint8 slot, Item* item)
+        {
+            if (!item || !BattlegroundMOBA::IsMatchItem(item->GetEntry()))
+                return;
+
+            player->DestroyItem(bag, slot, true);
+            destroyed = true;
+        };
+
+        for (uint8 i = INVENTORY_SLOT_ITEM_START; i < INVENTORY_SLOT_ITEM_END; ++i)
+            take(INVENTORY_SLOT_BAG_0, i, player->GetItemByPos(INVENTORY_SLOT_BAG_0, i));
+
+        for (uint8 i = INVENTORY_SLOT_BAG_START; i < INVENTORY_SLOT_BAG_END; ++i)
+            if (Bag* bag = player->GetBagByPos(i))
+                for (uint32 j = 0; j < bag->GetBagSize(); ++j)
+                    take(i, uint8(j), bag->GetItemByPos(j));
+
+        for (uint8 i = EQUIPMENT_SLOT_START; i < INVENTORY_SLOT_BAG_END; ++i)
+            take(INVENTORY_SLOT_BAG_0, i, player->GetItemByPos(INVENTORY_SLOT_BAG_0, i));
+
+        return destroyed;
+    }
 }
 
 void BattlegroundMOBAScore::BuildObjectivesBlock(WorldPacket& data)
@@ -376,52 +407,6 @@ void BattlegroundMOBA::AddPlayer(Player* player)
             AddMatchGold(player, cfg->startingGold, MOBA_GOLD_SILENT); // a float here would be sent while the client is still loading
 }
 
-void BattlegroundMOBA::RecordGrantedItem(Player* player, Item* item, uint32 count)
-{
-    if (!player || !item || !count)
-        return;
-
-    _grantedItems[player->GetGUID()].push_back(item->GetGUID());
-    _grantedCounts[player->GetGUID()][item->GetEntry()] += count;
-}
-
-uint32 BattlegroundMOBA::GetGrantedCount(Player* player, uint32 itemEntry) const
-{
-    if (!player)
-        return 0;
-
-    auto counts = _grantedCounts.find(player->GetGUID());
-    if (counts == _grantedCounts.end())
-        return 0;
-
-    auto itr = counts->second.find(itemEntry);
-    return itr != counts->second.end() ? itr->second : 0;
-}
-
-void BattlegroundMOBA::ForgetGrantedItem(Player* player, Item* item, uint32 count)
-{
-    if (!player || !item || !count)
-        return;
-
-    auto counts = _grantedCounts.find(player->GetGUID());
-    if (counts != _grantedCounts.end())
-    {
-        auto itr = counts->second.find(item->GetEntry());
-        if (itr != counts->second.end())
-            itr->second -= std::min(itr->second, count);
-    }
-
-    // Drop the GUID only when the whole stack went, so the exit pass has less to
-    // walk. A partial sale leaves the item -- and our claim on the rest of it.
-    if (item->GetCount() <= count)
-    {
-        auto guids = _grantedItems.find(player->GetGUID());
-        if (guids != _grantedItems.end())
-            guids->second.erase(std::remove(guids->second.begin(), guids->second.end(), item->GetGUID()),
-                                guids->second.end());
-    }
-}
-
 uint32 BattlegroundMOBA::GetMatchGold(Player* player) const
 {
     if (!player)
@@ -560,58 +545,9 @@ void BattlegroundMOBA::RemovePlayer(Player* player)
         _shopAddonPlayers.erase(player->GetGUID());
         _shopInRange.erase(player->GetGUID());
 
-        // Two passes: the ledger alone would let DestroyItemCount pick the player's
-        // own copy of a shared entry while a soulbound one of ours escapes. The GUID
-        // pass takes exactly what we handed over; the ledger pass mops up whatever
-        // was split off it under a new GUID.
-        auto guids  = _grantedItems.find(player->GetGUID());
-        auto counts = _grantedCounts.find(player->GetGUID());
-        bool destroyed = false;
-
-        if (guids != _grantedItems.end())
-        {
-            for (ObjectGuid itemGuid : guids->second)
-            {
-                Item* item = player->GetItemByGuid(itemGuid);
-                if (!item)
-                    continue;
-
-                uint32 entry = item->GetEntry();
-                uint32 owed  = 0;
-                if (counts != _grantedCounts.end())
-                {
-                    auto itr = counts->second.find(entry);
-                    if (itr != counts->second.end())
-                        owed = itr->second;
-                }
-
-                // Never take more of a stack than the match gave: StoreLootItem merges
-                // ours into one the player already held.
-                uint32 take = std::min(item->GetCount(), owed);
-                if (!take)
-                    continue;
-
-                counts->second[entry] -= take;
-                player->DestroyItemCount(item, take, true);
-                destroyed = true;
-            }
-
-            _grantedItems.erase(guids);
-        }
-
-        if (counts != _grantedCounts.end())
-        {
-            for (auto const& pair : counts->second)
-                if (pair.second)
-                {
-                    player->DestroyItemCount(pair.first, pair.second, true);
-                    destroyed = true;
-                }
-
-            _grantedCounts.erase(counts);
-        }
-
-        if (destroyed)
+        // No ledger to consult: everything the match handed over carries a fork-owned
+        // entry, so the range itself is the claim.
+        if (DestroyMatchItems(player))
         {
             // This runs in the tick the player is pulled from the world, so the normal
             // flush never reaches the client -- and the 3.3.5 client relocates its own

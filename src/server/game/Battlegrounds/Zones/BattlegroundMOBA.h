@@ -52,6 +52,14 @@ enum BG_MOBA_Recall
     BG_MOBA_RECALL_EMPOWER_AURA = 1243   // PLACEHOLDER empower trigger (PW:F R1); swap for the real mechanic
 };
 
+enum BG_MOBA_ItemCopy
+{
+    // Fork-owned item_template copies start here; apps/moba/item_copy.py mints every
+    // one as source entry + this. Stock 3.3.5 items end at 56806 (DBCStores.cpp:643),
+    // so the range cannot collide with anything a player brought in.
+    BG_MOBA_ITEM_COPY_MIN = 900000
+};
+
 enum BG_MOBA_StructureEvent   // "O:" event field
 {
     MOBA_STRUCT_EVENT_DESTROYED  = 0,
@@ -237,11 +245,10 @@ public:
     void RecordAllyBuff(Player* ally, Player* buffer, int32 buffMaxDurationMs);
     void HandlePlayerDeath(Player* victim, Unit* killer);
 
-    // `count` is what we GAVE, which is not item->GetCount() when the grant merged
-    // into a stack the player already held.
-    void RecordGrantedItem(Player* player, Item* item, uint32 count);
-    uint32 GetGrantedCount(Player* player, uint32 itemEntry) const;
-    void ForgetGrantedItem(Player* player, Item* item, uint32 count);
+    // Entry alone says whether the match handed this over, which is what replaced the
+    // grant ledger: every grant channel mints a copy, so a channel that forgets to
+    // announce itself is still swept and still sellable.
+    static bool IsMatchItem(uint32 itemEntry) { return itemEntry >= BG_MOBA_ITEM_COPY_MIN; }
 
     // Match wallet in copper -- deliberately NOT Player money, so no path that skips
     // a cleanup can touch real character wealth.
@@ -353,13 +360,6 @@ private:
     // victim -> (enemy attacker -> last damage/debuff ms). Per life; keeps every recent
     // attacker, not just the latest.
     std::unordered_map<ObjectGuid, std::unordered_map<ObjectGuid, uint32>> _recentAttackers;
-
-    // Two views: GUIDs say WHICH item (gear carries a random suffix), the per-entry
-    // ledger says HOW MANY (splitting a stack clones it under a new GUID, and looting
-    // merges ours into theirs). Gear never stacks and stackables never carry a suffix,
-    // so the pair is exact for both.
-    std::unordered_map<ObjectGuid, std::vector<ObjectGuid>> _grantedItems;
-    std::unordered_map<ObjectGuid, std::unordered_map<uint32, uint32>> _grantedCounts;
 
     // ally -> (supporter -> last heal/short-buff ms). Same per-life lifetime.
     std::unordered_map<ObjectGuid, std::unordered_map<ObjectGuid, uint32>> _allySupport;
