@@ -3,6 +3,7 @@
 
     python3.10 dbc_tool.py dump Map.dbc 566     print one row field by field
     python3.10 dbc_tool.py patch                write every patched DBC to the staging dir
+    python3.10 dbc_tool.py suffixes             extract suffix stat allocations for the generators
 
 The server does not read these -- its rows come from data/sql/custom/db_world/
 mod_moba_map.sql. This exists because the CLIENT cannot load a map without the
@@ -25,6 +26,11 @@ PROJECT = os.environ.get("WBS_PROJECT", os.path.expanduser("~/tools/wbs-project"
 STORM   = os.path.join(WBS, "io_scene_wmo/pywowlib/archives/mpq/native")
 ITEM_COPY_DIR = os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), os.pardir, "item_copies"))
+SUFFIX_POINTS = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), os.pardir, "suffix_points.json"))
+ITEM_ENCHANTMENT_TYPE_STAT = 5          # DBCEnums.h
+ITEM_ENCHANTMENT_TYPES = {1: "COMBAT_SPELL", 2: "DAMAGE", 3: "EQUIP_SPELL", 4: "RESISTANCE",
+                          5: "STAT", 6: "TOTEM", 7: "USE_SPELL", 8: "PRISMATIC_SOCKET"}
 
 # DBCs live in the locale archives, not the base ones -- searched newest first.
 ARCHIVES = ["enUS/patch-enUS-3.MPQ", "enUS/patch-enUS-2.MPQ", "enUS/patch-enUS.MPQ",
@@ -282,10 +288,108 @@ def cmd_patch():
     return 0
 
 
+def cmd_suffixes():
+    """Write apps/moba/suffix_points.json -- random suffixes as resolved stat
+    allocations, plus the RandPropPoints table.
+
+    A generator bakes a suffix into an item_template copy with
+
+        value = allocationPct * points[itemLevel][quality][slotClass] / 10000
+
+    which is GenerateEnchSuffixFactor (ItemEnchantmentMgr.cpp) plus
+    ApplyEnchantment's ITEM_ENCHANTMENT_TYPE_STAT branch (PlayerStorage.cpp),
+    evaluated once here instead of per item at runtime.
+    """
+    storm, handles = open_archives()
+    suffix = Dbc(read_dbc(storm, handles, "ItemRandomSuffix.dbc"))
+    ench   = Dbc(read_dbc(storm, handles, "SpellItemEnchantment.dbc"))
+    points = Dbc(read_dbc(storm, handles, "RandPropPoints.dbc"))
+
+    # Every field offset below is positional, so a record whose width has moved is a
+    # different client build and would otherwise read as plausible garbage.
+    for name, dbc, want in (("ItemRandomSuffix.dbc",     suffix, 29),
+                            ("SpellItemEnchantment.dbc", ench,   38),
+                            ("RandPropPoints.dbc",       points, 16)):
+        if dbc.fields != want:
+            sys.exit("%s has %d fields, expected %d -- wrong client version"
+                     % (name, dbc.fields, want))
+
+    ench_row = {ench.uint(r, 0): r for r in range(ench.n)}
+
+    def resolve(eid):
+        """[ITEM_MOD_*, ...] for one enchantment, or a string saying why it cannot bake."""
+        r = ench_row.get(eid)
+        if r is None:
+            return "enchantment %d is absent from SpellItemEnchantment.dbc" % eid
+        mods = []
+        for s in range(3):                     # type[s] at 2+s, amount[s] at 5+s, spellid[s] at 11+s
+            t = ench.uint(r, 2 + s)
+            if t == 0:
+                continue
+            if t != ITEM_ENCHANTMENT_TYPE_STAT:
+                return "enchantment %d effect %d is %s, not STAT" % (
+                    eid, s, ITEM_ENCHANTMENT_TYPES.get(t, "type %d" % t))
+            # A non-zero amount is applied verbatim and never scaled, so allocationPct
+            # does not describe it -- baking one would silently change the item.
+            if ench.uint(r, 5 + s):
+                return "enchantment %d effect %d carries a fixed amount" % (eid, s)
+            mods.append(ench.uint(r, 11 + s))
+        return mods
+
+    suffixes, unsupported = {}, {}
+    for r in range(suffix.n):
+        sid = suffix.uint(r, 0)
+        effects, why = [], None
+        for k in range(5):                     # Enchantment[k] at 19+k, AllocationPct[k] at 24+k
+            eid = suffix.uint(r, 19 + k)
+            if not eid:
+                continue
+            pct = suffix.uint(r, 24 + k)
+            if not pct:
+                why = "enchantment %d has allocation 0" % eid
+                break
+            mods = resolve(eid)
+            if isinstance(mods, str):
+                why = mods
+                break
+            effects += [[m, pct] for m in mods]
+        if why or not effects:
+            unsupported[sid] = why or "no stat effects"
+        else:
+            suffixes[sid] = {"name": suffix.text(r, 1), "effects": effects}
+
+    pts = {}
+    for r in range(points.n):
+        vals = [points.uint(r, 1 + i) for i in range(15)]
+        if not any(vals):
+            continue                           # an item level the client never scales against
+        pts[points.uint(r, 0)] = {             # the row id IS the item level
+            "epic":     vals[0:5],
+            "rare":     vals[5:10],
+            "uncommon": vals[10:15],
+        }
+
+    out = {
+        "_generated_by": "dbc_tool.py suffixes -- extracted from the 3.3.5a client, do not hand-edit",
+        "suffixes": suffixes,
+        "rand_prop_points": pts,
+        "unsupported": unsupported,
+    }
+    with open(SUFFIX_POINTS, "w") as f:
+        json.dump(out, f, indent=1, sort_keys=True)
+        f.write("\n")
+
+    print("  %d suffixes, %d unsupported, %d item levels -> %s"
+          % (len(suffixes), len(unsupported), len(pts), SUFFIX_POINTS))
+    return 0
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     if a[:1] == ["patch"]:
         sys.exit(cmd_patch())
+    if a[:1] == ["suffixes"]:
+        sys.exit(cmd_suffixes())
     if a[:1] == ["dump"] and len(a) == 3:
         sys.exit(cmd_dump(a[1], int(a[2])))
     sys.exit(__doc__)

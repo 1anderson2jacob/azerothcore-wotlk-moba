@@ -197,6 +197,27 @@ no overrides. Those rows are not optional — without them a copy has no icon, n
 equip slot and no suffix scaling in the client; the mechanism is commented at the
 `Item.dbc` entry in that file's `PATCHES`.
 
+## Suffix stat allocations — `suffix_points.json`
+
+Baking "of the Bear" into a copy needs the suffix's stat allocation and the
+points-per-item-level table it scales against, and both live only in the client's
+DBCs. `python3.10 wmo/dbc_tool.py suffixes` extracts them to `suffix_points.json`,
+committed once and regenerated only when the client version changes - so a
+generator reads it with `json.load`, and no generator needs a WoW install or
+`python3.10`, the same constraint that keeps `ItemRandomSuffix.dbc` out of
+`gen_store.py`.
+
+The extraction collapses three DBCs into one answer: `ItemRandomSuffix` for the
+allocation percentages, `SpellItemEnchantment` to turn each enchantment id into an
+`ITEM_MOD_*` stat, `RandPropPoints` for the factor. A suffix therefore arrives as a
+flat list of `[stat, allocationPct]` pairs; the bake formula is in `cmd_suffixes`'s
+docstring.
+
+**A suffix listed under `unsupported` must not be baked.** Those grant a proc or a
+resistance rather than a scaled stat, and the extractor records the reason rather
+than emitting a partial `effects` list - bake one anyway and the item is silently
+missing what the suffix was for.
+
 ## Reusing `gen_creep_paths.py` elsewhere
 
 Copy an existing `lane_config.yaml` into a new map bundle as
