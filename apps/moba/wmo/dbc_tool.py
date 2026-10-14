@@ -212,17 +212,19 @@ def item_copy_rows():
     """(src, copy, {}) for every entry in apps/moba/item_copies/*.json.
 
     One manifest per generator, so two of them cannot clobber each other -- the
-    build-side twin of the mod_moba_item_copy table. A source claimed by two owners
-    still yields one row: both resolve it through the same offset. Item.dbc is
-    re-read from the stock MPQ on every run, so an emptied manifest reclaims its
-    rows rather than stranding them in the staging dir.
+    build-side twin of the mod_moba_item_copy table. A mirror manifest lists `sources`
+    and the offset that maps them; a baked one lists `pairs`, since its entries are
+    allocated rather than derived. A source claimed by two mirror owners still yields
+    one row. Item.dbc is re-read from the stock MPQ on every run, so an emptied
+    manifest reclaims its rows rather than stranding them in the staging dir.
     """
     rows = {}
     for path in sorted(glob.glob(os.path.join(ITEM_COPY_DIR, "*.json"))):
         with open(path) as f:
             m = json.load(f)
-        for src in m["sources"]:
-            rows[src + m["offset"]] = (src, src + m["offset"], {})
+        pairs = m["pairs"] if "pairs" in m else [(src, src + m["offset"]) for src in m["sources"]]
+        for src, copy in pairs:
+            rows[copy] = (src, copy, {})
     return [rows[k] for k in sorted(rows)]
 
 

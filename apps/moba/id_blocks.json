@@ -21,6 +21,13 @@
     }
   },
   "creature": {
+    "quests": {
+      "blocks": [
+        "900500-900599"
+      ],
+      "note": "creature.guid, NOT an entry. gen_quests.py spawns each giver with guid == entry, so this block must cover every giver in creature_template/quests; the generator checks each one against it before emitting. Credit entries share that block and are never spawned.",
+      "source": "gen_quests.py"
+    },
     "store": {
       "blocks": [
         "900300-900399"
@@ -43,6 +50,13 @@
       ],
       "note": "auto-assigned; the record is maps/*/neutral_config.lock.json",
       "source": "gen_neutral_camps.py"
+    },
+    "quests": {
+      "blocks": [
+        "900500-900599"
+      ],
+      "note": "auto-assigned: two per quest giver (one per team) and one invisible credit entry per animal. The record is maps/*/quest_config.lock.json, section creature_template.",
+      "source": "gen_quests.py"
     },
     "store": {
       "blocks": [
@@ -81,11 +95,18 @@
   "item_template": {
     "item_copies": {
       "blocks": [
-        "900000-999999"
+        "900000-956806"
       ],
       "enumerated": false,
-      "note": "NOT a dense window: a copy's entry is its SOURCE entry + 900000, so this block is a sparse mirror of the whole stock item space. Nothing allocates here and there is nothing to enumerate -- the block exists so a future allocator cannot wander in. Several generators write into it; the tracker table and per-owner manifests that referee them are described in apps/moba/README.md under Item copies.",
+      "note": "NOT a dense window: a copy's entry is its SOURCE entry + 900000, so this block is a sparse mirror of the whole stock item space, which ends at 56806 (DBCStores.cpp:643). Nothing allocates here and there is nothing to enumerate -- the block exists so an allocator cannot wander in. Several generators write into it; the tracker table and per-owner manifests that referee them are described in apps/moba/README.md under Item copies.",
       "source": "item_copy.py -- every generator that grants an item"
+    },
+    "quests": {
+      "blocks": [
+        "956900-956999"
+      ],
+      "note": "auto-assigned baked copies, one per (base, suffix) -- a pair the +900000 offset cannot name. The record is maps/*/quest_config.lock.json, section item_template. Reclaimed through mod_moba_item_copy rather than a window-clear, like every item_template writer.",
+      "source": "gen_quests.py"
     }
   },
   "map_dbc": {
@@ -116,6 +137,15 @@
       "enumerated": false,
       "note": "hand-assigned, nothing allocates here. 800 = map 900's only difficulty row; stock MapDifficulty.dbc runs to id 753. Small ids for the same reason as map_dbc: DBCStorage sizes its index table to max(id)+1. Its absence is what made spawnMasks[900] zero, so every static spawn on the map logged a wrong-spawn-mask error.",
       "source": "-"
+    }
+  },
+  "quest_template": {
+    "quests": {
+      "blocks": [
+        "900000-900099"
+      ],
+      "note": "auto-assigned; the record is maps/*/quest_config.lock.json, section quest_template. An id must not change once a client has seen it -- the client caches quest text by id. Stock quests end at 26034.",
+      "source": "gen_quests.py"
     }
   },
   "waypoint_data": {

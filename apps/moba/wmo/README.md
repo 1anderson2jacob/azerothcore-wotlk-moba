@@ -172,8 +172,9 @@ working as intended, not a fault.
 python3.10 apps/moba/wmo/gen_wdt.py --dump
 ```
 
-`dbc_tool.py patch` only on a first build, or if the DBC constants change -- the
-rows are already in the staging tree.
+`dbc_tool.py patch` only on a first build, when the DBC constants change, or when a
+generator rewrites an `apps/moba/item_copies/` manifest -- otherwise the rows are
+already in the staging tree.
 
 ### 7. Pack
 

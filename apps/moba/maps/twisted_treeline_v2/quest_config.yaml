@@ -1,0 +1,81 @@
+# Quest givers and the gear chains they offer, for Twisted Treeline.
+# gen_quests.py turns this into data/sql/custom/db_world/mod_moba_quests.sql: the
+# givers and their spawns, every quest and its text, the one-quest-per-animal
+# conditions, the invisible credit entries and the baked reward items. Ids are
+# allocated into quest_config.lock.json -- never hand-edit it. A quest id must not
+# change once a client has seen it: the client caches quest text by id.
+#
+# A quest is written once per animal and expanded per reward set: every set whose
+# `animals` names it gets its own chain, one quest per `counts` entry, all sharing
+# the animal's objective, text and credit entry.
+#
+#   quest_sort_id   AreaTable id the quest log files these quests under
+#   quest_level     the quests' level, which colours them; nothing requires it
+#   item_level      every reward's stats are the suffix formula at this item level
+#   givers          one per reward set. `teams` holds one block per team (0 =
+#                   Alliance, 1 = Horde), which may override `name`.
+#     emotes        Emote ids the giver plays on each screen, 0 = none: offer;
+#                   incomplete (talked to before the quest is done); turn_in
+#   reward_sets     `animals` names quest keys. `bases` maps slot -> stock item:
+#                   stat-blank, no suffix group, InventoryType matching the slot.
+#   quests
+#     suffix        ItemRandomSuffix id; its stats come from suffix_points.json
+#     title         shown as "<title> (<tier>)"
+#     objective     `type` (last_hit only, so far) and the quest log's counter text
+#     counts        one tier per entry -- a first guess until playtesting
+#     dialogue      summary is the "Quest Objectives" paragraph; offer, progress and
+#                   complete are the giver's text on each screen. {count} becomes
+#                   the tier's count. In game $N is the player's name and $B a line
+#                   break. Folded (>-), so wrapping here becomes spaces.
+
+map: 900
+quest_sort_id: 5000
+quest_level: 40
+item_level: 45
+
+# The north and south ends of a five-giver row along the inner face of the
+# crescent, 2 yd off the wall, facing the spawn; mail, leather and cloth go between.
+givers:
+  - key: plate
+    reward_set: plate
+    name: "Quartermaster"
+    subname: "Plate"
+    emotes: { offer: 1, incomplete: 274, turn_in: 66 }    # talk, shake head, salute
+    teams:
+      - { team: 0, display_id: 3275, x: -183.32, y: 7.83, z: 3.0, o: 3.6486 }
+      - { team: 1, display_id: 1879, x:  183.16, y: 6.92, z: 3.0, o: 5.8152 }
+  - key: jewelry
+    reward_set: jewelry
+    name: "Jeweler"
+    subname: "Jewelry"
+    emotes: { offer: 1, incomplete: 274, turn_in: 2 }     # talk, shake head, bow
+    teams:
+      - { team: 0, display_id: 12669, x: -182.41, y: -7.29, z: 3.0, o: 2.6536 }
+      - { team: 1, display_id: 12681, x:  182.84, y: -7.80, z: 3.0, o: 0.4650 }
+
+reward_sets:
+  plate:                                     # Embossed Plate
+    animals: [tiger]
+    bases: { wrist: 9972, hands: 9967, waist: 9968, feet: 9973 }
+  jewelry:                                   # Tellurium Necklace, Marsh Ring
+    animals: [tiger]
+    bases: { neck: 12023, ring: 12012 }
+
+quests:
+  - key: tiger
+    suffix: 14
+    title: "Way of the Tiger"
+    objective:
+      type: last_hit
+      text: "Minions slain"
+    counts: [10, 15, 20, 25]
+    dialogue:
+      summary: "Land the killing blow on {count} enemy melee or caster minions."
+      offer: >-
+        The tiger does not waste its strength on the strong, $N. It takes the
+        stragglers: the slow, the wounded, the ones already falling.$B$BThe
+        enemy's minions march down these lanes by the dozen. Let others wear them
+        down; you strike the final blow. Claim {count} of them, and the tiger's
+        strength will be yours to wear.
+      progress: "The tiger is patient, but it is never idle. Your hunt is not finished."
+      complete: "Clean kills, every one. The tiger has marked you, $N.$B$BChoose what you will carry from this hunt."

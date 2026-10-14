@@ -35,6 +35,7 @@ emits a `.blend` and a client patch rather than SQL, is not part of
 | `gen_base.py` | `maps/<mode>/base_config.yaml` | `mod_moba_base.sql` — `mod_moba_base`, the spawn-dome `gameobject_template` (+ `_addon`), the per-map `game_graveyard` rows, plus the `battleground_template` queue slot itself (team sizes, level range, start locations) |
 | `gen_store.py` | `maps/<mode>/store_config.yaml` + `data/sql/base/db_world/item_template.sql` | `mod_moba_store.sql` — shopkeeper `creature_template`, models and `creature` spawn rows, plus `mod_moba_store_npc`/`_menu`/`_grant`/`_sell`/`_version`, and the `item_template` copies + `mod_moba_item_copy` rows when `custom_items` is on. **Also writes `client/addons/MobaHUD/Catalog.lua`**, and `item_copies/store.json` — see Item copies |
 | `gen_player_drops.py` | `maps/<mode>/player_config.yaml` | `mod_moba_player_drops.sql` — the `Map`-keyed `mod_moba_player_drops` table, granted directly to the killer (no native loot), plus the `item_template` copies + `mod_moba_item_copy` rows behind its item drops. Also writes `item_copies/player_drops.json` — see Item copies |
+| `gen_quests.py` | `maps/<mode>/quest_config.yaml` + `data/sql/base/db_world/item_template.sql` + `suffix_points.json` | `mod_moba_quests.sql` — the quest givers (`creature_template`, models, `creature` spawns) and invisible credit entries, every quest row and its text tables, `creature_queststarter`/`_questender`, the one-quest-per-animal `conditions`, and the baked reward items + `mod_moba_item_copy` rows. Also writes `item_copies/quests.json` — see Item copies |
 | `id_alloc.py` | `id_blocks.json` + every `*.lock.json` and hand-assigned config field | nothing — it is the ID registry the others allocate through; `--audit` prints and checks the whole picture |
 
 Pipeline constants (output paths) live in the generators, not the configs — each
@@ -160,6 +161,11 @@ config that claims that slot name). `creep_config.lock.json`,
 `neutral_config.lock.json` and `tower_config.lock.json` do the same for
 auto-assigned `creature_template` entries.
 
+`quest_config.lock.json` holds one section per namespace — `quest_template`,
+`item_template` and `creature_template` — keyed by content: `plate/tiger/1` for a
+quest, `plate/hands/tiger` for a baked item, `plate/0` for a giver, `tiger` for a
+credit entry.
+
 This is what makes re-runs safe: a locked ID is returned *before* any block check
 runs, so re-walks, offset tuning, spacing changes — and even moving an owner's
 block — all regenerate the same IDs, and
@@ -197,6 +203,14 @@ no overrides. Those rows are not optional — without them a copy has no icon, n
 equip slot and no suffix scaling in the client; the mechanism is commented at the
 `Item.dbc` entry in that file's `PATCHES`.
 
+**Baked copies are the exception to the offset.** A quest reward is a stock base
+with a random suffix's stats written into its row (see the next section), and one
+base backs one copy per animal, so `source + 900000` cannot name them.
+`gen_quests.py` allocates them from its own `item_template` block, above the
+mirror's 956806 ceiling, and records them in its lockfile. They are reclaimed
+through the same tracker, and their manifest lists explicit `pairs` rather than
+`sources`.
+
 ## Suffix stat allocations — `suffix_points.json`
 
 Baking "of the Bear" into a copy needs the suffix's stat allocation and the
@@ -217,6 +231,11 @@ docstring.
 resistance rather than a scaled stat, and the extractor records the reason rather
 than emitting a partial `effects` list - bake one anyway and the item is silently
 missing what the suffix was for.
+
+**It stays a generator input, never rows in `itemrandomsuffix_dbc` or
+`randproppoints_dbc`.** Both tables load over the server's live DBC stores at boot
+(`DBCStores.cpp:329`, `:347`), so a bad extraction there would mis-scale every
+stock item that rolls a suffix, not just our copies.
 
 ## Reusing `gen_creep_paths.py` elsewhere
 

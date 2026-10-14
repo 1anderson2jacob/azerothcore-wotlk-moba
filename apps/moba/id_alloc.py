@@ -3,7 +3,7 @@
 Central ID registry for the MOBA generators.
 
 Every custom ID this fork assigns -- creature_template entries, creature spawn
-guids, gameobject_template entries, waypoint_data ids, item_template copies --
+guids, gameobject_template entries, waypoint_data ids, item_template copies, quest ids --
 is owned by exactly one generator, and each owner's claim is a block declared in
 apps/moba/id_blocks.json. This module reads that ledger plus every SOURCE OF
 TRUTH (the map-bundle lockfiles and the hand-assigned fields in the configs) and
@@ -43,6 +43,7 @@ GAME_GRAVEYARD = "game_graveyard"
 BATTLEGROUND_TEMPLATE = "battleground_template"
 WAYPOINT_DATA = "waypoint_data"
 ITEM_TEMPLATE = "item_template"
+QUEST_TEMPLATE = "quest_template"
 # New blocks are this wide and start on a multiple of it. ID space is not scarce
 # (900000+ is ~100k wide) but ledger readability is, so blocks stay round.
 BLOCK_SIZE = 100
@@ -114,11 +115,12 @@ def _read_graveyards():
                 yield Assignment(GAME_GRAVEYARD, gid, "base_spawn", team, path)
 
 
-def _read_entry_locks(pattern, owner):
-    """creep and neutral lockfiles share one shape: {"entries": {key: id}}."""
+def _read_entry_locks(pattern, owner, section="entries", namespace=CREATURE_TEMPLATE):
+    """One {key: id} section of each matching lockfile. The creep, neutral and tower
+    locks hold only `entries`."""
     for path in sorted(MAPS_DIR.glob(pattern)):
-        for key, entry in sorted(_load_lock(path).get("entries", {}).items()):
-            yield Assignment(CREATURE_TEMPLATE, entry, owner, key, path)
+        for key, id_ in sorted(_load_lock(path).get(section, {}).items()):
+            yield Assignment(namespace, id_, owner, key, path)
 
 
 def _read_creeps():
@@ -139,11 +141,30 @@ def _read_creep_paths():
                                      f"{lane}/{slot} {direction}", path)
 
 
-# item_template has no reader: a copy's entry is its source entry + 900000,
-# derived from the catalog at emit time and never recorded anywhere. The ledger
-# reserves the mirror; there is nothing to enumerate.
+def spawn_label(key):
+    """The label a guid == entry spawn is read under. conflicts() takes a matching
+    (owner, label) as the caller itself, so a generator re-checking its own spawn
+    must use this one."""
+    return f"{key} (spawn guid)"
+
+
+def _read_quests():
+    # One section per namespace, named after it. A giver spawns with guid == entry,
+    # so its key -- `<giver>/<team>` -- is claimed in `creature` too; a credit
+    # entry's key is a bare animal, and it is never spawned.
+    for namespace in (QUEST_TEMPLATE, ITEM_TEMPLATE, CREATURE_TEMPLATE):
+        for a in _read_entry_locks("*/quest_config.lock.json", "quests", namespace, namespace):
+            yield a
+            if namespace == CREATURE_TEMPLATE and "/" in a.label:
+                yield a._replace(namespace=CREATURE_SPAWN, label=spawn_label(a.label))
+
+
+# The +900000 item mirror has no reader: a copy's entry is its source entry +
+# 900000, derived from the catalog at emit time and never recorded anywhere. The
+# ledger reserves the mirror; there is nothing to enumerate. Baked copies are
+# allocated, so they are read from the quest lock.
 READERS = (_read_towers, _read_shopkeepers, _read_domes, _read_graveyards,
-           _read_creeps, _read_neutrals, _read_creep_paths)
+           _read_creeps, _read_neutrals, _read_creep_paths, _read_quests)
 
 
 # ----------------------------------------------------------------- registry

@@ -16,7 +16,8 @@ for gen in \
     gen_base.py \
     gen_neutral_camps.py \
     gen_store.py \
-    gen_player_drops.py
+    gen_player_drops.py \
+    gen_quests.py
 do
     echo "== ${gen}"
     python3 "apps/moba/${gen}"
