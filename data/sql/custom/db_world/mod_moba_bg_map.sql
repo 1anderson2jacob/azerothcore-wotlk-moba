@@ -53,14 +53,11 @@ INSERT INTO `battlemasterlist_dbc` (`ID`, `MapID_1`, `MapID_2`, `MapID_3`, `MapI
 `Name_Lang_Mask`, `MaxGroupSize`, `HolidayWorldState`, `Minlevel`, `Maxlevel`) VALUES
 (12,900,-1,-1,-1,-1,-1,-1,-1,3,1,
 'Twisted Treeline','','','','','','','','','','','','','','','',
-16712190,3,0,61,80);
+16712190,3,0,40,40);
 
 -- Without a bracket for the map GetBattlegroundBracketByLevel returns null and
 -- HandleBattleFieldPortOpcode returns early -- "Enter Battle" does nothing, with no
 -- error anywhere.
---
--- One wide bracket instead of stock 566's three (61-69/70-79/80-85), so testers at any
--- level share a queue.
 --
 -- MinLevel may not go below battleground_template.MinLvl for the same slot. Every
 -- queue -- not just Random Battleground -- runs CreateNewBattleground -> GetRandomBG,
@@ -70,4 +67,4 @@ INSERT INTO `battlemasterlist_dbc` (`ID`, `MapID_1`, `MapID_2`, `MapID_3`, `MapI
 -- this table nor the cause.
 DELETE FROM `pvpdifficulty_dbc` WHERE `ID` BETWEEN 200 AND 209;
 INSERT INTO `pvpdifficulty_dbc` (`ID`, `MapID`, `RangeIndex`, `MinLevel`, `MaxLevel`, `Difficulty`) VALUES
-(200,900,0,61,85,0);
+(200,900,0,40,40,0);

@@ -13,8 +13,8 @@ battleground_template_id: 12         # its own slot; the same number is the Batt
 active: true                         # owns slot 12
 min_players_per_team: 1              # a MOBA keeps playing 2v3 rather than forfeiting
 max_players_per_team: 3              # 3v3
-min_level: 61                        # the bracket in mod_moba_bg_map.sql may not start below this
-max_level: 80
+min_level: 40                        # the bracket in mod_moba_bg_map.sql may not start below this
+max_level: 40
 
 kill_credit_window_ms: 15000         # last-hit window for kill credit
 assist_window_ms: 10000              # recent-damage window that grants an assist

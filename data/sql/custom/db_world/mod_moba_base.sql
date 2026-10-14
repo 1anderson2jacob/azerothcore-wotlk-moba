@@ -92,4 +92,4 @@ INSERT INTO `battleground_template`
 (`ID`, `MinPlayersPerTeam`, `MaxPlayersPerTeam`, `MinLvl`, `MaxLvl`,
  `AllianceStartLoc`, `AllianceStartO`, `HordeStartLoc`, `HordeStartO`,
  `StartMaxDist`, `Weight`, `ScriptName`, `Comment`) VALUES
-(12, 1, 3, 61, 80, 900500, 6.2737, 900501, 3.1396, 0, 1, '', 'twisted_treeline_v2 (MOBA)');
+(12, 1, 3, 40, 40, 900500, 6.2737, 900501, 3.1396, 0, 1, '', 'twisted_treeline_v2 (MOBA)');

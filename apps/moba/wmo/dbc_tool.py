@@ -54,14 +54,12 @@ EXPANSION   = 2                # WotLK
 # client offering a wider range than the server accepts queues into a silent refusal.
 BG_ID        = 12
 BG_MAX_GROUP = 3               # 3v3
-BG_MIN_LEVEL = 61
-BG_MAX_LEVEL = 80
-# The queue bracket, mirroring pvpdifficulty_dbc row 200 in that same SQL file. Wider
-# than BG_MIN/MAX_LEVEL on purpose -- stock Eye of the Storm ships the same mismatch
-# (BattlemasterList 61-80, PvpDifficulty 61-85).
+BG_MIN_LEVEL = 40
+BG_MAX_LEVEL = 40
+# The queue bracket, mirroring pvpdifficulty_dbc row 200 in that same SQL file.
 PVPDIFF_ID   = 200
-PVPDIFF_MIN  = 61
-PVPDIFF_MAX  = 85
+PVPDIFF_MIN  = 40
+PVPDIFF_MAX  = 40
 
 
 def open_archives():
@@ -204,8 +202,8 @@ def bml_overrides():
 
 def pvpdiff_overrides():
     # 6 fields: 0 ID, 1 MapID, 2 RangeIndex, 3 MinLevel, 4 MaxLevel, 5 Difficulty.
-    # One wide bracket at RangeIndex 0, mirroring the server's row so both sides agree
-    # on which bracket a player lands in.
+    # One bracket at RangeIndex 0, mirroring the server's row so both sides agree on
+    # which bracket a player lands in.
     return {1: ("i", MAP_ID), 2: ("i", 0),
             3: ("i", PVPDIFF_MIN), 4: ("i", PVPDIFF_MAX), 5: ("i", 0)}
 
