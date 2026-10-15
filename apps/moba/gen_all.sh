@@ -7,8 +7,9 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 # gen_creep_paths must precede gen_creep_roster: it locks the lane/slot waypoint
-# IDs the roster resolves each creep's WaypointPathId from. Everything else is
-# independent -- the ID-allocating generators own disjoint blocks.
+# IDs the roster resolves each creep's WaypointPathId from. gen_quests must follow
+# gen_creep_roster: it resolves last-hit targets through the creep lockfile.
+# Everything else is independent -- the ID-allocating generators own disjoint blocks.
 for gen in \
     gen_creep_paths.py \
     gen_creep_roster.py \

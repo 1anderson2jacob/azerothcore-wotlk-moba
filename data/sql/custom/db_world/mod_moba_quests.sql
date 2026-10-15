@@ -2,9 +2,10 @@
 -- GENERATED FILE -- do not hand-edit.
 -- Produced by apps/moba/gen_quests.py from apps/moba/maps/*/quest_config.yaml.
 -- Owns the quest givers and their spawns, the invisible credit entries, every
--- quest row and its text, the one-quest-per-animal conditions, and the baked
--- reward items. Every DELETE clears this generator's whole block
--- (apps/moba/id_blocks.json), so anything dropped from config goes too.
+-- quest row and its text, the one-quest-per-animal conditions, the quest block
+-- and kill-credit tables, and the baked reward items. Every DELETE clears this
+-- generator's whole block (apps/moba/id_blocks.json), so anything dropped from
+-- config goes too.
 -- ============================================================
 
 USE acore_world;
@@ -45,24 +46,24 @@ VALUES
 
 DELETE FROM `quest_template` WHERE `ID` BETWEEN 900000 AND 900099;
 INSERT INTO `quest_template`
-(`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `RewardXPDifficulty`, `AllowableRaces`, `RewardChoiceItemID1`, `RewardChoiceItemQuantity1`, `RewardChoiceItemID2`, `RewardChoiceItemQuantity2`, `RewardChoiceItemID3`, `RewardChoiceItemQuantity3`, `RewardChoiceItemID4`, `RewardChoiceItemQuantity4`, `RewardChoiceItemID5`, `RewardChoiceItemQuantity5`, `RewardChoiceItemID6`, `RewardChoiceItemQuantity6`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `LogTitle`, `LogDescription`, `QuestDescription`, `ObjectiveText1`, `VerifiedBuild`)
+(`ID`, `QuestType`, `QuestLevel`, `MinLevel`, `QuestSortID`, `QuestInfoID`, `RewardXPDifficulty`, `AllowableRaces`, `RewardChoiceItemID1`, `RewardChoiceItemQuantity1`, `RewardChoiceItemID2`, `RewardChoiceItemQuantity2`, `RewardChoiceItemID3`, `RewardChoiceItemQuantity3`, `RewardChoiceItemID4`, `RewardChoiceItemQuantity4`, `RewardChoiceItemID5`, `RewardChoiceItemQuantity5`, `RewardChoiceItemID6`, `RewardChoiceItemQuantity6`, `RequiredNpcOrGo1`, `RequiredNpcOrGoCount1`, `LogTitle`, `LogDescription`, `QuestDescription`, `ObjectiveText1`, `VerifiedBuild`)
 VALUES
 -- plate/tiger/1
-(900000, 2, 40, 0, 5000, 0, 0, 956900, 1, 956901, 1, 956902, 1, 956903, 1, 0, 0, 0, 0, 900504, 10, 'Way of the Tiger (1)', 'Land the killing blow on 10 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 10 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
+(900000, 2, 40, 0, 5000, 62, 0, 0, 956900, 1, 956901, 1, 956902, 1, 956903, 1, 0, 0, 0, 0, 900504, 10, 'Way of the Tiger (1)', 'Land the killing blow on 10 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 10 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
 -- plate/tiger/2
-(900001, 2, 40, 0, 5000, 0, 0, 956900, 1, 956901, 1, 956902, 1, 956903, 1, 0, 0, 0, 0, 900504, 15, 'Way of the Tiger (2)', 'Land the killing blow on 15 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 15 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
+(900001, 2, 40, 0, 5000, 62, 0, 0, 956900, 1, 956901, 1, 956902, 1, 956903, 1, 0, 0, 0, 0, 900504, 15, 'Way of the Tiger (2)', 'Land the killing blow on 15 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 15 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
 -- plate/tiger/3
-(900002, 2, 40, 0, 5000, 0, 0, 956900, 1, 956901, 1, 956902, 1, 956903, 1, 0, 0, 0, 0, 900504, 20, 'Way of the Tiger (3)', 'Land the killing blow on 20 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 20 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
+(900002, 2, 40, 0, 5000, 62, 0, 0, 956900, 1, 956901, 1, 956902, 1, 956903, 1, 0, 0, 0, 0, 900504, 20, 'Way of the Tiger (3)', 'Land the killing blow on 20 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 20 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
 -- plate/tiger/4
-(900003, 2, 40, 0, 5000, 0, 0, 956900, 1, 956901, 1, 956902, 1, 956903, 1, 0, 0, 0, 0, 900504, 25, 'Way of the Tiger (4)', 'Land the killing blow on 25 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 25 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
+(900003, 2, 40, 0, 5000, 62, 0, 0, 956900, 1, 956901, 1, 956902, 1, 956903, 1, 0, 0, 0, 0, 900504, 25, 'Way of the Tiger (4)', 'Land the killing blow on 25 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 25 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
 -- jewelry/tiger/1
-(900004, 2, 40, 0, 5000, 0, 0, 956904, 1, 956905, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900504, 10, 'Way of the Tiger (1)', 'Land the killing blow on 10 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 10 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
+(900004, 2, 40, 0, 5000, 62, 0, 0, 956904, 1, 956905, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900504, 10, 'Way of the Tiger (1)', 'Land the killing blow on 10 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 10 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
 -- jewelry/tiger/2
-(900005, 2, 40, 0, 5000, 0, 0, 956904, 1, 956905, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900504, 15, 'Way of the Tiger (2)', 'Land the killing blow on 15 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 15 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
+(900005, 2, 40, 0, 5000, 62, 0, 0, 956904, 1, 956905, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900504, 15, 'Way of the Tiger (2)', 'Land the killing blow on 15 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 15 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
 -- jewelry/tiger/3
-(900006, 2, 40, 0, 5000, 0, 0, 956904, 1, 956905, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900504, 20, 'Way of the Tiger (3)', 'Land the killing blow on 20 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 20 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
+(900006, 2, 40, 0, 5000, 62, 0, 0, 956904, 1, 956905, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900504, 20, 'Way of the Tiger (3)', 'Land the killing blow on 20 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 20 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
 -- jewelry/tiger/4
-(900007, 2, 40, 0, 5000, 0, 0, 956904, 1, 956905, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900504, 25, 'Way of the Tiger (4)', 'Land the killing blow on 25 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 25 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0);
+(900007, 2, 40, 0, 5000, 62, 0, 0, 956904, 1, 956905, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900504, 25, 'Way of the Tiger (4)', 'Land the killing blow on 25 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 25 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0);
 
 DELETE FROM `quest_template_addon` WHERE `ID` BETWEEN 900000 AND 900099;
 INSERT INTO `quest_template_addon`
@@ -194,6 +195,70 @@ VALUES
 (19, 0, 900007, 0, 0, 47, 0, 900001, 10, 0, 1, 'jewelry/tiger: not while plate/tiger is held'),
 (19, 0, 900007, 0, 0, 47, 0, 900002, 10, 0, 1, 'jewelry/tiger: not while plate/tiger is held'),
 (19, 0, 900007, 0, 0, 47, 0, 900003, 10, 0, 1, 'jewelry/tiger: not while plate/tiger is held');
+
+DROP TABLE IF EXISTS `mod_moba_quest_block`;
+CREATE TABLE `mod_moba_quest_block` (
+    `QuestId`     INT UNSIGNED NOT NULL,
+    `Map`         INT UNSIGNED NOT NULL,
+    `ResetsChain` TINYINT UNSIGNED NOT NULL DEFAULT 0,   -- 1 = restarts its chain
+    PRIMARY KEY (`QuestId`)
+);
+
+INSERT INTO `mod_moba_quest_block`
+(`QuestId`, `Map`, `ResetsChain`)
+VALUES
+-- plate/tiger/1
+(900000, 900, 0),
+-- plate/tiger/2
+(900001, 900, 0),
+-- plate/tiger/3
+(900002, 900, 0),
+-- plate/tiger/4
+(900003, 900, 0),
+-- jewelry/tiger/1
+(900004, 900, 0),
+-- jewelry/tiger/2
+(900005, 900, 0),
+-- jewelry/tiger/3
+(900006, 900, 0),
+-- jewelry/tiger/4
+(900007, 900, 0);
+
+DROP TABLE IF EXISTS `mod_moba_quest_credit`;
+CREATE TABLE `mod_moba_quest_credit` (
+    `CreatureEntry` INT UNSIGNED NOT NULL,
+    `Map`           INT UNSIGNED NOT NULL,
+    `CreditEntry`   INT UNSIGNED NOT NULL,
+    PRIMARY KEY (`CreatureEntry`)
+);
+
+INSERT INTO `mod_moba_quest_credit`
+(`CreatureEntry`, `Map`, `CreditEntry`)
+VALUES
+-- alliance_top_melee_right
+(900020, 900, 900504),
+-- alliance_top_melee_left
+(900021, 900, 900504),
+-- alliance_bot_melee_right
+(900030, 900, 900504),
+-- alliance_bot_melee_left
+(900031, 900, 900504),
+-- horde_top_melee_right
+(900022, 900, 900504),
+-- horde_top_melee_left
+(900023, 900, 900504),
+-- horde_bot_melee_right
+(900032, 900, 900504),
+-- horde_bot_melee_left
+(900033, 900, 900504),
+-- alliance_top_caster
+(900024, 900, 900504),
+-- alliance_bot_caster
+(900034, 900, 900504),
+-- horde_top_caster
+(900025, 900, 900504),
+-- horde_bot_caster
+(900035, 900, 900504);
 
 -- ============================================================
 -- Baked item copies: a source cloned once per suffix, each under an entry

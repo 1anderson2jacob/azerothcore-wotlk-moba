@@ -82,7 +82,7 @@ struct npc_moba_neutral : public ScriptedAI
         Player* p = killer ? killer->GetCharmerOrOwnerPlayerOrPlayerItself() : nullptr;
         moba->GrantDeathDrops(me, p, killer);
         if (p)
-            moba->CreditCreepKill(p);
+            moba->CreditCreepKill(p, me);
     }
 
 private:

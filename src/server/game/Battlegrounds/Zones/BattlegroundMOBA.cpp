@@ -18,6 +18,7 @@
 #include "MobaNeutralData.h"
 #include "MobaDropData.h"
 #include "MobaStoreData.h"
+#include "MobaQuestData.h"
 #include "UpdateData.h"
 #include "Timer.h"
 #include "Random.h"
@@ -68,6 +69,32 @@ namespace
             take(INVENTORY_SLOT_BAG_0, i, player->GetItemByPos(INVENTORY_SLOT_BAG_0, i));
 
         return destroyed;
+    }
+
+    // The `.quest remove` sequence (cs_quest.cpp): RemoveActiveQuest leaves the log slot,
+    // which is what the client draws, so a quest cleared without it stays on screen.
+    bool ClearMatchQuests(Player* player, std::vector<uint32> const& quests)
+    {
+        bool cleared = false;
+
+        for (uint32 questId : quests)
+        {
+            uint16 slot = player->FindQuestSlot(questId);
+            if (slot < MAX_QUEST_LOG_SIZE)
+            {
+                player->SetQuestSlot(slot, 0);
+                player->RemoveActiveQuest(questId, false);
+                cleared = true;
+            }
+
+            if (player->IsQuestRewarded(questId))
+            {
+                player->RemoveRewardedQuest(questId, false);
+                cleared = true;
+            }
+        }
+
+        return cleared;
     }
 }
 
@@ -386,6 +413,11 @@ void BattlegroundMOBA::AnnounceSurrenderTally(TeamId team)
 
 void BattlegroundMOBA::AddPlayer(Player* player)
 {
+    // Only a real leave erases a score (Battleground::RemovePlayerAtLeave), so no score
+    // means entering. Clearing quests on a reconnect's re-run would wipe mid-match
+    // progress and hand the rewards out again.
+    bool const entering = PlayerScores.find(player->GetGUID().GetCounter()) == PlayerScores.end();
+
     Battleground::AddPlayer(player);
     PlayerScores.emplace(player->GetGUID().GetCounter(), new BattlegroundMOBAScore(player->GetGUID()));
 
@@ -399,12 +431,16 @@ void BattlegroundMOBA::AddPlayer(Player* player)
     // Battleground::_ProcessJoin -- the first BG tick, AFTER players have ported in.
     // On the first match of a process this hook beats it.
     sMobaBaseDataStore->LoadIfNeeded();
+    sMobaQuestDataStore->LoadIfNeeded();
 
     // AddPlayer runs again on a reconnect and the wallet outlives RemovePlayer, so an
     // absent wallet entry is the "never been paid" test.
     if (MobaBaseConfig const* cfg = sMobaBaseDataStore->GetConfig(GetMapId()))
         if (cfg->startingGold && _wallets.find(player->GetGUID()) == _wallets.end())
             AddMatchGold(player, cfg->startingGold, MOBA_GOLD_SILENT); // a float here would be sent while the client is still loading
+
+    if (entering)
+        ClearMatchQuests(player, sMobaQuestDataStore->GetQuests(GetMapId()));
 }
 
 uint32 BattlegroundMOBA::GetMatchGold(Player* player) const
@@ -547,12 +583,16 @@ void BattlegroundMOBA::RemovePlayer(Player* player)
 
         // No ledger to consult: everything the match handed over carries a fork-owned
         // entry, so the range itself is the claim.
-        if (DestroyMatchItems(player))
+        bool const itemsDestroyed = DestroyMatchItems(player);
+        bool const questsCleared = ClearMatchQuests(player, sMobaQuestDataStore->GetQuests(GetMapId()));
+
+        if (itemsDestroyed || questsCleared)
         {
             // This runs in the tick the player is pulled from the world, so the normal
             // flush never reaches the client -- and the 3.3.5 client relocates its own
             // player object on a map change rather than recreating it, so stripped gear
-            // stays rendered until relog. Send the changed values synchronously.
+            // and cleared quest-log slots stay on screen until relog. Send the changed
+            // values synchronously.
             UpdateData upd;
             WorldPacket packet;
             player->BuildValuesUpdateBlockForPlayer(&upd, player);
@@ -750,7 +790,7 @@ void BattlegroundMOBA::HandleKillUnit(Creature* /*creature*/, Player* /*killer*/
     // credited from the creature AI's JustDied, which receives the real killer.
 }
 
-void BattlegroundMOBA::CreditCreepKill(Player* killer)
+void BattlegroundMOBA::CreditCreepKill(Player* killer, Creature* victim)
 {
     if (GetStatus() != STATUS_IN_PROGRESS || !killer)
         return;
@@ -761,6 +801,10 @@ void BattlegroundMOBA::CreditCreepKill(Player* killer)
         static_cast<BattlegroundMOBAScore*>(itr->second)->CreepKills++;
         SendScoreboard(killer); // CS is shown only to its owner -> refresh just them
     }
+
+    // No guid: given one, KilledMonsterCredit counts the corpse's own entry instead.
+    if (uint32 credit = sMobaQuestDataStore->GetKillCredit(victim->GetEntry()))
+        killer->KilledMonsterCredit(credit);
 }
 
 void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer, Unit* killerUnit)

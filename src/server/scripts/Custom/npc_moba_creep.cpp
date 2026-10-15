@@ -204,7 +204,7 @@ struct npc_moba_creep : public ScriptedAI
             {
                 moba->GrantDeathDrops(me, p, rewardSource);
                 if (p)
-                    moba->CreditCreepKill(p);
+                    moba->CreditCreepKill(p, me);
             }
         }
     }

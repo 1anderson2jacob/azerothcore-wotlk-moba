@@ -1,9 +1,10 @@
 # Quest givers and the gear chains they offer, for Twisted Treeline.
 # gen_quests.py turns this into data/sql/custom/db_world/mod_moba_quests.sql: the
 # givers and their spawns, every quest and its text, the one-quest-per-animal
-# conditions, the invisible credit entries and the baked reward items. Ids are
-# allocated into quest_config.lock.json -- never hand-edit it. A quest id must not
-# change once a client has seen it: the client caches quest text by id.
+# conditions, the invisible credit entries, the battleground's quest block and
+# kill-credit tables, and the baked reward items. Ids are allocated into
+# quest_config.lock.json -- never hand-edit it. A quest id must not change once a
+# client has seen it: the client caches quest text by id.
 #
 # A quest is written once per animal and expanded per reward set: every set whose
 # `animals` names it gets its own chain, one quest per `counts` entry, all sharing
@@ -12,6 +13,7 @@
 #   quest_sort_id   AreaTable id the quest log files these quests under
 #   quest_level     the quests' level, which colours them; nothing requires it
 #   item_level      every reward's stats are the suffix formula at this item level
+#   repeat_chains   true: turning in a chain's last tier restarts it at tier 1
 #   givers          one per reward set. `teams` holds one block per team (0 =
 #                   Alliance, 1 = Horde), which may override `name`.
 #     emotes        Emote ids the giver plays on each screen, 0 = none: offer;
@@ -22,6 +24,8 @@
 #     suffix        ItemRandomSuffix id; its stats come from suffix_points.json
 #     title         shown as "<title> (<tier>)"
 #     objective     `type` (last_hit only, so far) and the quest log's counter text
+#       targets     last_hit: units from creep_config.yaml's `units`; a last hit on
+#                   any creep row using one counts
 #     counts        one tier per entry -- a first guess until playtesting
 #     dialogue      summary is the "Quest Objectives" paragraph; offer, progress and
 #                   complete are the giver's text on each screen. {count} becomes
@@ -32,6 +36,7 @@ map: 900
 quest_sort_id: 5000
 quest_level: 40
 item_level: 45
+repeat_chains: false
 
 # The north and south ends of a five-giver row along the inner face of the
 # crescent, 2 yd off the wall, facing the spawn; mail, leather and cloth go between.
@@ -67,6 +72,7 @@ quests:
     title: "Way of the Tiger"
     objective:
       type: last_hit
+      targets: [alliance_footman, horde_grunt, alliance_mage, horde_shaman]
       text: "Minions slain"
     counts: [10, 15, 20, 25]
     dialogue:

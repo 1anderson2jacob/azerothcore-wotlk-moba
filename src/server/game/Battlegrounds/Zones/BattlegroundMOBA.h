@@ -228,8 +228,9 @@ public:
     // the last-hit bonus does not.
     void OnTowerDestroyed(Creature* tower, TeamId winnerTeamId, Player* lastHitter);
 
-    // Last-hit credit (CS) for a lane creep or a jungle neutral.
-    void CreditCreepKill(Player* killer);
+    // Last-hit credit for a lane creep or a jungle neutral: CS, and the quest objective
+    // the victim's entry feeds.
+    void CreditCreepKill(Player* killer, Creature* victim);
 
     // On-death drops for any minion. `killer` is the killing-blow player the caller is
     // willing to REWARD; `killerUnit` only names a side for team-wide drops when no

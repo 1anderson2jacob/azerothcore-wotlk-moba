@@ -12,13 +12,17 @@ data/sql/custom/db_world/mod_moba_quests.sql in full:
     quest_offer_reward  -- one quest per tier of every (reward set, animal) chain
   * creature_queststarter / creature_questender
   * conditions          -- at most one quest per animal in the log
+  * mod_moba_quest_block  -- every quest by map, and which ones restart their chain
+  * mod_moba_quest_credit -- the creatures whose last hit feeds a credit entry
   * item_template       -- the baked rewards, through item_copy.emit_baked_sql
 plus apps/moba/item_copies/quests.json, the Item.dbc manifest for the client patch.
 
 A quest is written once per animal and expanded per reward set: every chain of an
 animal shares its objective, text and credit entry, while emotes belong to the giver.
 Every id is allocated through id_alloc.py and recorded in <config-stem>.lock.json, one
-{key: id} section per namespace.
+{key: id} section per namespace. A last_hit quest's `targets` resolve through the
+bundle's creep_config.yaml and creep_config.lock.json, so gen_creep_roster.py runs
+first.
 
 Usage (from the repo root):
     python3 apps/moba/gen_quests.py
@@ -44,6 +48,8 @@ SUFFIX_POINTS = Path(__file__).parent / "suffix_points.json"
 OWNER = "quests"
 
 QUEST_TYPE_NORMAL = 2                    # quest_template.QuestType; 0 auto-completes
+QUEST_INFO_RAID = 62                     # QuestInfoID; the type a battleground's raid group
+                                         # can progress (Quest::IsAllowedInRaid)
 CONDITION_SOURCE_QUEST_AVAILABLE = 19
 CONDITION_QUESTSTATE = 47
 QUEST_HELD = (1 << 1) | (1 << 3)         # QUEST_STATUS_COMPLETE | QUEST_STATUS_INCOMPLETE
@@ -115,6 +121,7 @@ def validate(cfg, path, suffixes, unsupported, points):
         need(isinstance(cfg.get(key), int), f'"{key}" must be an integer')
     need(str(cfg["item_level"]) in points,
          f'item_level {cfg["item_level"]} has no RandPropPoints row in {SUFFIX_POINTS.name}')
+    need(isinstance(cfg.get("repeat_chains"), bool), '"repeat_chains" must be true or false')
 
     quests = cfg.get("quests")
     need(isinstance(quests, list) and quests, '"quests" must be a non-empty list')
@@ -135,6 +142,12 @@ def validate(cfg, path, suffixes, unsupported, points):
              f'(built: {sorted(BUILT_OBJECTIVES)})')
         need(isinstance(obj.get("text"), str) and obj["text"],
              f'quest "{key}": objective needs "text"')
+        if obj["type"] == "last_hit":
+            targets = obj.get("targets")
+            need(isinstance(targets, list) and targets
+                 and all(isinstance(t, str) for t in targets),
+                 f'quest "{key}": a last_hit objective needs "targets", a list of creep units')
+            need(len(set(targets)) == len(targets), f'quest "{key}": "targets" names a unit twice')
         counts = q.get("counts")
         need(isinstance(counts, list) and counts
              and all(isinstance(c, int) and c > 0 for c in counts),
@@ -235,6 +248,37 @@ def render(text, count, where):
     return out
 
 
+def resolve_kill_credits(path, cfg, credits):
+    """(creature entry, credit entry, creep key) for every creep row whose unit a
+    last_hit quest's `targets` names, read from the bundle's creep config and lock."""
+    creep_path = path.parent / "creep_config.yaml"
+    lock_path = path.parent / "creep_config.lock.json"
+    for needed in (creep_path, lock_path):
+        if not needed.is_file():
+            fail(f"{needed} not found -- {path}'s last_hit targets resolve through it; "
+                 "run gen_creep_roster.py first")
+    creeps = (yaml.safe_load(creep_path.read_text()) or {}).get("creeps") or []
+    entries = json.loads(lock_path.read_text()).get("entries", {})
+
+    out, claimed = [], {}
+    for q in cfg["quests"]:
+        if q["objective"]["type"] != "last_hit":
+            continue
+        for unit in q["objective"]["targets"]:
+            keys = [c["key"] for c in creeps if c.get("unit") == unit]
+            if not keys:
+                fail(f'{path}: quest "{q["key"]}": no creep in {creep_path} uses unit "{unit}"')
+            for key in keys:
+                if key not in entries:
+                    fail(f'{path}: creep "{key}" is not in {lock_path} -- run gen_creep_roster.py')
+                if key in claimed:
+                    fail(f'{path}: creep "{key}" is a target of both "{claimed[key]}" and '
+                         f'"{q["key"]}" -- mod_moba_quest_credit gives a creature one credit')
+                claimed[key] = q["key"]
+                out.append((entries[key], credits[q["key"]], key))
+    return out
+
+
 def build_map(path, cfg, lock, allocs, log, suffixes, points, bases):
     """One config's rows. Ids are taken in config order, so a first run numbers
     predictably."""
@@ -272,12 +316,13 @@ def build_map(path, cfg, lock, allocs, log, suffixes, points, bases):
         where = f'{path}: quest "{animal}"'
         for tier, (qid, count) in enumerate(zip(ids, q["counts"]), 1):
             quest_rows.append({
-                "id": qid, "key": f"{set_key}/{animal}/{tier}",
+                "id": qid, "key": f"{set_key}/{animal}/{tier}", "map": cfg["map"],
                 "level": cfg["quest_level"], "sort": cfg["quest_sort_id"],
                 "title": f'{q["title"]} ({tier})', "objective": q["objective"]["text"],
                 "credit": credits[animal], "count": count, "rewards": rewards,
                 "prev": ids[tier - 2] if tier > 1 else 0,
                 "next": ids[tier] if tier < len(ids) else 0,
+                "resets": cfg["repeat_chains"] and tier == len(ids),
                 "emotes": g["emotes"],
                 **{field: render(q["dialogue"][field], count, where)
                    for field in DIALOGUE_FIELDS},
@@ -289,8 +334,12 @@ def build_map(path, cfg, lock, allocs, log, suffixes, points, bases):
         relations += [(gv["entry"], qid) for gv in givers
                       if gv["giver"]["reward_set"] == set_key for qid in ids]
 
+    kill_credits = [(entry, cfg["map"], credit, key)
+                    for entry, credit, key in resolve_kill_credits(path, cfg, credits)]
+
     return {"givers": givers, "credits": list(credits.items()), "quests": quest_rows,
-            "conditions": conditions, "relations": relations, "bakes": bakes}
+            "conditions": conditions, "relations": relations, "bakes": bakes,
+            "kill_credits": kill_credits}
 
 
 def emit(rows, blocks):
@@ -307,9 +356,10 @@ def emit(rows, blocks):
         "-- GENERATED FILE -- do not hand-edit.",
         "-- Produced by apps/moba/gen_quests.py from apps/moba/maps/*/quest_config.yaml.",
         "-- Owns the quest givers and their spawns, the invisible credit entries, every",
-        "-- quest row and its text, the one-quest-per-animal conditions, and the baked",
-        "-- reward items. Every DELETE clears this generator's whole block",
-        "-- (apps/moba/id_blocks.json), so anything dropped from config goes too.",
+        "-- quest row and its text, the one-quest-per-animal conditions, the quest block",
+        "-- and kill-credit tables, and the baked reward items. Every DELETE clears this",
+        "-- generator's whole block (apps/moba/id_blocks.json), so anything dropped from",
+        "-- config goes too.",
         "-- ============================================================",
         "",
         "USE acore_world;",
@@ -365,13 +415,14 @@ def emit(rows, blocks):
         choices = q["rewards"] + [0] * (MAX_REWARD_CHOICES - len(q["rewards"]))
         quest_tuples.append(
             f'-- {q["key"]}\n'
-            f'({q["id"]}, {QUEST_TYPE_NORMAL}, {q["level"]}, 0, {q["sort"]}, 0, 0, '
+            f'({q["id"]}, {QUEST_TYPE_NORMAL}, {q["level"]}, 0, {q["sort"]}, {QUEST_INFO_RAID}, '
+            f'0, 0, '
             + ", ".join(f"{entry}, {1 if entry else 0}" for entry in choices)
             + f', {q["credit"]}, {q["count"]}, {sql_str(q["title"])}, {sql_str(q["summary"])}, '
             f'{sql_str(q["offer"])}, {sql_str(q["objective"])}, 0)')
     lines += ["", f"DELETE FROM `quest_template` WHERE {quest_win};"]
     lines += values("quest_template",
-                    ["ID", "QuestType", "QuestLevel", "MinLevel", "QuestSortID",
+                    ["ID", "QuestType", "QuestLevel", "MinLevel", "QuestSortID", "QuestInfoID",
                      "RewardXPDifficulty", "AllowableRaces", *choice_cols,
                      "RequiredNpcOrGo1", "RequiredNpcOrGoCount1", "LogTitle",
                      "LogDescription", "QuestDescription", "ObjectiveText1", "VerifiedBuild"],
@@ -417,6 +468,29 @@ def emit(rows, blocks):
                          f"{CONDITION_QUESTSTATE}, 0, {oid}, {QUEST_HELD}, 0, 1, {sql_str(note)})"
                          for qid, oid, note in rows["conditions"]])
 
+    lines += ["", "DROP TABLE IF EXISTS `mod_moba_quest_block`;",
+              "CREATE TABLE `mod_moba_quest_block` (",
+              "    `QuestId`     INT UNSIGNED NOT NULL,",
+              "    `Map`         INT UNSIGNED NOT NULL,",
+              "    `ResetsChain` TINYINT UNSIGNED NOT NULL DEFAULT 0,   -- 1 = restarts its chain",
+              "    PRIMARY KEY (`QuestId`)",
+              ");", ""]
+    lines += values("mod_moba_quest_block", ["QuestId", "Map", "ResetsChain"],
+                    [f'-- {q["key"]}\n({q["id"]}, {q["map"]}, {int(q["resets"])})'
+                     for q in rows["quests"]])
+
+    lines += ["", "DROP TABLE IF EXISTS `mod_moba_quest_credit`;",
+              "CREATE TABLE `mod_moba_quest_credit` (",
+              "    `CreatureEntry` INT UNSIGNED NOT NULL,",
+              "    `Map`           INT UNSIGNED NOT NULL,",
+              "    `CreditEntry`   INT UNSIGNED NOT NULL,",
+              "    PRIMARY KEY (`CreatureEntry`)",
+              ");"]
+    if rows["kill_credits"]:
+        lines += [""] + values("mod_moba_quest_credit", ["CreatureEntry", "Map", "CreditEntry"],
+                               [f"-- {key}\n({entry}, {map_id}, {credit})"
+                                for entry, map_id, credit, key in rows["kill_credits"]])
+
     lines += emit_baked_sql(OWNER, rows["bakes"])
     return "\n".join(lines) + "\n"
 
@@ -432,7 +506,8 @@ def generate(loaded, reg):
 
     allocs = {ns: id_alloc.Allocator(reg, ns, OWNER) for ns in (
         id_alloc.CREATURE_TEMPLATE, id_alloc.ITEM_TEMPLATE, id_alloc.QUEST_TEMPLATE)}
-    rows = {k: [] for k in ("givers", "credits", "quests", "conditions", "relations", "bakes")}
+    rows = {k: [] for k in ("givers", "credits", "quests", "conditions", "relations", "bakes",
+                            "kill_credits")}
     locks, log = {}, []
     for path, cfg in loaded:
         lock_path = path.with_suffix(".lock.json")
