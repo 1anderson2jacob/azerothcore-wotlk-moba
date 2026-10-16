@@ -24,8 +24,9 @@
 #     suffix        ItemRandomSuffix id; its stats come from suffix_points.json
 #     title         shown as "<title> (<tier>)"
 #     objective     `type` (last_hit only, so far) and the quest log's counter text
-#       targets     last_hit: units from creep_config.yaml's `units`; a last hit on
-#                   any creep row using one counts
+#       targets     last_hit, one list per config. `creeps` names units from
+#                   creep_config.yaml, and a last hit on any creep row using one
+#                   counts; `neutrals` names mob keys from neutral_config.yaml.
 #     counts        one tier per entry -- a first guess until playtesting
 #     dialogue      summary is the "Quest Objectives" paragraph; offer, progress and
 #                   complete are the giver's text on each screen. {count} becomes
@@ -60,10 +61,10 @@ givers:
 
 reward_sets:
   plate:                                     # Embossed Plate
-    animals: [tiger]
+    animals: [tiger, monkey]
     bases: { wrist: 9972, hands: 9967, waist: 9968, feet: 9973 }
   jewelry:                                   # Tellurium Necklace, Marsh Ring
-    animals: [tiger]
+    animals: [tiger, monkey]
     bases: { neck: 12023, ring: 12012 }
 
 quests:
@@ -72,7 +73,8 @@ quests:
     title: "Way of the Tiger"
     objective:
       type: last_hit
-      targets: [alliance_footman, horde_grunt, alliance_mage, horde_shaman]
+      targets:
+        creeps: [alliance_footman, horde_grunt, alliance_mage, horde_shaman]
       text: "Minions slain"
     counts: [10, 15, 20, 25]
     dialogue:
@@ -85,3 +87,25 @@ quests:
         strength will be yours to wear.
       progress: "The tiger is patient, but it is never idle. Your hunt is not finished."
       complete: "Clean kills, every one. The tiger has marked you, $N.$B$BChoose what you will carry from this hunt."
+
+  - key: monkey
+    suffix: 78
+    title: "Way of the Monkey"
+    objective:
+      type: last_hit
+      targets:
+        neutrals: [wolf_large, wolf_small, wraith_large, wraith_small, golem_large, golem_small]
+      text: "Jungle monsters slain"
+    counts: [21, 30, 42, 54]
+    dialogue:
+      summary: "Land the killing blow on {count} worgs, wraiths or golems in the jungle camps."
+      offer: >-
+        While the lanes grind against each other, the ground between them goes to
+        whoever is quick enough to take it, $N. The monkey does not wait on the
+        road for its meal. It goes into the trees, takes what it finds, and is gone
+        before anyone thinks to look.$B$BWorgs, wraiths and golems fill the camps
+        between the lanes, and they return as fast as they are cleared. Strike the
+        final blow on {count} of them, and the monkey's quickness will be yours to
+        wear.
+      progress: "The camps fill again while you stand here, $N. Back into the trees."
+      complete: "Quick hands, and never a wasted step. The monkey has marked you, $N.$B$BChoose what you will carry from this hunt."

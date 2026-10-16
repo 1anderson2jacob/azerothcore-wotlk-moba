@@ -23,7 +23,9 @@ VALUES
 -- jewelry/1
 (900503, 'Jeweler', 'Jewelry', 80, 80, 83, 2, 1.0, 1.14286, 0, 1, 770, 7, 0, 0, 1, 1, 1, 0, '', 0),
 -- tiger credit
-(900504, 'tiger quest credit', '', 1, 1, 35, 0, 1.0, 1.14286, 0, 1, 0, 10, 0, 0, 1, 1, 1, 128, '', 0);
+(900504, 'tiger quest credit', '', 1, 1, 35, 0, 1.0, 1.14286, 0, 1, 0, 10, 0, 0, 1, 1, 1, 128, '', 0),
+-- monkey credit
+(900505, 'monkey quest credit', '', 1, 1, 35, 0, 1.0, 1.14286, 0, 1, 0, 10, 0, 0, 1, 1, 1, 128, '', 0);
 
 DELETE FROM `creature_template_model` WHERE `CreatureID` BETWEEN 900500 AND 900599;
 INSERT INTO `creature_template_model`
@@ -33,7 +35,8 @@ VALUES
 (900501, 0, 1879, 1, 1, 0),
 (900502, 0, 12669, 1, 1, 0),
 (900503, 0, 12681, 1, 1, 0),
-(900504, 0, 11686, 1, 1, 0);
+(900504, 0, 11686, 1, 1, 0),
+(900505, 0, 11686, 1, 1, 0);
 
 DELETE FROM `creature` WHERE `guid` BETWEEN 900500 AND 900599 OR `id` BETWEEN 900500 AND 900599;
 INSERT INTO `creature`
@@ -56,6 +59,14 @@ VALUES
 (900002, 2, 40, 0, 5000, 62, 0, 0, 956900, 1, 956901, 1, 956902, 1, 956903, 1, 0, 0, 0, 0, 900504, 20, 'Way of the Tiger (3)', 'Land the killing blow on 20 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 20 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
 -- plate/tiger/4
 (900003, 2, 40, 0, 5000, 62, 0, 0, 956900, 1, 956901, 1, 956902, 1, 956903, 1, 0, 0, 0, 0, 900504, 25, 'Way of the Tiger (4)', 'Land the killing blow on 25 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 25 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
+-- plate/monkey/1
+(900008, 2, 40, 0, 5000, 62, 0, 0, 956906, 1, 956907, 1, 956908, 1, 956909, 1, 0, 0, 0, 0, 900505, 21, 'Way of the Monkey (1)', 'Land the killing blow on 21 worgs, wraiths or golems in the jungle camps.', 'While the lanes grind against each other, the ground between them goes to whoever is quick enough to take it, $N. The monkey does not wait on the road for its meal. It goes into the trees, takes what it finds, and is gone before anyone thinks to look.$B$BWorgs, wraiths and golems fill the camps between the lanes, and they return as fast as they are cleared. Strike the final blow on 21 of them, and the monkey''s quickness will be yours to wear.', 'Jungle monsters slain', 0),
+-- plate/monkey/2
+(900009, 2, 40, 0, 5000, 62, 0, 0, 956906, 1, 956907, 1, 956908, 1, 956909, 1, 0, 0, 0, 0, 900505, 30, 'Way of the Monkey (2)', 'Land the killing blow on 30 worgs, wraiths or golems in the jungle camps.', 'While the lanes grind against each other, the ground between them goes to whoever is quick enough to take it, $N. The monkey does not wait on the road for its meal. It goes into the trees, takes what it finds, and is gone before anyone thinks to look.$B$BWorgs, wraiths and golems fill the camps between the lanes, and they return as fast as they are cleared. Strike the final blow on 30 of them, and the monkey''s quickness will be yours to wear.', 'Jungle monsters slain', 0),
+-- plate/monkey/3
+(900010, 2, 40, 0, 5000, 62, 0, 0, 956906, 1, 956907, 1, 956908, 1, 956909, 1, 0, 0, 0, 0, 900505, 42, 'Way of the Monkey (3)', 'Land the killing blow on 42 worgs, wraiths or golems in the jungle camps.', 'While the lanes grind against each other, the ground between them goes to whoever is quick enough to take it, $N. The monkey does not wait on the road for its meal. It goes into the trees, takes what it finds, and is gone before anyone thinks to look.$B$BWorgs, wraiths and golems fill the camps between the lanes, and they return as fast as they are cleared. Strike the final blow on 42 of them, and the monkey''s quickness will be yours to wear.', 'Jungle monsters slain', 0),
+-- plate/monkey/4
+(900011, 2, 40, 0, 5000, 62, 0, 0, 956906, 1, 956907, 1, 956908, 1, 956909, 1, 0, 0, 0, 0, 900505, 54, 'Way of the Monkey (4)', 'Land the killing blow on 54 worgs, wraiths or golems in the jungle camps.', 'While the lanes grind against each other, the ground between them goes to whoever is quick enough to take it, $N. The monkey does not wait on the road for its meal. It goes into the trees, takes what it finds, and is gone before anyone thinks to look.$B$BWorgs, wraiths and golems fill the camps between the lanes, and they return as fast as they are cleared. Strike the final blow on 54 of them, and the monkey''s quickness will be yours to wear.', 'Jungle monsters slain', 0),
 -- jewelry/tiger/1
 (900004, 2, 40, 0, 5000, 62, 0, 0, 956904, 1, 956905, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900504, 10, 'Way of the Tiger (1)', 'Land the killing blow on 10 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 10 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
 -- jewelry/tiger/2
@@ -63,7 +74,15 @@ VALUES
 -- jewelry/tiger/3
 (900006, 2, 40, 0, 5000, 62, 0, 0, 956904, 1, 956905, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900504, 20, 'Way of the Tiger (3)', 'Land the killing blow on 20 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 20 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
 -- jewelry/tiger/4
-(900007, 2, 40, 0, 5000, 62, 0, 0, 956904, 1, 956905, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900504, 25, 'Way of the Tiger (4)', 'Land the killing blow on 25 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 25 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0);
+(900007, 2, 40, 0, 5000, 62, 0, 0, 956904, 1, 956905, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900504, 25, 'Way of the Tiger (4)', 'Land the killing blow on 25 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 25 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
+-- jewelry/monkey/1
+(900012, 2, 40, 0, 5000, 62, 0, 0, 956910, 1, 956911, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900505, 21, 'Way of the Monkey (1)', 'Land the killing blow on 21 worgs, wraiths or golems in the jungle camps.', 'While the lanes grind against each other, the ground between them goes to whoever is quick enough to take it, $N. The monkey does not wait on the road for its meal. It goes into the trees, takes what it finds, and is gone before anyone thinks to look.$B$BWorgs, wraiths and golems fill the camps between the lanes, and they return as fast as they are cleared. Strike the final blow on 21 of them, and the monkey''s quickness will be yours to wear.', 'Jungle monsters slain', 0),
+-- jewelry/monkey/2
+(900013, 2, 40, 0, 5000, 62, 0, 0, 956910, 1, 956911, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900505, 30, 'Way of the Monkey (2)', 'Land the killing blow on 30 worgs, wraiths or golems in the jungle camps.', 'While the lanes grind against each other, the ground between them goes to whoever is quick enough to take it, $N. The monkey does not wait on the road for its meal. It goes into the trees, takes what it finds, and is gone before anyone thinks to look.$B$BWorgs, wraiths and golems fill the camps between the lanes, and they return as fast as they are cleared. Strike the final blow on 30 of them, and the monkey''s quickness will be yours to wear.', 'Jungle monsters slain', 0),
+-- jewelry/monkey/3
+(900014, 2, 40, 0, 5000, 62, 0, 0, 956910, 1, 956911, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900505, 42, 'Way of the Monkey (3)', 'Land the killing blow on 42 worgs, wraiths or golems in the jungle camps.', 'While the lanes grind against each other, the ground between them goes to whoever is quick enough to take it, $N. The monkey does not wait on the road for its meal. It goes into the trees, takes what it finds, and is gone before anyone thinks to look.$B$BWorgs, wraiths and golems fill the camps between the lanes, and they return as fast as they are cleared. Strike the final blow on 42 of them, and the monkey''s quickness will be yours to wear.', 'Jungle monsters slain', 0),
+-- jewelry/monkey/4
+(900015, 2, 40, 0, 5000, 62, 0, 0, 956910, 1, 956911, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900505, 54, 'Way of the Monkey (4)', 'Land the killing blow on 54 worgs, wraiths or golems in the jungle camps.', 'While the lanes grind against each other, the ground between them goes to whoever is quick enough to take it, $N. The monkey does not wait on the road for its meal. It goes into the trees, takes what it finds, and is gone before anyone thinks to look.$B$BWorgs, wraiths and golems fill the camps between the lanes, and they return as fast as they are cleared. Strike the final blow on 54 of them, and the monkey''s quickness will be yours to wear.', 'Jungle monsters slain', 0);
 
 DELETE FROM `quest_template_addon` WHERE `ID` BETWEEN 900000 AND 900099;
 INSERT INTO `quest_template_addon`
@@ -73,10 +92,18 @@ VALUES
 (900001, 900000, 900002),
 (900002, 900001, 900003),
 (900003, 900002, 0),
+(900008, 0, 900009),
+(900009, 900008, 900010),
+(900010, 900009, 900011),
+(900011, 900010, 0),
 (900004, 0, 900005),
 (900005, 900004, 900006),
 (900006, 900005, 900007),
-(900007, 900006, 0);
+(900007, 900006, 0),
+(900012, 0, 900013),
+(900013, 900012, 900014),
+(900014, 900013, 900015),
+(900015, 900014, 0);
 
 DELETE FROM `quest_details` WHERE `ID` BETWEEN 900000 AND 900099;
 INSERT INTO `quest_details`
@@ -86,10 +113,18 @@ VALUES
 (900001, 1),
 (900002, 1),
 (900003, 1),
+(900008, 1),
+(900009, 1),
+(900010, 1),
+(900011, 1),
 (900004, 1),
 (900005, 1),
 (900006, 1),
-(900007, 1);
+(900007, 1),
+(900012, 1),
+(900013, 1),
+(900014, 1),
+(900015, 1);
 
 DELETE FROM `quest_request_items` WHERE `ID` BETWEEN 900000 AND 900099;
 INSERT INTO `quest_request_items`
@@ -99,10 +134,18 @@ VALUES
 (900001, 274, 'The tiger is patient, but it is never idle. Your hunt is not finished.'),
 (900002, 274, 'The tiger is patient, but it is never idle. Your hunt is not finished.'),
 (900003, 274, 'The tiger is patient, but it is never idle. Your hunt is not finished.'),
+(900008, 274, 'The camps fill again while you stand here, $N. Back into the trees.'),
+(900009, 274, 'The camps fill again while you stand here, $N. Back into the trees.'),
+(900010, 274, 'The camps fill again while you stand here, $N. Back into the trees.'),
+(900011, 274, 'The camps fill again while you stand here, $N. Back into the trees.'),
 (900004, 274, 'The tiger is patient, but it is never idle. Your hunt is not finished.'),
 (900005, 274, 'The tiger is patient, but it is never idle. Your hunt is not finished.'),
 (900006, 274, 'The tiger is patient, but it is never idle. Your hunt is not finished.'),
-(900007, 274, 'The tiger is patient, but it is never idle. Your hunt is not finished.');
+(900007, 274, 'The tiger is patient, but it is never idle. Your hunt is not finished.'),
+(900012, 274, 'The camps fill again while you stand here, $N. Back into the trees.'),
+(900013, 274, 'The camps fill again while you stand here, $N. Back into the trees.'),
+(900014, 274, 'The camps fill again while you stand here, $N. Back into the trees.'),
+(900015, 274, 'The camps fill again while you stand here, $N. Back into the trees.');
 
 DELETE FROM `quest_offer_reward` WHERE `ID` BETWEEN 900000 AND 900099;
 INSERT INTO `quest_offer_reward`
@@ -112,10 +155,18 @@ VALUES
 (900001, 66, 'Clean kills, every one. The tiger has marked you, $N.$B$BChoose what you will carry from this hunt.'),
 (900002, 66, 'Clean kills, every one. The tiger has marked you, $N.$B$BChoose what you will carry from this hunt.'),
 (900003, 66, 'Clean kills, every one. The tiger has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900008, 66, 'Quick hands, and never a wasted step. The monkey has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900009, 66, 'Quick hands, and never a wasted step. The monkey has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900010, 66, 'Quick hands, and never a wasted step. The monkey has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900011, 66, 'Quick hands, and never a wasted step. The monkey has marked you, $N.$B$BChoose what you will carry from this hunt.'),
 (900004, 2, 'Clean kills, every one. The tiger has marked you, $N.$B$BChoose what you will carry from this hunt.'),
 (900005, 2, 'Clean kills, every one. The tiger has marked you, $N.$B$BChoose what you will carry from this hunt.'),
 (900006, 2, 'Clean kills, every one. The tiger has marked you, $N.$B$BChoose what you will carry from this hunt.'),
-(900007, 2, 'Clean kills, every one. The tiger has marked you, $N.$B$BChoose what you will carry from this hunt.');
+(900007, 2, 'Clean kills, every one. The tiger has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900012, 2, 'Quick hands, and never a wasted step. The monkey has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900013, 2, 'Quick hands, and never a wasted step. The monkey has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900014, 2, 'Quick hands, and never a wasted step. The monkey has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900015, 2, 'Quick hands, and never a wasted step. The monkey has marked you, $N.$B$BChoose what you will carry from this hunt.');
 
 DELETE FROM `creature_queststarter` WHERE `quest` BETWEEN 900000 AND 900099 OR `id` BETWEEN 900500 AND 900599;
 INSERT INTO `creature_queststarter`
@@ -129,6 +180,14 @@ VALUES
 (900501, 900001),
 (900501, 900002),
 (900501, 900003),
+(900500, 900008),
+(900500, 900009),
+(900500, 900010),
+(900500, 900011),
+(900501, 900008),
+(900501, 900009),
+(900501, 900010),
+(900501, 900011),
 (900502, 900004),
 (900502, 900005),
 (900502, 900006),
@@ -136,7 +195,15 @@ VALUES
 (900503, 900004),
 (900503, 900005),
 (900503, 900006),
-(900503, 900007);
+(900503, 900007),
+(900502, 900012),
+(900502, 900013),
+(900502, 900014),
+(900502, 900015),
+(900503, 900012),
+(900503, 900013),
+(900503, 900014),
+(900503, 900015);
 
 DELETE FROM `creature_questender` WHERE `quest` BETWEEN 900000 AND 900099 OR `id` BETWEEN 900500 AND 900599;
 INSERT INTO `creature_questender`
@@ -150,6 +217,14 @@ VALUES
 (900501, 900001),
 (900501, 900002),
 (900501, 900003),
+(900500, 900008),
+(900500, 900009),
+(900500, 900010),
+(900500, 900011),
+(900501, 900008),
+(900501, 900009),
+(900501, 900010),
+(900501, 900011),
 (900502, 900004),
 (900502, 900005),
 (900502, 900006),
@@ -157,7 +232,15 @@ VALUES
 (900503, 900004),
 (900503, 900005),
 (900503, 900006),
-(900503, 900007);
+(900503, 900007),
+(900502, 900012),
+(900502, 900013),
+(900502, 900014),
+(900502, 900015),
+(900503, 900012),
+(900503, 900013),
+(900503, 900014),
+(900503, 900015);
 
 DELETE FROM `conditions` WHERE `SourceTypeOrReferenceId` = 19 AND `SourceEntry` BETWEEN 900000 AND 900099;
 INSERT INTO `conditions`
@@ -179,6 +262,22 @@ VALUES
 (19, 0, 900003, 0, 0, 47, 0, 900005, 10, 0, 1, 'plate/tiger: not while jewelry/tiger is held'),
 (19, 0, 900003, 0, 0, 47, 0, 900006, 10, 0, 1, 'plate/tiger: not while jewelry/tiger is held'),
 (19, 0, 900003, 0, 0, 47, 0, 900007, 10, 0, 1, 'plate/tiger: not while jewelry/tiger is held'),
+(19, 0, 900008, 0, 0, 47, 0, 900012, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900008, 0, 0, 47, 0, 900013, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900008, 0, 0, 47, 0, 900014, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900008, 0, 0, 47, 0, 900015, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900009, 0, 0, 47, 0, 900012, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900009, 0, 0, 47, 0, 900013, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900009, 0, 0, 47, 0, 900014, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900009, 0, 0, 47, 0, 900015, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900010, 0, 0, 47, 0, 900012, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900010, 0, 0, 47, 0, 900013, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900010, 0, 0, 47, 0, 900014, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900010, 0, 0, 47, 0, 900015, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900011, 0, 0, 47, 0, 900012, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900011, 0, 0, 47, 0, 900013, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900011, 0, 0, 47, 0, 900014, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
+(19, 0, 900011, 0, 0, 47, 0, 900015, 10, 0, 1, 'plate/monkey: not while jewelry/monkey is held'),
 (19, 0, 900004, 0, 0, 47, 0, 900000, 10, 0, 1, 'jewelry/tiger: not while plate/tiger is held'),
 (19, 0, 900004, 0, 0, 47, 0, 900001, 10, 0, 1, 'jewelry/tiger: not while plate/tiger is held'),
 (19, 0, 900004, 0, 0, 47, 0, 900002, 10, 0, 1, 'jewelry/tiger: not while plate/tiger is held'),
@@ -194,7 +293,23 @@ VALUES
 (19, 0, 900007, 0, 0, 47, 0, 900000, 10, 0, 1, 'jewelry/tiger: not while plate/tiger is held'),
 (19, 0, 900007, 0, 0, 47, 0, 900001, 10, 0, 1, 'jewelry/tiger: not while plate/tiger is held'),
 (19, 0, 900007, 0, 0, 47, 0, 900002, 10, 0, 1, 'jewelry/tiger: not while plate/tiger is held'),
-(19, 0, 900007, 0, 0, 47, 0, 900003, 10, 0, 1, 'jewelry/tiger: not while plate/tiger is held');
+(19, 0, 900007, 0, 0, 47, 0, 900003, 10, 0, 1, 'jewelry/tiger: not while plate/tiger is held'),
+(19, 0, 900012, 0, 0, 47, 0, 900008, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900012, 0, 0, 47, 0, 900009, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900012, 0, 0, 47, 0, 900010, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900012, 0, 0, 47, 0, 900011, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900013, 0, 0, 47, 0, 900008, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900013, 0, 0, 47, 0, 900009, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900013, 0, 0, 47, 0, 900010, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900013, 0, 0, 47, 0, 900011, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900014, 0, 0, 47, 0, 900008, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900014, 0, 0, 47, 0, 900009, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900014, 0, 0, 47, 0, 900010, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900014, 0, 0, 47, 0, 900011, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900015, 0, 0, 47, 0, 900008, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900015, 0, 0, 47, 0, 900009, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900015, 0, 0, 47, 0, 900010, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held'),
+(19, 0, 900015, 0, 0, 47, 0, 900011, 10, 0, 1, 'jewelry/monkey: not while plate/monkey is held');
 
 DROP TABLE IF EXISTS `mod_moba_quest_block`;
 CREATE TABLE `mod_moba_quest_block` (
@@ -215,6 +330,14 @@ VALUES
 (900002, 900, 0),
 -- plate/tiger/4
 (900003, 900, 0),
+-- plate/monkey/1
+(900008, 900, 0),
+-- plate/monkey/2
+(900009, 900, 0),
+-- plate/monkey/3
+(900010, 900, 0),
+-- plate/monkey/4
+(900011, 900, 0),
 -- jewelry/tiger/1
 (900004, 900, 0),
 -- jewelry/tiger/2
@@ -222,7 +345,15 @@ VALUES
 -- jewelry/tiger/3
 (900006, 900, 0),
 -- jewelry/tiger/4
-(900007, 900, 0);
+(900007, 900, 0),
+-- jewelry/monkey/1
+(900012, 900, 0),
+-- jewelry/monkey/2
+(900013, 900, 0),
+-- jewelry/monkey/3
+(900014, 900, 0),
+-- jewelry/monkey/4
+(900015, 900, 0);
 
 DROP TABLE IF EXISTS `mod_moba_quest_credit`;
 CREATE TABLE `mod_moba_quest_credit` (
@@ -258,7 +389,19 @@ VALUES
 -- horde_top_caster
 (900025, 900, 900504),
 -- horde_bot_caster
-(900035, 900, 900504);
+(900035, 900, 900504),
+-- wolf_large
+(900209, 900, 900505),
+-- wolf_small
+(900210, 900, 900505),
+-- wraith_large
+(900211, 900, 900505),
+-- wraith_small
+(900212, 900, 900505),
+-- golem_large
+(900213, 900, 900505),
+-- golem_small
+(900214, 900, 900505);
 
 -- ============================================================
 -- Baked item copies: a source cloned once per suffix, each under an entry
@@ -314,6 +457,34 @@ UPDATE `_moba_item_bake`
        `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
  WHERE `entry` = 9973;
 
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9972;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956906, `name` = 'Embossed Plate Bracers of the Monkey', `ItemLevel` = 45,
+       `stat_type1` = 3, `stat_value1` = 6, `stat_type2` = 7, `stat_value2` = 6,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9972;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9967;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956907, `name` = 'Embossed Plate Gauntlets of the Monkey', `ItemLevel` = 45,
+       `stat_type1` = 3, `stat_value1` = 9, `stat_type2` = 7, `stat_value2` = 9,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9967;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9968;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956908, `name` = 'Embossed Plate Girdle of the Monkey', `ItemLevel` = 45,
+       `stat_type1` = 3, `stat_value1` = 9, `stat_type2` = 7, `stat_value2` = 9,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9968;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9973;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956909, `name` = 'Embossed Plate Boots of the Monkey', `ItemLevel` = 45,
+       `stat_type1` = 3, `stat_value1` = 9, `stat_type2` = 7, `stat_value2` = 9,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9973;
+
 INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 12023;
 UPDATE `_moba_item_bake`
    SET `entry` = 956904, `name` = 'Tellurium Necklace of the Tiger', `ItemLevel` = 45,
@@ -328,8 +499,22 @@ UPDATE `_moba_item_bake`
        `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
  WHERE `entry` = 12012;
 
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 12023;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956910, `name` = 'Tellurium Necklace of the Monkey', `ItemLevel` = 45,
+       `stat_type1` = 3, `stat_value1` = 6, `stat_type2` = 7, `stat_value2` = 6,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 12023;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 12012;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956911, `name` = 'Marsh Ring of the Monkey', `ItemLevel` = 45,
+       `stat_type1` = 3, `stat_value1` = 6, `stat_type2` = 7, `stat_value2` = 6,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 12012;
+
 -- A copy the tracker lost would otherwise fail the INSERT on its key.
-DELETE FROM `item_template` WHERE `entry` IN (956900, 956901, 956902, 956903, 956904, 956905);
+DELETE FROM `item_template` WHERE `entry` IN (956900, 956901, 956902, 956903, 956906, 956907, 956908, 956909, 956904, 956905, 956910, 956911);
 INSERT INTO `item_template` SELECT * FROM `_moba_item_bake`;
 DROP TEMPORARY TABLE `_moba_item_bake`;
 
@@ -338,5 +523,11 @@ INSERT INTO `mod_moba_item_copy` (`Entry`, `Owner`) VALUES
 (956901, 'quests'),
 (956902, 'quests'),
 (956903, 'quests'),
+(956906, 'quests'),
+(956907, 'quests'),
+(956908, 'quests'),
+(956909, 'quests'),
 (956904, 'quests'),
-(956905, 'quests');
+(956905, 'quests'),
+(956910, 'quests'),
+(956911, 'quests');

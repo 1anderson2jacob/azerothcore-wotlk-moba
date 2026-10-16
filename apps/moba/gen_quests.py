@@ -21,8 +21,8 @@ A quest is written once per animal and expanded per reward set: every chain of a
 animal shares its objective, text and credit entry, while emotes belong to the giver.
 Every id is allocated through id_alloc.py and recorded in <config-stem>.lock.json, one
 {key: id} section per namespace. A last_hit quest's `targets` resolve through the
-bundle's creep_config.yaml and creep_config.lock.json, so gen_creep_roster.py runs
-first.
+bundle's creep and neutral configs and their lockfiles, so gen_creep_roster.py and
+gen_neutral_camps.py run first.
 
 Usage (from the repo root):
     python3 apps/moba/gen_quests.py
@@ -75,6 +75,14 @@ MAX_REWARD_CHOICES = 6                   # QUEST_REWARD_CHOICES_COUNT
 BUILT_OBJECTIVES = {"last_hit"}          # each other type arrives with its feed
 EMOTE_SCREENS = ("offer", "incomplete", "turn_in")
 DIALOGUE_FIELDS = ("summary", "offer", "progress", "complete")
+
+# A last_hit quest's targets.<kind> names rows of <config>.yaml by `field`.
+TARGET_SOURCES = {
+    "creeps": {"config": "creep_config", "rows": "creeps", "field": "unit",
+               "generator": "gen_creep_roster.py"},
+    "neutrals": {"config": "neutral_config", "rows": "mobs", "field": "key",
+                 "generator": "gen_neutral_camps.py"},
+}
 
 
 def fail(msg):
@@ -144,10 +152,14 @@ def validate(cfg, path, suffixes, unsupported, points):
              f'quest "{key}": objective needs "text"')
         if obj["type"] == "last_hit":
             targets = obj.get("targets")
-            need(isinstance(targets, list) and targets
-                 and all(isinstance(t, str) for t in targets),
-                 f'quest "{key}": a last_hit objective needs "targets", a list of creep units')
-            need(len(set(targets)) == len(targets), f'quest "{key}": "targets" names a unit twice')
+            need(isinstance(targets, dict) and targets and set(targets) <= set(TARGET_SOURCES),
+                 f'quest "{key}": a last_hit objective needs "targets", a mapping whose keys '
+                 f'are among {sorted(TARGET_SOURCES)}')
+            for kind, names in targets.items():
+                need(isinstance(names, list) and names and all(isinstance(n, str) for n in names),
+                     f'quest "{key}": targets.{kind} must be a non-empty list of names')
+                need(len(set(names)) == len(names),
+                     f'quest "{key}": targets.{kind} names something twice')
         counts = q.get("counts")
         need(isinstance(counts, list) and counts
              and all(isinstance(c, int) and c > 0 for c in counts),
@@ -248,34 +260,44 @@ def render(text, count, where):
     return out
 
 
-def resolve_kill_credits(path, cfg, credits):
-    """(creature entry, credit entry, creep key) for every creep row whose unit a
-    last_hit quest's `targets` names, read from the bundle's creep config and lock."""
-    creep_path = path.parent / "creep_config.yaml"
-    lock_path = path.parent / "creep_config.lock.json"
-    for needed in (creep_path, lock_path):
+def load_targets(path, kind):
+    """(rows, lock entries, config path, lock path) that `path`'s targets.<kind> resolve
+    through, read from its bundle."""
+    src = TARGET_SOURCES[kind]
+    cfg_path = path.parent / f'{src["config"]}.yaml'
+    lock_path = cfg_path.with_suffix(".lock.json")
+    for needed in (cfg_path, lock_path):
         if not needed.is_file():
-            fail(f"{needed} not found -- {path}'s last_hit targets resolve through it; "
-                 "run gen_creep_roster.py first")
-    creeps = (yaml.safe_load(creep_path.read_text()) or {}).get("creeps") or []
-    entries = json.loads(lock_path.read_text()).get("entries", {})
+            fail(f"{needed} not found -- {path}'s targets.{kind} resolve through it; "
+                 f'run {src["generator"]} first')
+    rows = (yaml.safe_load(cfg_path.read_text()) or {}).get(src["rows"]) or []
+    return rows, json.loads(lock_path.read_text()).get("entries", {}), cfg_path, lock_path
 
+
+def resolve_kill_credits(path, cfg, credits):
+    """(creature entry, credit entry, row key) for every creep or neutral row a
+    last_hit quest's `targets` names."""
     out, claimed = [], {}
     for q in cfg["quests"]:
         if q["objective"]["type"] != "last_hit":
             continue
-        for unit in q["objective"]["targets"]:
-            keys = [c["key"] for c in creeps if c.get("unit") == unit]
-            if not keys:
-                fail(f'{path}: quest "{q["key"]}": no creep in {creep_path} uses unit "{unit}"')
-            for key in keys:
-                if key not in entries:
-                    fail(f'{path}: creep "{key}" is not in {lock_path} -- run gen_creep_roster.py')
-                if key in claimed:
-                    fail(f'{path}: creep "{key}" is a target of both "{claimed[key]}" and '
-                         f'"{q["key"]}" -- mod_moba_quest_credit gives a creature one credit')
-                claimed[key] = q["key"]
-                out.append((entries[key], credits[q["key"]], key))
+        for kind, names in q["objective"]["targets"].items():
+            src = TARGET_SOURCES[kind]
+            rows, entries, cfg_path, lock_path = load_targets(path, kind)
+            for name in names:
+                keys = [r["key"] for r in rows if r.get(src["field"]) == name]
+                if not keys:
+                    fail(f'{path}: quest "{q["key"]}": no row under "{src["rows"]}" in '
+                         f'{cfg_path} has {src["field"]} "{name}"')
+                for key in keys:
+                    if key not in entries:
+                        fail(f'{path}: "{key}" is not in {lock_path} -- run {src["generator"]}')
+                    entry = entries[key]
+                    if entry in claimed:
+                        fail(f'{path}: "{key}" is a target of both "{claimed[entry]}" and '
+                             f'"{q["key"]}" -- mod_moba_quest_credit gives a creature one credit')
+                    claimed[entry] = q["key"]
+                    out.append((entry, credits[q["key"]], key))
     return out
 
 
