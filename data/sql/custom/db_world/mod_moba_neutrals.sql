@@ -15,9 +15,9 @@ INSERT INTO `creature_template`
 (`entry`, `difficulty_entry_1`, `difficulty_entry_2`, `difficulty_entry_3`, `KillCredit1`, `KillCredit2`, `name`, `subname`, `IconName`, `gossip_menu_id`, `minlevel`, `maxlevel`, `exp`, `faction`, `npcflag`, `speed_walk`, `speed_run`, `speed_swim`, `speed_flight`, `detection_range`, `rank`, `dmgschool`, `DamageModifier`, `BaseAttackTime`, `RangeAttackTime`, `BaseVariance`, `RangeVariance`, `unit_class`, `unit_flags`, `unit_flags2`, `dynamicflags`, `family`, `type`, `type_flags`, `lootid`, `pickpocketloot`, `skinloot`, `PetSpellDataId`, `VehicleId`, `mingold`, `maxgold`, `AIName`, `MovementType`, `HoverHeight`, `HealthModifier`, `ManaModifier`, `ArmorModifier`, `ExperienceModifier`, `RacialLeader`, `movementId`, `RegenHealth`, `CreatureImmunitiesId`, `flags_extra`, `ScriptName`, `VerifiedBuild`)
 VALUES
 -- wolf_large (from Alliance Battleguard #2279)
-(900209,0,0,0,0,0,'Ravenous Worg','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
+(900209,0,0,0,0,0,'Ravenous Worg','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,900209,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- wolf_small (from Alliance Battleguard #2279)
-(900210,0,0,0,0,0,'Worg Pup','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
+(900210,0,0,0,0,0,'Worg Pup','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,900210,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- wraith_large (from Alliance Battleguard #2279)
 (900211,0,0,0,0,0,'Greater Wraith','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- wraith_small (from Alliance Battleguard #2279)
@@ -168,6 +168,11 @@ VALUES
 (900215, 900, 12, 20);
 
 DELETE FROM `creature_loot_template` WHERE `Entry` BETWEEN 900200 AND 900249;
+INSERT INTO `creature_loot_template`
+(`Entry`, `Item`, `Reference`, `Chance`, `QuestRequired`, `LootMode`, `GroupId`, `MinCount`, `MaxCount`, `Comment`)
+VALUES
+(900209, 925812, 0, 100, 1, 1, 0, 1, 1, 'wolf_large (moba wolf quest drop)'),
+(900210, 925812, 0, 100, 1, 1, 0, 1, 1, 'wolf_small (moba wolf quest drop)');
 
 -- Drops, rolled and delivered by BattlegroundMOBA::GrantDeathDrops at
 -- the killing blow. Type 0 = buff (aura on the killer), 1 = gold
@@ -241,3 +246,31 @@ DELETE it FROM `item_template` it
 WHERE other.`Entry` IS NULL;
 
 DELETE FROM `mod_moba_item_copy` WHERE `Owner` = 'neutrals';
+
+-- Cloned through a temporary table rather than a column list: CREATE ... LIKE
+-- carries whatever schema the server actually has, so an upstream column add
+-- flows through untouched. DBUpdater::ApplyFile invokes the mysql CLI once per
+-- file, so one session spans these statements and the TEMPORARY table lives.
+DROP TEMPORARY TABLE IF EXISTS `_moba_item_copy`;
+CREATE TEMPORARY TABLE `_moba_item_copy` LIKE `item_template`;
+
+INSERT INTO `_moba_item_copy` SELECT * FROM `item_template` WHERE `entry` IN (25812);
+
+UPDATE `_moba_item_copy`
+   SET `SellPrice` = CASE `entry`
+           WHEN 25812 THEN 0
+           ELSE `SellPrice`
+       END;
+
+-- Renumber LAST. MySQL evaluates a multi-column SET left to right, so a CASE
+-- on `entry` folded into the UPDATE above would read the incremented value.
+UPDATE `_moba_item_copy` SET `entry` = `entry` + 900000;
+
+-- Rewrite rather than skip: another owner may already hold this entry from
+-- the same source, and this run's overrides are the current ones.
+DELETE FROM `item_template` WHERE `entry` IN (925812);
+INSERT INTO `item_template` SELECT * FROM `_moba_item_copy`;
+DROP TEMPORARY TABLE `_moba_item_copy`;
+
+INSERT INTO `mod_moba_item_copy` (`Entry`, `Owner`) VALUES
+(925812, 'neutrals');

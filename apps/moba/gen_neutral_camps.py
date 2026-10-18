@@ -59,11 +59,12 @@ from pathlib import Path
 # Shared machinery: SQL quoting, entry locking, source pinning, drops. Note
 # validate_source_columns checks the CREEP generator's override list, which
 # covers every column this generator stamps too.
-from gen_creep_roster import (apply_loot_overrides, build_drop_rows,
-                              check_source_digest, emit_drops_table_sql,
-                              emit_loot_template_sql, fail, get_entry, note,
-                              resolve_units, sql_value, validate_drops,
-                              validate_source_columns)
+from gen_creep_roster import (add_quest_drops, apply_loot_overrides,
+                              build_drop_rows, check_source_digest,
+                              emit_drops_table_sql, emit_loot_template_sql, fail,
+                              get_entry, note, resolve_units, sql_value,
+                              validate_drops, validate_source_columns)
+from gen_quests import collect_drops
 
 import id_alloc
 import sql_dump
@@ -394,6 +395,9 @@ def main():
         cfg = yaml.safe_load(cp.read_text())
         cfg["mobs"] = resolve_units(cfg, cp, "mobs", "mob", NEUTRAL_UNIT_FORBIDDEN_FIELDS)
         validate_config(cfg, cp)
+        quest_drops = collect_drops(cp.parent, "neutrals", {mob["key"] for mob in cfg["mobs"]})
+        for mob in cfg["mobs"]:
+            add_quest_drops(mob, quest_drops.get(mob["key"], []), f'mob "{mob["key"]}"')
         ranges = resolve_camp_ranges(cfg)
         lock = locks[cp]
         default_initial = cfg.get("initial_spawn_ms", DEFAULT_INITIAL_SPAWN_MS)

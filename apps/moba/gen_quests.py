@@ -5,7 +5,8 @@ MOBA quest generator.
 Reads per-map quest configs (apps/moba/maps/<mode>/quest_config.yaml) and generates
 data/sql/custom/db_world/mod_moba_quests.sql in full:
   * creature_template / creature_template_model -- the givers, one entry per team,
-                          and one invisible credit entry per animal
+                          and an invisible credit entry for each last_hit or volume
+                          animal
   * creature            -- the givers' spawns, guid == entry as gen_store.py spawns
                           shopkeepers
   * quest_template, quest_template_addon, quest_details, quest_request_items,
@@ -18,11 +19,13 @@ data/sql/custom/db_world/mod_moba_quests.sql in full:
 plus apps/moba/item_copies/quests.json, the Item.dbc manifest for the client patch.
 
 A quest is written once per animal and expanded per reward set: every chain of an
-animal shares its objective, text and credit entry, while emotes belong to the giver.
+animal shares its objective, text and any credit entry, while emotes belong to the giver.
 Every id is allocated through id_alloc.py and recorded in <config-stem>.lock.json, one
 {key: id} section per namespace. A last_hit quest's `targets` resolve through the
 bundle's creep and neutral configs and their lockfiles, so gen_creep_roster.py and
-gen_neutral_camps.py run first.
+gen_neutral_camps.py run first. They read this config in turn, through
+collect_drops(), for the drops a collect quest asks of their creatures -- the config
+only, never a lockfile, so the order holds.
 
 Usage (from the repo root):
     python3 apps/moba/gen_quests.py
@@ -36,7 +39,7 @@ from pathlib import Path
 import yaml
 
 import id_alloc
-from item_copy import emit_baked_sql, write_pair_manifest
+from item_copy import copy_entry, emit_baked_sql, write_pair_manifest
 from sql_dump import parse_tuple_at, unquote
 
 MAPS_DIR = Path(__file__).parent / "maps"
@@ -72,7 +75,8 @@ MAX_ITEM_STATS = 10
 MAX_ITEM_SPELLS = 5
 MAX_REWARD_CHOICES = 6                   # QUEST_REWARD_CHOICES_COUNT
 
-BUILT_OBJECTIVES = {"last_hit"}          # each other type arrives with its feed
+BUILT_OBJECTIVES = {"last_hit", "collect"}  # each other type arrives with its feed
+CREDIT_OBJECTIVES = {"last_hit", "volume"}  # the types counted against a credit entry
 EMOTE_SCREENS = ("offer", "incomplete", "turn_in")
 DIALOGUE_FIELDS = ("summary", "offer", "progress", "complete")
 
@@ -111,7 +115,7 @@ def load_bases(entries):
         if fields and len(fields) == len(cols) and fields[0] == m.group(1):
             rows.setdefault(int(m.group(1)), dict(zip(cols, (unquote(f) for f in fields))))
     if missing := sorted(set(entries) - set(rows)):
-        fail(f"base items not found in {ITEM_TEMPLATE_SQL}: {missing}")
+        fail(f"items not found in {ITEM_TEMPLATE_SQL}: {missing}")
     return rows
 
 
@@ -148,18 +152,15 @@ def validate(cfg, path, suffixes, unsupported, points):
         need(obj.get("type") in BUILT_OBJECTIVES,
              f'quest "{key}": objective type {obj.get("type")!r} is not built yet '
              f'(built: {sorted(BUILT_OBJECTIVES)})')
-        need(isinstance(obj.get("text"), str) and obj["text"],
-             f'quest "{key}": objective needs "text"')
+        if obj["type"] == "collect":
+            need("text" not in obj, f'quest "{key}": a collect objective takes no "text" -- '
+                 "the quest log labels it with the item's name")
+            check_collect(obj, f'{path}: quest "{key}"')
+        else:
+            need(isinstance(obj.get("text"), str) and obj["text"],
+                 f'quest "{key}": objective needs "text"')
         if obj["type"] == "last_hit":
-            targets = obj.get("targets")
-            need(isinstance(targets, dict) and targets and set(targets) <= set(TARGET_SOURCES),
-                 f'quest "{key}": a last_hit objective needs "targets", a mapping whose keys '
-                 f'are among {sorted(TARGET_SOURCES)}')
-            for kind, names in targets.items():
-                need(isinstance(names, list) and names and all(isinstance(n, str) for n in names),
-                     f'quest "{key}": targets.{kind} must be a non-empty list of names')
-                need(len(set(names)) == len(names),
-                     f'quest "{key}": targets.{kind} names something twice')
+            check_sources(obj, "targets", f'{path}: quest "{key}"')
         counts = q.get("counts")
         need(isinstance(counts, list) and counts
              and all(isinstance(c, int) and c > 0 for c in counts),
@@ -301,6 +302,71 @@ def resolve_kill_credits(path, cfg, credits):
     return out
 
 
+def check_sources(obj, field, where):
+    """Fail unless obj[field] maps kinds in TARGET_SOURCES to lists of names -- the
+    shape a last_hit's `targets` and a collect's `from` share."""
+    sources = obj.get(field)
+    if not (isinstance(sources, dict) and sources and set(sources) <= set(TARGET_SOURCES)):
+        fail(f'{where}: "{field}" must be a mapping whose keys are among '
+             f'{sorted(TARGET_SOURCES)}')
+    for kind, names in sources.items():
+        if not (isinstance(names, list) and names and all(isinstance(n, str) for n in names)):
+            fail(f'{where}: {field}.{kind} must be a non-empty list of names')
+        if len(set(names)) != len(names):
+            fail(f'{where}: {field}.{kind} names something twice')
+
+
+def check_collect(obj, where):
+    if not isinstance(obj.get("item"), int) or obj["item"] <= 0:
+        fail(f'{where}: a collect objective needs "item", a stock item entry')
+    check_sources(obj, "from", where)
+
+
+def collect_drops(bundle, kind, names):
+    """{name: [drop, ...]}: the item drop every collect quest in `bundle`'s quest config
+    asks of the creatures its from.<kind> names, for gen_creep_roster.py and
+    gen_neutral_camps.py to add to their own. `names` are those the caller's config
+    defines, and naming any other fails the run."""
+    path = bundle / "quest_config.yaml"
+    if not path.is_file():
+        return {}
+    src = TARGET_SOURCES[kind]
+    out = {}
+    for q in (yaml.safe_load(path.read_text()) or {}).get("quests") or []:
+        obj = q.get("objective") or {}
+        if obj.get("type") != "collect":
+            continue
+        where = f'{path}: quest "{q.get("key")}"'
+        check_collect(obj, where)
+        for name in obj["from"].get(kind, []):
+            if name not in names:
+                fail(f'{where}: no row under "{src["rows"]}" in {src["config"]}.yaml has '
+                     f'{src["field"]} "{name}"')
+            out.setdefault(name, []).append({"type": "item", "item": obj["item"],
+                                             "quest": q["key"]})
+    return out
+
+
+def check_collect_quests(path, cfg, items):
+    """Fail on a collect quest whose item cannot be carried to its largest count, or
+    whose `from` names a creature its config lacks -- the check collect_drops makes in
+    the creature generators, repeated so a run of this one alone still catches it."""
+    kinds = set()
+    for q in cfg["quests"]:
+        obj = q["objective"]
+        if obj["type"] != "collect":
+            continue
+        kinds.update(obj["from"])
+        row = items[obj["item"]]
+        if 0 < int(row["maxcount"]) < max(q["counts"]):
+            fail(f'{path}: quest "{q["key"]}": item {obj["item"]} "{row["name"]}" can be '
+                 f'carried {row["maxcount"]} at a time, short of its largest count, '
+                 f'{max(q["counts"])}')
+    for kind in sorted(kinds):
+        rows = load_targets(path, kind)[0]
+        collect_drops(path.parent, kind, {r.get(TARGET_SOURCES[kind]["field"]) for r in rows})
+
+
 def build_map(path, cfg, lock, allocs, log, suffixes, points, bases):
     """One config's rows. Ids are taken in config order, so a first run numbers
     predictably."""
@@ -315,7 +381,8 @@ def build_map(path, cfg, lock, allocs, log, suffixes, points, bases):
             key = f'{g["key"]}/{t["team"]}'
             givers.append({"key": key, "entry": take(lock, creatures, key, log),
                            "map": cfg["map"], "giver": g, "team": t})
-    credits = {key: take(lock, creatures, key, log) for key in quests}
+    credits = {key: take(lock, creatures, key, log) for key, q in quests.items()
+               if q["objective"]["type"] in CREDIT_OBJECTIVES}
 
     bakes, chains = [], {}
     for set_key, rs in cfg["reward_sets"].items():
@@ -340,8 +407,10 @@ def build_map(path, cfg, lock, allocs, log, suffixes, points, bases):
             quest_rows.append({
                 "id": qid, "key": f"{set_key}/{animal}/{tier}", "map": cfg["map"],
                 "level": cfg["quest_level"], "sort": cfg["quest_sort_id"],
-                "title": f'{q["title"]} ({tier})', "objective": q["objective"]["text"],
-                "credit": credits[animal], "count": count, "rewards": rewards,
+                "title": f'{q["title"]} ({tier})', "objective": q["objective"].get("text", ""),
+                "credit": credits.get(animal, 0), "count": count, "rewards": rewards,
+                "item": (copy_entry(q["objective"]["item"])
+                         if q["objective"]["type"] == "collect" else 0),
                 "prev": ids[tier - 2] if tier > 1 else 0,
                 "next": ids[tier] if tier < len(ids) else 0,
                 "resets": cfg["repeat_chains"] and tier == len(ids),
@@ -432,6 +501,8 @@ def emit(rows, blocks):
     # lets one row serve both teams.
     choice_cols = [c for i in range(1, MAX_REWARD_CHOICES + 1)
                    for c in (f"RewardChoiceItemID{i}", f"RewardChoiceItemQuantity{i}")]
+    # A count stands only beside its own objective's id: the loader logs a count with
+    # no id, or an id with no count, as a quest that can't be done (ObjectMgr.cpp:5509).
     quest_tuples = []
     for q in rows["quests"]:
         choices = q["rewards"] + [0] * (MAX_REWARD_CHOICES - len(q["rewards"]))
@@ -440,14 +511,17 @@ def emit(rows, blocks):
             f'({q["id"]}, {QUEST_TYPE_NORMAL}, {q["level"]}, 0, {q["sort"]}, {QUEST_INFO_RAID}, '
             f'0, 0, '
             + ", ".join(f"{entry}, {1 if entry else 0}" for entry in choices)
-            + f', {q["credit"]}, {q["count"]}, {sql_str(q["title"])}, {sql_str(q["summary"])}, '
+            + f', {q["credit"]}, {q["count"] if q["credit"] else 0}, '
+            f'{q["item"]}, {q["count"] if q["item"] else 0}, '
+            f'{sql_str(q["title"])}, {sql_str(q["summary"])}, '
             f'{sql_str(q["offer"])}, {sql_str(q["objective"])}, 0)')
     lines += ["", f"DELETE FROM `quest_template` WHERE {quest_win};"]
     lines += values("quest_template",
                     ["ID", "QuestType", "QuestLevel", "MinLevel", "QuestSortID", "QuestInfoID",
                      "RewardXPDifficulty", "AllowableRaces", *choice_cols,
-                     "RequiredNpcOrGo1", "RequiredNpcOrGoCount1", "LogTitle",
-                     "LogDescription", "QuestDescription", "ObjectiveText1", "VerifiedBuild"],
+                     "RequiredNpcOrGo1", "RequiredNpcOrGoCount1", "RequiredItemId1",
+                     "RequiredItemCount1", "LogTitle", "LogDescription", "QuestDescription",
+                     "ObjectiveText1", "VerifiedBuild"],
                     quest_tuples)
 
     lines += ["", f"DELETE FROM `quest_template_addon` WHERE {quest_win};"]
@@ -524,7 +598,11 @@ def generate(loaded, reg):
     for path, cfg in loaded:
         validate(cfg, path, suffixes, data["unsupported"], points)
     bases = load_bases({base for _path, cfg in loaded
-                        for rs in cfg["reward_sets"].values() for base in rs["bases"].values()})
+                        for rs in cfg["reward_sets"].values() for base in rs["bases"].values()}
+                       | {q["objective"]["item"] for _path, cfg in loaded for q in cfg["quests"]
+                          if q["objective"]["type"] == "collect"})
+    for path, cfg in loaded:
+        check_collect_quests(path, cfg, bases)
 
     allocs = {ns: id_alloc.Allocator(reg, ns, OWNER) for ns in (
         id_alloc.CREATURE_TEMPLATE, id_alloc.ITEM_TEMPLATE, id_alloc.QUEST_TEMPLATE)}

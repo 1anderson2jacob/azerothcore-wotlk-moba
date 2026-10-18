@@ -23,10 +23,18 @@
 #   quests
 #     suffix        ItemRandomSuffix id; its stats come from suffix_points.json
 #     title         shown as "<title> (<tier>)"
-#     objective     `type` (last_hit only, so far) and the quest log's counter text
+#     objective     `type`, last_hit or collect so far, and `text`, the quest log's
+#                   counter label. Collect takes no `text`: the log names the item.
 #       targets     last_hit, one list per config. `creeps` names units from
 #                   creep_config.yaml, and a last hit on any creep row using one
 #                   counts; `neutrals` names mob keys from neutral_config.yaml.
+#       item        collect: a stock item, granted as its +900000 copy. Its
+#                   maxcount must be 0 or at least the largest count.
+#       from        collect: the creatures that drop `item`, named as `targets`
+#                   names them. Each corpse drops one to its killing blow, if that
+#                   player holds the quest. gen_creep_roster.py and
+#                   gen_neutral_camps.py write these drops, so re-run them after
+#                   changing `item` or `from`.
 #     counts        one tier per entry -- a first guess until playtesting
 #     dialogue      summary is the "Quest Objectives" paragraph; offer, progress and
 #                   complete are the giver's text on each screen. {count} becomes
@@ -61,10 +69,10 @@ givers:
 
 reward_sets:
   plate:                                     # Embossed Plate
-    animals: [tiger, monkey]
+    animals: [tiger, monkey, bear, boar, wolf]
     bases: { wrist: 9972, hands: 9967, waist: 9968, feet: 9973 }
   jewelry:                                   # Tellurium Necklace, Marsh Ring
-    animals: [tiger, monkey]
+    animals: [tiger, monkey, bear, boar, wolf]
     bases: { neck: 12023, ring: 12012 }
 
 quests:
@@ -109,3 +117,66 @@ quests:
         wear.
       progress: "The camps fill again while you stand here, $N. Back into the trees."
       complete: "Quick hands, and never a wasted step. The monkey has marked you, $N.$B$BChoose what you will carry from this hunt."
+
+  - key: bear
+    suffix: 68
+    title: "Way of the Bear"
+    objective:
+      type: collect
+      item: 44529                              # Demolisher Parts
+      from:
+        creeps: [alliance_demolisher, horde_demolisher]
+    counts: [2, 3, 3, 4]
+    dialogue:
+      summary: "Land the killing blow on enemy siege minions and salvage {count} Demolisher Parts from the wreckage."
+      offer: >-
+        The bear does not chase every rabbit, $N. It waits for the prey worth the
+        effort, and once its claws are in, it does not let go.$B$BEvery so often
+        the enemy sends a demolisher down each lane: slow, armored, and built to
+        bring down our towers. Break one, and pull what you can from the wreck.
+        Bring me {count} Demolisher Parts, and the bear's endurance will be yours
+        to wear.
+      progress: "Siege engines are few and far between, $N. Be waiting when the next one comes."
+      complete: "Every one of these is a tower the enemy will not take. The bear has marked you, $N.$B$BChoose what you will carry from this hunt."
+
+  - key: boar
+    suffix: 12
+    title: "Way of the Boar"
+    objective:
+      type: collect
+      item: 17422                              # Armor Scraps
+      from:
+        creeps: [alliance_footman, horde_grunt, alliance_mage, horde_shaman]
+    counts: [10, 15, 20, 25]
+    dialogue:
+      summary: "Land the killing blow on enemy melee or caster minions and gather {count} Armor Scraps from them."
+      offer: >-
+        The boar is not clever, $N, and it has never needed to be. It roots
+        through the same ground day after day and comes away fed, while cleverer
+        beasts go hungry.$B$BThe enemy sends its minions down these lanes in
+        armor that will not save them, and each one you finish leaves a little of
+        it behind. Gather {count} Armor Scraps from the fallen, and the boar's
+        stubbornness will be yours to wear.
+      progress: "Not enough yet, $N. The boar keeps digging."
+      complete: "A heavy haul, and every scrap of it earned. The boar has marked you, $N.$B$BChoose what you will carry from this hunt."
+
+  - key: wolf
+    suffix: 13
+    title: "Way of the Wolf"
+    objective:
+      type: collect
+      item: 25812                              # Timber Worg Pelt
+      from:
+        neutrals: [wolf_large, wolf_small]
+    counts: [6, 9, 12, 18]
+    dialogue:
+      summary: "Land the killing blow on worgs in the jungle camps and take {count} Timber Worg Pelts from them."
+      offer: >-
+        A lone wolf is a meal for something larger, $N. A wolf that knows its
+        ground is what everything else learns to fear.$B$BWorgs den in the jungle
+        between the lanes, and they return to their dens as fast as they are
+        cleared. Learn where they lie, hunt them each time they come back, and
+        bring me {count} of their pelts. Do that, and the wolf's cunning will be
+        yours to wear.
+      progress: "The worgs will be back in their dens by now, $N. So should you."
+      complete: "Thick pelts, cleanly taken. The wolf has marked you, $N.$B$BChoose what you will carry from this hunt."

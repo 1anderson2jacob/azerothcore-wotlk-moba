@@ -835,6 +835,10 @@ void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer, Unit* k
         victim->SetLootRecipient(killer);
         victim->loot.roundRobinPlayer = killer->GetGUID();
         victim->loot.loot_type        = LOOT_CORPSE;
+
+        // Unit::Kill decided who sees quest drops for the first tapper's group only, and
+        // the other team can tap a neutral first.
+        victim->loot.FillNotNormalLootFor(killer);
     }
     else
     {

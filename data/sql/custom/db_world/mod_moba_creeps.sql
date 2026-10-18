@@ -25,13 +25,13 @@ VALUES
 -- horde_top_melee_left (from Alliance Battleguard #2279)
 (900023,0,0,0,0,0,'Horde Grunt','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,0,0,1,2000,2000,1,1,1,8,2048,0,0,7,0,900023,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
 -- alliance_top_caster (from Dalaran Mage #1914)
-(900024,0,0,0,0,0,'Alliance Mage','MOBA Minion',NULL,0,80,80,0,84,0,1,0.98571,1,1,18,0,0,1,2000,2000,1,1,8,8,2048,0,0,7,0,0,0,0,0,0,0,0,'',1,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
+(900024,0,0,0,0,0,'Alliance Mage','MOBA Minion',NULL,0,80,80,0,84,0,1,0.98571,1,1,18,0,0,1,2000,2000,1,1,8,8,2048,0,0,7,0,900024,0,0,0,0,0,0,'',1,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
 -- horde_top_caster (from Warsong Shaman #11683)
-(900025,0,0,0,0,0,'Horde Shaman','MOBA Minion',NULL,0,80,80,0,83,0,1,0.98571,1,1,20,0,0,1,2000,2000,1,1,8,32776,2048,0,0,7,0,0,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
+(900025,0,0,0,0,0,'Horde Shaman','MOBA Minion',NULL,0,80,80,0,83,0,1,0.98571,1,1,20,0,0,1,2000,2000,1,1,8,32776,2048,0,0,7,0,900025,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
 -- alliance_top_siege (from Demolisher #34775)
-(900026,0,0,0,0,0,'Alliance Demolisher','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
+(900026,0,0,0,0,0,'Alliance Demolisher','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,900026,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
 -- horde_top_siege (from Demolisher #34775)
-(900027,0,0,0,0,0,'Horde Demolisher','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
+(900027,0,0,0,0,0,'Horde Demolisher','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,900027,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
 -- alliance_top_super (from Demolisher #34775)
 (900028,0,0,0,0,0,'Alliance Super Minion','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.6,1,0.5,1,0,0,0,0,2097152,'npc_moba_creep',0),
 -- horde_top_super (from Demolisher #34775)
@@ -45,13 +45,13 @@ VALUES
 -- horde_bot_melee_left (from Alliance Battleguard #2279)
 (900033,0,0,0,0,0,'Horde Grunt','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,0,0,1,2000,2000,1,1,1,8,2048,0,0,7,0,900033,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
 -- alliance_bot_caster (from Dalaran Mage #1914)
-(900034,0,0,0,0,0,'Alliance Mage','MOBA Minion',NULL,0,80,80,0,84,0,1,0.98571,1,1,18,0,0,1,2000,2000,1,1,8,8,2048,0,0,7,0,0,0,0,0,0,0,0,'',1,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
+(900034,0,0,0,0,0,'Alliance Mage','MOBA Minion',NULL,0,80,80,0,84,0,1,0.98571,1,1,18,0,0,1,2000,2000,1,1,8,8,2048,0,0,7,0,900034,0,0,0,0,0,0,'',1,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
 -- horde_bot_caster (from Warsong Shaman #11683)
-(900035,0,0,0,0,0,'Horde Shaman','MOBA Minion',NULL,0,80,80,0,83,0,1,0.98571,1,1,20,0,0,1,2000,2000,1,1,8,32776,2048,0,0,7,0,0,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
+(900035,0,0,0,0,0,'Horde Shaman','MOBA Minion',NULL,0,80,80,0,83,0,1,0.98571,1,1,20,0,0,1,2000,2000,1,1,8,32776,2048,0,0,7,0,900035,0,0,0,0,0,0,'',0,1,0.15,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
 -- alliance_bot_siege (from Demolisher #34775)
-(900036,0,0,0,0,0,'Alliance Demolisher','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
+(900036,0,0,0,0,0,'Alliance Demolisher','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,900036,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
 -- horde_bot_siege (from Demolisher #34775)
-(900037,0,0,0,0,0,'Horde Demolisher','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
+(900037,0,0,0,0,0,'Horde Demolisher','MOBA Minion',NULL,0,80,80,0,83,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,900037,0,0,0,0,0,0,'',0,1,0.3,1,0.25,1,0,0,0,0,2097152,'npc_moba_creep',0),
 -- alliance_bot_super (from Demolisher #34775)
 (900038,0,0,0,0,0,'Alliance Super Minion','MOBA Minion',NULL,0,80,80,0,84,0,1.2,0.98571,1,1,20,1,0,1,2000,2000,1,1,1,16392,2048,0,0,7,131080,0,0,0,0,0,0,0,'',0,1,0.6,1,0.5,1,0,0,0,0,2097152,'npc_moba_creep',0),
 -- horde_bot_super (from Demolisher #34775)
@@ -173,13 +173,29 @@ INSERT INTO `creature_loot_template`
 (`Entry`, `Item`, `Reference`, `Chance`, `QuestRequired`, `LootMode`, `GroupId`, `MinCount`, `MaxCount`, `Comment`)
 VALUES
 (900020, 933470, 0, 100, 0, 1, 0, 1, 1, 'alliance_top_melee_right (moba drop)'),
+(900020, 917422, 0, 100, 1, 1, 0, 1, 1, 'alliance_top_melee_right (moba boar quest drop)'),
 (900021, 933470, 0, 100, 0, 1, 0, 1, 1, 'alliance_top_melee_left (moba drop)'),
+(900021, 917422, 0, 100, 1, 1, 0, 1, 1, 'alliance_top_melee_left (moba boar quest drop)'),
 (900022, 933470, 0, 100, 0, 1, 0, 1, 1, 'horde_top_melee_right (moba drop)'),
+(900022, 917422, 0, 100, 1, 1, 0, 1, 1, 'horde_top_melee_right (moba boar quest drop)'),
 (900023, 933470, 0, 100, 0, 1, 0, 1, 1, 'horde_top_melee_left (moba drop)'),
+(900023, 917422, 0, 100, 1, 1, 0, 1, 1, 'horde_top_melee_left (moba boar quest drop)'),
+(900024, 917422, 0, 100, 1, 1, 0, 1, 1, 'alliance_top_caster (moba boar quest drop)'),
+(900025, 917422, 0, 100, 1, 1, 0, 1, 1, 'horde_top_caster (moba boar quest drop)'),
+(900026, 944529, 0, 100, 1, 1, 0, 1, 1, 'alliance_top_siege (moba bear quest drop)'),
+(900027, 944529, 0, 100, 1, 1, 0, 1, 1, 'horde_top_siege (moba bear quest drop)'),
 (900030, 933470, 0, 100, 0, 1, 0, 1, 1, 'alliance_bot_melee_right (moba drop)'),
+(900030, 917422, 0, 100, 1, 1, 0, 1, 1, 'alliance_bot_melee_right (moba boar quest drop)'),
 (900031, 933470, 0, 100, 0, 1, 0, 1, 1, 'alliance_bot_melee_left (moba drop)'),
+(900031, 917422, 0, 100, 1, 1, 0, 1, 1, 'alliance_bot_melee_left (moba boar quest drop)'),
 (900032, 933470, 0, 100, 0, 1, 0, 1, 1, 'horde_bot_melee_right (moba drop)'),
-(900033, 933470, 0, 100, 0, 1, 0, 1, 1, 'horde_bot_melee_left (moba drop)');
+(900032, 917422, 0, 100, 1, 1, 0, 1, 1, 'horde_bot_melee_right (moba boar quest drop)'),
+(900033, 933470, 0, 100, 0, 1, 0, 1, 1, 'horde_bot_melee_left (moba drop)'),
+(900033, 917422, 0, 100, 1, 1, 0, 1, 1, 'horde_bot_melee_left (moba boar quest drop)'),
+(900034, 917422, 0, 100, 1, 1, 0, 1, 1, 'alliance_bot_caster (moba boar quest drop)'),
+(900035, 917422, 0, 100, 1, 1, 0, 1, 1, 'horde_bot_caster (moba boar quest drop)'),
+(900036, 944529, 0, 100, 1, 1, 0, 1, 1, 'alliance_bot_siege (moba bear quest drop)'),
+(900037, 944529, 0, 100, 1, 1, 0, 1, 1, 'horde_bot_siege (moba bear quest drop)');
 
 -- Drops, rolled and delivered by BattlegroundMOBA::GrantDeathDrops at
 -- the killing blow. Type 0 = buff (aura on the killer), 1 = gold
@@ -295,11 +311,13 @@ DELETE FROM `mod_moba_item_copy` WHERE `Owner` = 'creeps';
 DROP TEMPORARY TABLE IF EXISTS `_moba_item_copy`;
 CREATE TEMPORARY TABLE `_moba_item_copy` LIKE `item_template`;
 
-INSERT INTO `_moba_item_copy` SELECT * FROM `item_template` WHERE `entry` IN (33470);
+INSERT INTO `_moba_item_copy` SELECT * FROM `item_template` WHERE `entry` IN (17422, 33470, 44529);
 
 UPDATE `_moba_item_copy`
    SET `SellPrice` = CASE `entry`
+           WHEN 17422 THEN 0
            WHEN 33470 THEN 100
+           WHEN 44529 THEN 0
            ELSE `SellPrice`
        END;
 
@@ -309,9 +327,11 @@ UPDATE `_moba_item_copy` SET `entry` = `entry` + 900000;
 
 -- Rewrite rather than skip: another owner may already hold this entry from
 -- the same source, and this run's overrides are the current ones.
-DELETE FROM `item_template` WHERE `entry` IN (933470);
+DELETE FROM `item_template` WHERE `entry` IN (917422, 933470, 944529);
 INSERT INTO `item_template` SELECT * FROM `_moba_item_copy`;
 DROP TEMPORARY TABLE `_moba_item_copy`;
 
 INSERT INTO `mod_moba_item_copy` (`Entry`, `Owner`) VALUES
-(933470, 'creeps');
+(917422, 'creeps'),
+(933470, 'creeps'),
+(944529, 'creeps');

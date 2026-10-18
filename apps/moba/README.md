@@ -10,10 +10,13 @@ those and emit one combined SQL file per content type into
 > **Requires PyYAML** (configs are YAML): `pip3 install pyyaml`.
 
 > **Run `apps/moba/gen_all.sh`** to regenerate everything. It cds to the repo
-> root itself (generators resolve their output paths relative to it) and runs
-> `gen_creep_paths.py` before `gen_creep_roster.py` — the roster reads each creep's
-> `WaypointPathId` and `ReferencePathId` out of the lane lockfile, and it is the only
-> ordering constraint between generators. Each script stays runnable alone.
+> root itself (generators resolve their output paths relative to it) and keeps the
+> two ordering constraints between generators: `gen_creep_paths.py` before
+> `gen_creep_roster.py`, which reads each creep's `WaypointPathId` and
+> `ReferencePathId` out of the lane lockfile; and `gen_quests.py` after
+> `gen_creep_roster.py` and `gen_neutral_camps.py`, whose lockfiles its last-hit
+> `targets` resolve through. Those two read `quest_config.yaml` in turn, but only
+> the config, so the order holds. Each script stays runnable alone.
 
 **Workflows live in `.github/MOBA_GUIDE.md`** — walking a lane, adding a creep,
 moving a tower. **Per-field semantics live in each config's own YAML header**, next to
@@ -28,14 +31,14 @@ emits a `.blend` and a client patch rather than SQL, is not part of
 
 | Generator | Reads | Writes |
 |---|---|---|
-| `gen_creep_roster.py` | `maps/<mode>/creep_config.yaml` + `data/sql/base/db_world/creature_template.sql` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data`, `mod_moba_creep_drops`, native `creature_loot_template` rows, and the `item_template` copies + `mod_moba_item_copy` rows behind its item drops. Also writes `item_copies/creeps.json` — see Item copies |
-| `gen_neutral_camps.py` | `maps/<mode>/neutral_config.yaml` + `data/sql/base/db_world/creature_template.sql` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior/drops tables, native `creature_loot_template` rows, and the `item_template` copies + `mod_moba_item_copy` rows behind its item drops. Also writes `item_copies/neutrals.json` — see Item copies |
+| `gen_creep_roster.py` | `maps/<mode>/creep_config.yaml` + the bundle's `quest_config.yaml` (collect quests' drops) + `data/sql/base/db_world/creature_template.sql` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data`, `mod_moba_creep_drops`, native `creature_loot_template` rows, and the `item_template` copies + `mod_moba_item_copy` rows behind its item drops. Also writes `item_copies/creeps.json` — see Item copies |
+| `gen_neutral_camps.py` | `maps/<mode>/neutral_config.yaml` + the bundle's `quest_config.yaml` (collect quests' drops) + `data/sql/base/db_world/creature_template.sql` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior/drops tables, native `creature_loot_template` rows, and the `item_template` copies + `mod_moba_item_copy` rows behind its item drops. Also writes `item_copies/neutrals.json` — see Item copies |
 | `gen_creep_paths.py` | `maps/<mode>/lane_config.yaml` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data`, plus one bare centreline path per lane per direction as the speed-compensation reference |
 | `gen_tower_data.py` | `maps/<mode>/tower_config.yaml` | `mod_moba_towers.sql` — `creature_template`, models, `mod_moba_tower_data` |
 | `gen_base.py` | `maps/<mode>/base_config.yaml` | `mod_moba_base.sql` — `mod_moba_base`, the spawn-dome `gameobject_template` (+ `_addon`), the per-map `game_graveyard` rows, plus the `battleground_template` queue slot itself (team sizes, level range, start locations) |
 | `gen_store.py` | `maps/<mode>/store_config.yaml` + `data/sql/base/db_world/item_template.sql` | `mod_moba_store.sql` — shopkeeper `creature_template`, models and `creature` spawn rows, plus `mod_moba_store_npc`/`_menu`/`_grant`/`_sell`/`_version`, and the `item_template` copies + `mod_moba_item_copy` rows when `custom_items` is on. **Also writes `client/addons/MobaHUD/Catalog.lua`**, and `item_copies/store.json` — see Item copies |
 | `gen_player_drops.py` | `maps/<mode>/player_config.yaml` | `mod_moba_player_drops.sql` — the `Map`-keyed `mod_moba_player_drops` table, granted directly to the killer (no native loot), plus the `item_template` copies + `mod_moba_item_copy` rows behind its item drops. Also writes `item_copies/player_drops.json` — see Item copies |
-| `gen_quests.py` | `maps/<mode>/quest_config.yaml` + the bundle's `creep_config.yaml` and `creep_config.lock.json` (last-hit `targets`) + `data/sql/base/db_world/item_template.sql` + `suffix_points.json` | `mod_moba_quests.sql` — the quest givers (`creature_template`, models, `creature` spawns) and invisible credit entries, every quest row and its text tables, `creature_queststarter`/`_questender`, the one-quest-per-animal `conditions`, `mod_moba_quest_block` and `mod_moba_quest_credit`, and the baked reward items + `mod_moba_item_copy` rows. Also writes `item_copies/quests.json` — see Item copies |
+| `gen_quests.py` | `maps/<mode>/quest_config.yaml` + the bundle's `creep_config.yaml`, `neutral_config.yaml` and their lockfiles (last-hit `targets`) + `data/sql/base/db_world/item_template.sql` + `suffix_points.json` | `mod_moba_quests.sql` — the quest givers (`creature_template`, models, `creature` spawns) and invisible credit entries, every quest row and its text tables, `creature_queststarter`/`_questender`, the one-quest-per-animal `conditions`, `mod_moba_quest_block` and `mod_moba_quest_credit`, and the baked reward items + `mod_moba_item_copy` rows. Also writes `item_copies/quests.json` — see Item copies |
 | `id_alloc.py` | `id_blocks.json` + every `*.lock.json` and hand-assigned config field | nothing — it is the ID registry the others allocate through; `--audit` prints and checks the whole picture |
 
 Pipeline constants (output paths) live in the generators, not the configs — each

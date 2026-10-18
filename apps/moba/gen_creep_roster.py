@@ -48,7 +48,9 @@ creature_loot_template rows pointing at a fork-owned item copy (and set
 lootid = entry); "buff"/"gold" drops become mod_moba_*_drops rows consumed by
 BattlegroundMOBA::GrantDeathDrops; mingold/maxgold are always 0 (gold is
 injected in C++ so it can carry a chance coefficient); flags_extra gains
-NO_PLAYER_DAMAGE_REQ on loot-bearing mobs so a pure last hit rewards loot.
+NO_PLAYER_DAMAGE_REQ on loot-bearing mobs so a pure last hit rewards loot. A
+collect quest in the bundle's quest_config.yaml adds an "item" drop to every
+creature its `from` names, with QuestRequired = 1 so only a quest holder sees it.
 Attribution (killing blow, killer's team) is fixed up in the JustDied handlers,
 not here.
 
@@ -66,6 +68,7 @@ from pathlib import Path
 import id_alloc
 import sql_dump
 from item_copy import copy_entry, emit_copy_sql, write_manifest
+from gen_quests import collect_drops
 
 REBLESS_SOURCES = "--rebless-sources" in sys.argv
 
@@ -359,6 +362,18 @@ def validate_drops(block, label):
             item_ids.add(drop["item"])
 
 
+def add_quest_drops(block, drops, label):
+    """Append collect_drops()' drops for one creature to its own."""
+    items = {d["item"] for d in block.get("drops", []) if d["type"] == "item"}
+    for drop in drops:
+        if drop["item"] in items:
+            fail(f'{label}: already drops item {drop["item"]}, which quest '
+                 f'"{drop["quest"]}" adds again -- creature_loot_template keys on (Entry, Item)')
+        items.add(drop["item"])
+    # A new list, never an append: every row built from one unit shares its drops.
+    block["drops"] = block.get("drops", []) + drops
+
+
 def apply_loot_overrides(row, entry, source_cols, drops):
     """Loot-column overrides driven by the "drops" list; call after the
     generator's own overrides so these always win."""
@@ -384,8 +399,10 @@ def build_drop_rows(key, entry, drops):
             # diverging would leave every dropped item unsellable.
             item = copy_entry(drop["item"])
             copies.append((drop["item"], drop.get("sell")))
-            loot.append(f"({entry}, {item}, 0, {chance}, 0, 1, 0, "
-                        f"{count}, {count}, '{key} (moba drop)')")
+            quest = drop.get("quest")          # set by collect_drops, never by a config
+            note = f"moba {quest} quest drop" if quest else "moba drop"
+            loot.append(f"({entry}, {item}, 0, {chance}, {1 if quest else 0}, 1, 0, "
+                        f"{count}, {count}, '{key} ({note})')")
             # A PRICED item drop also gets a drops row. Type 2 grants nothing --
             # the loot row above hands the item over -- it exists only to carry
             # the sell-back price. No price, no row, and the item cannot be sold.
@@ -631,8 +648,15 @@ def main():
     validate_source_columns(column_order)
     for cp in configs:
         cfg = yaml.safe_load(cp.read_text())
+        rows = cfg.get("creeps")
         cfg["creeps"] = resolve_units(cfg, cp, "creeps", "creep", CREEP_UNIT_FORBIDDEN_FIELDS)
         validate_config(cfg, cp)
+        # A merged row no longer names its unit, so quest drops match the raw rows.
+        unit_of = {row["key"]: row.get("unit") for row in rows}
+        quest_drops = collect_drops(cp.parent, "creeps", set(unit_of.values()))
+        for creep in cfg["creeps"]:
+            add_quest_drops(creep, quest_drops.get(unit_of[creep["key"]], []),
+                            f'creep "{creep["key"]}"')
         lock = locks[cp]
 
         # Waypoint paths come from this map bundle's lane lockfile.

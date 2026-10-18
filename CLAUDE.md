@@ -74,9 +74,11 @@ Claude MAY:
 - Read any file in the repo
 - Run read-only inspection commands (`grep`, `ls`, `cat`, `git status`/`diff`/`log`)
 - Run builds (`cmake .`, `make`) when asked, and read build output to fix errors
+- **Edit or write a file when Jacob explicitly says so for that change.** One say-so covers the edits it names and nothing after. Writes go through the Edit/Write tools, whose permission prompt is the enforcement, never through Bash.
 
 Claude MUST NOT — these are Jacob's; hand him the exact command and wait for what it printed:
-- **Write, edit, or delete any file.** Present complete content for Jacob to apply. When a change evolves across turns, restate each affected file or function **in full** — deltas get misapplied.
+- **Write or edit any file without that say-so.** Present complete content first. When a change evolves across turns, restate each affected file or function **in full** — deltas get misapplied.
+- Delete any file.
 - Use git for anything that changes state: `add`, `commit`, `push`, `checkout`, `reset`, `stash`, branches, tags — even if asked mid-session
 - Start, stop, or restart servers (worldserver, authserver, mysql) or run `acore.sh`
 - Execute SQL or open mysql sessions — deliver SQL as a file or snippet
