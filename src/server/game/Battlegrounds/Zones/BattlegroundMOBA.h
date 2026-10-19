@@ -231,6 +231,7 @@ public:
     // Last-hit credit for a lane creep or a jungle neutral: CS, and the quest objective
     // the victim's entry feeds.
     void CreditCreepKill(Player* killer, Creature* victim);
+    bool IsCreditingQuests() const { return _creditingQuests; }
 
     // On-death drops for any minion. `killer` is the killing-blow player the caller is
     // willing to REWARD; `killerUnit` only names a side for team-wide drops when no
@@ -375,5 +376,6 @@ private:
     std::unordered_set<ObjectGuid> _shopAddonPlayers;   // sent HELLO; everyone else has no shop
     std::unordered_map<ObjectGuid, bool> _shopInRange;  // last known; only transitions reach the client
     uint32 _shopRangeMs = 0;
+    bool _creditingQuests = false;   // only credit given while set may advance a MOBA quest
 };
 #endif

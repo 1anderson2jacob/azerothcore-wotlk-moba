@@ -56,23 +56,40 @@ def copy_entry(entry):
 def _reclaim_lines(owner):
     """Create the shared tracker if absent, then reclaim this owner's previous copies."""
     tag = _sql_str(owner)
-    return [
+    lines = [
         "CREATE TABLE IF NOT EXISTS `mod_moba_item_copy` (",
         "    `Entry` INT UNSIGNED NOT NULL,",
         "    `Owner` VARCHAR(32) NOT NULL,",
         "    PRIMARY KEY (`Entry`, `Owner`)",
         ");",
         "",
-        "-- Reclaim this generator's previous copies, sparing any a second owner",
-        "-- still claims.",
-        "DELETE it FROM `item_template` it",
-        f"    JOIN `mod_moba_item_copy` mine ON mine.`Entry` = it.`entry`"
-        f" AND mine.`Owner` = {tag}",
-        f"    LEFT JOIN `mod_moba_item_copy` other ON other.`Entry` = it.`entry`"
-        f" AND other.`Owner` <> {tag}",
-        "WHERE other.`Entry` IS NULL;",
+        "-- Reclaim this generator's previous copies and their item_dbc rows, sparing any a",
+        "-- second owner still claims.",
+    ]
+    for table, key in (("item_template", "entry"), ("item_dbc", "ID")):
+        lines += [
+            f"DELETE it FROM `{table}` it",
+            f"    JOIN `mod_moba_item_copy` mine ON mine.`Entry` = it.`{key}`"
+            f" AND mine.`Owner` = {tag}",
+            f"    LEFT JOIN `mod_moba_item_copy` other ON other.`Entry` = it.`{key}`"
+            f" AND other.`Owner` <> {tag}",
+            "WHERE other.`Entry` IS NULL;",
+            "",
+        ]
+    return lines + [f"DELETE FROM `mod_moba_item_copy` WHERE `Owner` = {tag};"]
+
+
+def _item_dbc_lines(ids):
+    """item_dbc rows for the copies `ids` names, read from their item_template rows."""
+    return [
         "",
-        f"DELETE FROM `mod_moba_item_copy` WHERE `Owner` = {tag};",
+        "-- The server's own Item.dbc rows for these copies (apps/moba/README.md, Item copies).",
+        f"DELETE FROM `item_dbc` WHERE `ID` IN ({ids});",
+        "INSERT INTO `item_dbc` (`ID`, `ClassID`, `SubclassID`, `Sound_Override_Subclassid`,"
+        " `Material`, `DisplayInfoID`, `InventoryType`, `SheatheType`)",
+        "SELECT `entry`, `class`, `subclass`, `SoundOverrideSubclass`, `Material`, `displayid`,"
+        " `InventoryType`, `sheath`",
+        f"  FROM `item_template` WHERE `entry` IN ({ids});",
     ]
 
 
@@ -155,9 +172,9 @@ def emit_copy_sql(owner, copies, bonding=None):
         f"DELETE FROM `item_template` WHERE `entry` IN ({copy_ids});",
         "INSERT INTO `item_template` SELECT * FROM `_moba_item_copy`;",
         "DROP TEMPORARY TABLE `_moba_item_copy`;",
-        "",
-        "INSERT INTO `mod_moba_item_copy` (`Entry`, `Owner`) VALUES",
     ]
+    lines += _item_dbc_lines(copy_ids)
+    lines += ["", "INSERT INTO `mod_moba_item_copy` (`Entry`, `Owner`) VALUES"]
     lines.append(",\n".join(f"({copy_entry(src)}, {tag})" for src, _sell in rows) + ";")
 
     return lines
@@ -212,9 +229,9 @@ def emit_baked_sql(owner, bakes):
         f"DELETE FROM `item_template` WHERE `entry` IN ({entries});",
         "INSERT INTO `item_template` SELECT * FROM `_moba_item_bake`;",
         "DROP TEMPORARY TABLE `_moba_item_bake`;",
-        "",
-        "INSERT INTO `mod_moba_item_copy` (`Entry`, `Owner`) VALUES",
     ]
+    lines += _item_dbc_lines(entries)
+    lines += ["", "INSERT INTO `mod_moba_item_copy` (`Entry`, `Owner`) VALUES"]
     lines.append(",\n".join(f"({entry}, {tag})" for _src, entry, *_rest in bakes) + ";")
 
     return lines

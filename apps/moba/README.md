@@ -11,12 +11,13 @@ those and emit one combined SQL file per content type into
 
 > **Run `apps/moba/gen_all.sh`** to regenerate everything. It cds to the repo
 > root itself (generators resolve their output paths relative to it) and keeps the
-> two ordering constraints between generators: `gen_creep_paths.py` before
+> ordering constraints between generators: `gen_creep_paths.py` before
 > `gen_creep_roster.py`, which reads each creep's `WaypointPathId` and
 > `ReferencePathId` out of the lane lockfile; and `gen_quests.py` after
 > `gen_creep_roster.py` and `gen_neutral_camps.py`, whose lockfiles its last-hit
-> `targets` resolve through. Those two read `quest_config.yaml` in turn, but only
-> the config, so the order holds. Each script stays runnable alone.
+> `targets` resolve through. Those two read `quest_config.yaml` and its lockfile in
+> turn, for quest drops and their targets' `KillCredit1`, so `gen_all.sh` runs them
+> once more after `gen_quests.py`. Each script stays runnable alone.
 
 **Workflows live in `.github/MOBA_GUIDE.md`** — walking a lane, adding a creep,
 moving a tower. **Per-field semantics live in each config's own YAML header**, next to
@@ -31,8 +32,8 @@ emits a `.blend` and a client patch rather than SQL, is not part of
 
 | Generator | Reads | Writes |
 |---|---|---|
-| `gen_creep_roster.py` | `maps/<mode>/creep_config.yaml` + the bundle's `quest_config.yaml` (collect quests' drops) + `data/sql/base/db_world/creature_template.sql` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data`, `mod_moba_creep_drops`, native `creature_loot_template` rows, and the `item_template` copies + `mod_moba_item_copy` rows behind its item drops. Also writes `item_copies/creeps.json` — see Item copies |
-| `gen_neutral_camps.py` | `maps/<mode>/neutral_config.yaml` + the bundle's `quest_config.yaml` (collect quests' drops) + `data/sql/base/db_world/creature_template.sql` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior/drops tables, native `creature_loot_template` rows, and the `item_template` copies + `mod_moba_item_copy` rows behind its item drops. Also writes `item_copies/neutrals.json` — see Item copies |
+| `gen_creep_roster.py` | `maps/<mode>/creep_config.yaml` + the bundle's `quest_config.yaml` and its lockfile (quest drops, `KillCredit1`) + `data/sql/base/db_world/creature_template.sql` | `mod_moba_creeps.sql` — `creature_template`, models, equipment, `mod_moba_creep_data`, `mod_moba_creep_drops`, native `creature_loot_template` and `creature_questitem` rows, and the `item_template` copies + `mod_moba_item_copy` rows behind its item drops. Also writes `item_copies/creeps.json` — see Item copies |
+| `gen_neutral_camps.py` | `maps/<mode>/neutral_config.yaml` + the bundle's `quest_config.yaml` and its lockfile (quest drops, `KillCredit1`) + `data/sql/base/db_world/creature_template.sql` | `mod_moba_neutrals.sql` — `creature_template`, models, camp/member/behavior/drops tables, native `creature_loot_template` and `creature_questitem` rows, and the `item_template` copies + `mod_moba_item_copy` rows behind its item drops. Also writes `item_copies/neutrals.json` — see Item copies |
 | `gen_creep_paths.py` | `maps/<mode>/lane_config.yaml` | `mod_moba_creep_paths.sql` — densified, formation-offset `waypoint_data`, plus one bare centreline path per lane per direction as the speed-compensation reference |
 | `gen_tower_data.py` | `maps/<mode>/tower_config.yaml` | `mod_moba_towers.sql` — `creature_template`, models, `mod_moba_tower_data` |
 | `gen_base.py` | `maps/<mode>/base_config.yaml` | `mod_moba_base.sql` — `mod_moba_base`, the spawn-dome `gameobject_template` (+ `_addon`), the per-map `game_graveyard` rows, plus the `battleground_template` queue slot itself (team sizes, level range, start locations) |
@@ -205,6 +206,13 @@ never runs again to rebuild rows another file deleted.
 no overrides. Those rows are not optional — without them a copy has no icon, no
 equip slot and no suffix scaling in the client; the mechanism is commented at the
 `Item.dbc` entry in that file's `PATCHES`.
+
+The server needs a row of its own as well. `sItemStore`, which `creature_questitem`
+and `gameobject_questitem` check an item against, is the server's Item.dbc plus the
+world DB's `item_dbc` table, so every copy also writes an `item_dbc` row read from its
+own `item_template` row, and the reclaim removes it with the copy. Having one, a copy
+also goes through the boot-time checks `ObjectMgr::LoadItemTemplates` skips for any
+item `sItemStore` lacks.
 
 **Baked copies are the exception to the offset.** A quest reward is a stock base
 with a random suffix's stats written into its row (see the next section), and one

@@ -804,7 +804,11 @@ void BattlegroundMOBA::CreditCreepKill(Player* killer, Creature* victim)
 
     // No guid: given one, KilledMonsterCredit counts the corpse's own entry instead.
     if (uint32 credit = sMobaQuestDataStore->GetKillCredit(victim->GetEntry()))
+    {
+        _creditingQuests = true;
         killer->KilledMonsterCredit(credit);
+        _creditingQuests = false;
+    }
 }
 
 void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer, Unit* killerUnit)
@@ -839,6 +843,11 @@ void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer, Unit* k
         // Unit::Kill decided who sees quest drops for the first tapper's group only, and
         // the other team can tap a neutral first.
         victim->loot.FillNotNormalLootFor(killer);
+
+        // Each viewer's lootable flag is decided when the field is sent (Unit.cpp:16978),
+        // and this handoff changes no stored bit, so without a resend a tapper keeps the
+        // sparkle they were shown at death.
+        victim->ForceValuesUpdateAtIndex(UNIT_DYNAMIC_FLAGS);
     }
     else
     {

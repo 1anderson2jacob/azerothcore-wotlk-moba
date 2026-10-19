@@ -28,6 +28,9 @@
 #       targets     last_hit, one list per config. `creeps` names units from
 #                   creep_config.yaml, and a last hit on any creep row using one
 #                   counts; `neutrals` names mob keys from neutral_config.yaml.
+#                   gen_creep_roster.py and gen_neutral_camps.py set each target's
+#                   KillCredit1 for the client's tooltip, so re-run them after
+#                   changing `targets`.
 #       item        collect: a stock item, granted as its +900000 copy. Its
 #                   maxcount must be 0 or at least the largest count.
 #       from        collect: the creatures that drop `item`, named as `targets`

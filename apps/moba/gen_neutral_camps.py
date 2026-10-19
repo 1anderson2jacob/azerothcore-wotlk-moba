@@ -16,8 +16,9 @@ and three data tables:
     mod_moba_neutral_drops    -- per entry: on-death buff/gold drops, and the
                                  sell-back price of any priced item drop
 
-"item" drops additionally emit native creature_loot_template rows -- the
-drops machinery is shared with gen_creep_roster.py; see its docstring.
+"item" drops additionally emit native creature_loot_template rows, and quest
+drops creature_questitem rows -- the drops machinery, KillCredit1 included, is
+shared with gen_creep_roster.py; see its docstring.
 
 A mob may name a `unit` from the config's `units` section and override any
 field it sets; overrides are wholesale per field, never merged. Same
@@ -60,11 +61,12 @@ from pathlib import Path
 # validate_source_columns checks the CREEP generator's override list, which
 # covers every column this generator stamps too.
 from gen_creep_roster import (add_quest_drops, apply_loot_overrides,
-                              build_drop_rows, check_source_digest,
-                              emit_drops_table_sql, emit_loot_template_sql, fail,
+                              build_drop_rows, build_questitem_rows,
+                              check_source_digest, emit_drops_table_sql,
+                              emit_loot_template_sql, emit_questitem_sql, fail,
                               get_entry, note, resolve_units, sql_value,
                               validate_drops, validate_source_columns)
-from gen_quests import collect_drops
+from gen_quests import collect_drops, kill_credits
 
 import id_alloc
 import sql_dump
@@ -219,6 +221,8 @@ def build_template_row(mob, entry, source_cols):
         "RegenHealth": "1",
         "movementId": "0",
         "CreatureImmunitiesId": "0",
+        "KillCredit1": str(mob["_kill_credit"]),
+        "KillCredit2": "0",
         "detection_range": str(mob["_aggro_range"]),
         "VerifiedBuild": "0",
     })
@@ -235,6 +239,7 @@ def emit_sql(roster, camps, column_order, blocks):
     ct_window = id_alloc.sql_window(blocks, "`entry`")
     ctm_window = id_alloc.sql_window(blocks, "`CreatureID`")
     loot_window = id_alloc.sql_window(blocks, "`Entry`")
+    questitem_window = id_alloc.sql_window(blocks, "`CreatureEntry`")
     spawn_window = id_alloc.sql_window(blocks, "`id`")
     lines = [
         "-- ============================================================",
@@ -359,13 +364,15 @@ def emit_sql(roster, camps, column_order, blocks):
                          f"({entry}, {mob['_map']}, {mob['_aggro_range']}, {mob['_leash_range']})")
     lines.append(",\n".join(data_rows) + ";")
 
-    grant_rows, loot_rows, copies = [], [], []
+    grant_rows, loot_rows, copies, questitem_rows = [], [], [], []
     for mob, entry, _ in roster:
         grant, loot, copied = build_drop_rows(mob["key"], entry, mob.get("drops", []))
         grant_rows += grant
         loot_rows += loot
         copies += copied
+        questitem_rows += build_questitem_rows(mob["key"], entry, mob.get("drops", []))
     lines += emit_loot_template_sql(loot_window, loot_rows)
+    lines += emit_questitem_sql(questitem_window, questitem_rows)
     lines += emit_drops_table_sql("mod_moba_neutral_drops", grant_rows)
     lines += emit_copy_sql(COPY_OWNER, copies)
     return "\n".join(lines) + "\n", copies
@@ -395,9 +402,12 @@ def main():
         cfg = yaml.safe_load(cp.read_text())
         cfg["mobs"] = resolve_units(cfg, cp, "mobs", "mob", NEUTRAL_UNIT_FORBIDDEN_FIELDS)
         validate_config(cfg, cp)
-        quest_drops = collect_drops(cp.parent, "neutrals", {mob["key"] for mob in cfg["mobs"]})
+        mob_keys = {mob["key"] for mob in cfg["mobs"]}
+        quest_drops = collect_drops(cp.parent, "neutrals", mob_keys)
+        credit_of = kill_credits(cp.parent, "neutrals", mob_keys)
         for mob in cfg["mobs"]:
             add_quest_drops(mob, quest_drops.get(mob["key"], []), f'mob "{mob["key"]}"')
+            mob["_kill_credit"] = credit_of.get(mob["key"], 0)
         ranges = resolve_camp_ranges(cfg)
         lock = locks[cp]
         default_initial = cfg.get("initial_spawn_ms", DEFAULT_INITIAL_SPAWN_MS)

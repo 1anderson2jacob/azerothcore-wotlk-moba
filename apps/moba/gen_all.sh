@@ -25,6 +25,14 @@ do
     python3 "apps/moba/${gen}"
 done
 
+# gen_creep_roster and gen_neutral_camps read the credit entries gen_quests locks,
+# for their last-hit targets' KillCredit1, so they run once more: a credit entry
+# allocated above reaches them on this same run.
+for gen in gen_creep_roster.py gen_neutral_camps.py; do
+    echo "== ${gen} (again, for gen_quests' credit entries)"
+    python3 "apps/moba/${gen}"
+done
+
 # A post-condition, not a pre-flight: the generators write lockfiles as they run,
 # so the tree is only fully described once they have all finished. The
 # hand-assigning generators each fail fast on their own ids before emitting.

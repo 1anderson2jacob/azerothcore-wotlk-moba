@@ -23,9 +23,9 @@ animal shares its objective, text and any credit entry, while emotes belong to t
 Every id is allocated through id_alloc.py and recorded in <config-stem>.lock.json, one
 {key: id} section per namespace. A last_hit quest's `targets` resolve through the
 bundle's creep and neutral configs and their lockfiles, so gen_creep_roster.py and
-gen_neutral_camps.py run first. They read this config in turn, through
-collect_drops(), for the drops a collect quest asks of their creatures -- the config
-only, never a lockfile, so the order holds.
+gen_neutral_camps.py run first. They read this config and its lockfile in turn,
+through collect_drops() and kill_credits(), so gen_all.sh runs them again after this
+one: a credit entry allocated here reaches their KillCredit1 on the same run.
 
 Usage (from the repo root):
     python3 apps/moba/gen_quests.py
@@ -344,6 +344,41 @@ def collect_drops(bundle, kind, names):
                      f'{src["field"]} "{name}"')
             out.setdefault(name, []).append({"type": "item", "item": obj["item"],
                                              "quest": q["key"]})
+    return out
+
+
+def kill_credits(bundle, kind, names):
+    """{name: credit entry} for every creature a last_hit quest in `bundle`'s quest
+    config names under targets.<kind>, for gen_creep_roster.py and gen_neutral_camps.py
+    to set as its KillCredit1. A quest whose credit entry is not locked yet is left out
+    with a warning, and gen_all.sh's second pass picks it up."""
+    path = bundle / "quest_config.yaml"
+    if not path.is_file():
+        return {}
+    lock_path = path.with_suffix(".lock.json")
+    locked = (json.loads(lock_path.read_text()) if lock_path.is_file() else {}).get(
+        id_alloc.CREATURE_TEMPLATE, {})
+    src = TARGET_SOURCES[kind]
+    out, claimed = {}, {}
+    for q in (yaml.safe_load(path.read_text()) or {}).get("quests") or []:
+        obj = q.get("objective") or {}
+        if obj.get("type") != "last_hit":
+            continue
+        where = f'{path}: quest "{q.get("key")}"'
+        check_sources(obj, "targets", where)
+        for name in obj["targets"].get(kind, []):
+            if name not in names:
+                fail(f'{where}: no row under "{src["rows"]}" in {src["config"]}.yaml has '
+                     f'{src["field"]} "{name}"')
+            if name in claimed:
+                fail(f'{where}: "{name}" is a target of both "{claimed[name]}" and '
+                     f'"{q["key"]}" -- a creature has one KillCredit1')
+            claimed[name] = q["key"]
+            if q["key"] in locked:
+                out[name] = locked[q["key"]]
+        if obj["targets"].get(kind) and q["key"] not in locked:
+            print(f"  WARNING: {where}: no credit entry in {lock_path.name} yet -- run "
+                  "gen_quests.py, then this generator again")
     return out
 
 

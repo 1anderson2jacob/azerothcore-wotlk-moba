@@ -50,7 +50,10 @@ BattlegroundMOBA::GrantDeathDrops; mingold/maxgold are always 0 (gold is
 injected in C++ so it can carry a chance coefficient); flags_extra gains
 NO_PLAYER_DAMAGE_REQ on loot-bearing mobs so a pure last hit rewards loot. A
 collect quest in the bundle's quest_config.yaml adds an "item" drop to every
-creature its `from` names, with QuestRequired = 1 so only a quest holder sees it.
+creature its `from` names, with QuestRequired = 1 so only a quest holder sees it,
+and a creature_questitem row naming it. A last_hit quest's targets get KillCredit1 =
+its credit entry, and every other creature 0. The client matches a hovered creature's
+quest items and KillCredit1 against the quest log to draw its tooltip's quest lines.
 Attribution (killing blow, killer's team) is fixed up in the JustDied handlers,
 not here.
 
@@ -68,7 +71,7 @@ from pathlib import Path
 import id_alloc
 import sql_dump
 from item_copy import copy_entry, emit_copy_sql, write_manifest
-from gen_quests import collect_drops
+from gen_quests import collect_drops, kill_credits
 
 REBLESS_SOURCES = "--rebless-sources" in sys.argv
 
@@ -132,6 +135,7 @@ CREEP_UNIT_FLAG_PLAYER_CONTROLLED = 0x8
 DROP_REQUIRED = {"buff": "spell", "gold": "copper", "item": "item",
                  "team_gold": "copper", "team_buff": "spell"}
 DROP_TYPE_IDS = {"buff": 0, "gold": 1, "item": 2, "team_gold": 3, "team_buff": 4}
+MAX_CREATURE_QUEST_ITEMS = 6             # what the creature query response carries
 
 
 # Columns the generator overrides or reads -- must exist in every source dump.
@@ -141,7 +145,8 @@ OVERRIDDEN_COLUMNS = ["entry", "name", "subname", "minlevel", "maxlevel", "facti
                       "flags_extra", "VehicleId", "AIName", "ScriptName", "HealthModifier",
                       "ArmorModifier", "RegenHealth", "movementId", "CreatureImmunitiesId",
                       "unit_flags", "type", "speed_walk", "speed_run", "DamageModifier",
-                      "detection_range", "BaseAttackTime", "VerifiedBuild"]
+                      "detection_range", "BaseAttackTime", "KillCredit1", "KillCredit2",
+                      "VerifiedBuild"]
 
 
 def fail(msg):
@@ -435,6 +440,24 @@ def emit_loot_template_sql(window, loot_rows):
     return lines
 
 
+def build_questitem_rows(key, entry, drops):
+    """creature_questitem rows for one creature's quest drops."""
+    items = [copy_entry(d["item"]) for d in drops if d.get("quest")]
+    if len(items) > MAX_CREATURE_QUEST_ITEMS:
+        fail(f'"{key}" drops {len(items)} quest items; the client is sent at most '
+             f"{MAX_CREATURE_QUEST_ITEMS}")
+    return [f"-- {key}\n({entry}, {idx}, {item}, 0)" for idx, item in enumerate(items)]
+
+
+def emit_questitem_sql(window, rows):
+    # A native shared table like creature_loot_template: clear our block, never DROP.
+    lines = ["", f"DELETE FROM `creature_questitem` WHERE {window};"]
+    if rows:
+        lines += ["INSERT INTO `creature_questitem` (`CreatureEntry`, `Idx`, `ItemId`, "
+                  "`VerifiedBuild`)", "VALUES", ",\n".join(rows) + ";"]
+    return lines
+
+
 def emit_drops_table_sql(table, grant_rows):
     lines = [
         "",
@@ -511,6 +534,8 @@ def build_template_row(creep, entry, source_cols):
         "RegenHealth": "0",
         "movementId": "0",
         "CreatureImmunitiesId": "0",
+        "KillCredit1": str(creep["_kill_credit"]),
+        "KillCredit2": "0",
         "unit_flags": str(int(source_cols["unit_flags"]) | CREEP_UNIT_FLAG_PLAYER_CONTROLLED),
         "VerifiedBuild": "0",
     })
@@ -525,6 +550,7 @@ def emit_sql(roster, column_order, blocks):
     ct_window = id_alloc.sql_window(blocks, "`entry`")
     ctm_window = id_alloc.sql_window(blocks, "`CreatureID`")
     loot_window = id_alloc.sql_window(blocks, "`Entry`")
+    questitem_window = id_alloc.sql_window(blocks, "`CreatureEntry`")
     spawn_window = id_alloc.sql_window(blocks, "`id`")
     lines = [
         "-- ============================================================",
@@ -615,13 +641,15 @@ def emit_sql(roster, column_order, blocks):
             f"{LANE_IDS[creep['lane']]})")
     lines.append(",\n".join(data_rows) + ";")
 
-    grant_rows, loot_rows, copies = [], [], []
+    grant_rows, loot_rows, copies, questitem_rows = [], [], [], []
     for creep, entry, _ in roster:
         grant, loot, copied = build_drop_rows(creep["key"], entry, creep.get("drops", []))
         grant_rows += grant
         loot_rows += loot
         copies += copied
+        questitem_rows += build_questitem_rows(creep["key"], entry, creep.get("drops", []))
     lines += emit_loot_template_sql(loot_window, loot_rows)
+    lines += emit_questitem_sql(questitem_window, questitem_rows)
     lines += emit_drops_table_sql("mod_moba_creep_drops", grant_rows)
     lines += emit_copy_sql(COPY_OWNER, copies)
     return "\n".join(lines) + "\n", copies
@@ -654,9 +682,11 @@ def main():
         # A merged row no longer names its unit, so quest drops match the raw rows.
         unit_of = {row["key"]: row.get("unit") for row in rows}
         quest_drops = collect_drops(cp.parent, "creeps", set(unit_of.values()))
+        credit_of = kill_credits(cp.parent, "creeps", set(unit_of.values()))
         for creep in cfg["creeps"]:
             add_quest_drops(creep, quest_drops.get(unit_of[creep["key"]], []),
                             f'creep "{creep["key"]}"')
+            creep["_kill_credit"] = credit_of.get(unit_of[creep["key"]], 0)
         lock = locks[cp]
 
         # Waypoint paths come from this map bundle's lane lockfile.

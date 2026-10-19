@@ -15,17 +15,17 @@ INSERT INTO `creature_template`
 (`entry`, `difficulty_entry_1`, `difficulty_entry_2`, `difficulty_entry_3`, `KillCredit1`, `KillCredit2`, `name`, `subname`, `IconName`, `gossip_menu_id`, `minlevel`, `maxlevel`, `exp`, `faction`, `npcflag`, `speed_walk`, `speed_run`, `speed_swim`, `speed_flight`, `detection_range`, `rank`, `dmgschool`, `DamageModifier`, `BaseAttackTime`, `RangeAttackTime`, `BaseVariance`, `RangeVariance`, `unit_class`, `unit_flags`, `unit_flags2`, `dynamicflags`, `family`, `type`, `type_flags`, `lootid`, `pickpocketloot`, `skinloot`, `PetSpellDataId`, `VehicleId`, `mingold`, `maxgold`, `AIName`, `MovementType`, `HoverHeight`, `HealthModifier`, `ManaModifier`, `ArmorModifier`, `ExperienceModifier`, `RacialLeader`, `movementId`, `RegenHealth`, `CreatureImmunitiesId`, `flags_extra`, `ScriptName`, `VerifiedBuild`)
 VALUES
 -- wolf_large (from Alliance Battleguard #2279)
-(900209,0,0,0,0,0,'Ravenous Worg','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,900209,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
+(900209,0,0,0,900505,0,'Ravenous Worg','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,900209,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- wolf_small (from Alliance Battleguard #2279)
-(900210,0,0,0,0,0,'Worg Pup','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,900210,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
+(900210,0,0,0,900505,0,'Worg Pup','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,900210,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- wraith_large (from Alliance Battleguard #2279)
-(900211,0,0,0,0,0,'Greater Wraith','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
+(900211,0,0,0,900505,0,'Greater Wraith','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- wraith_small (from Alliance Battleguard #2279)
-(900212,0,0,0,0,0,'Lesser Wraith','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
+(900212,0,0,0,900505,0,'Lesser Wraith','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- golem_large (from Alliance Battleguard #2279)
-(900213,0,0,0,0,0,'Ancient Golem','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
+(900213,0,0,0,900505,0,'Ancient Golem','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.6,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- golem_small (from Alliance Battleguard #2279)
-(900214,0,0,0,0,0,'Golem Shard','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
+(900214,0,0,0,900505,0,'Golem Shard','MOBA Jungle',NULL,0,80,80,0,14,0,1.2,1.14286,1,1,8,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,0.2,1,0.25,1,0,0,1,0,2097152,'npc_moba_neutral',0),
 -- rosham_bo (from Alliance Battleguard #2279)
 (900215,0,0,0,0,0,'Rosham Bo','The Terror from Below',NULL,0,85,85,0,14,0,1.2,1.14286,1,1,12,0,0,1,2000,2000,1,1,1,0,2048,0,0,1,0,0,0,0,0,0,0,0,'',0,1,4,1,2,1,0,0,1,0,0,'npc_moba_neutral',0);
 
@@ -174,6 +174,14 @@ VALUES
 (900209, 925812, 0, 100, 1, 1, 0, 1, 1, 'wolf_large (moba wolf quest drop)'),
 (900210, 925812, 0, 100, 1, 1, 0, 1, 1, 'wolf_small (moba wolf quest drop)');
 
+DELETE FROM `creature_questitem` WHERE `CreatureEntry` BETWEEN 900200 AND 900249;
+INSERT INTO `creature_questitem` (`CreatureEntry`, `Idx`, `ItemId`, `VerifiedBuild`)
+VALUES
+-- wolf_large
+(900209, 0, 925812, 0),
+-- wolf_small
+(900210, 0, 925812, 0);
+
 -- Drops, rolled and delivered by BattlegroundMOBA::GrantDeathDrops at
 -- the killing blow. Type 0 = buff (aura on the killer), 1 = gold
 -- (Copper injected into the corpse loot), 3 = team gold, 4 = team buff.
@@ -238,11 +246,16 @@ CREATE TABLE IF NOT EXISTS `mod_moba_item_copy` (
     PRIMARY KEY (`Entry`, `Owner`)
 );
 
--- Reclaim this generator's previous copies, sparing any a second owner
--- still claims.
+-- Reclaim this generator's previous copies and their item_dbc rows, sparing any a
+-- second owner still claims.
 DELETE it FROM `item_template` it
     JOIN `mod_moba_item_copy` mine ON mine.`Entry` = it.`entry` AND mine.`Owner` = 'neutrals'
     LEFT JOIN `mod_moba_item_copy` other ON other.`Entry` = it.`entry` AND other.`Owner` <> 'neutrals'
+WHERE other.`Entry` IS NULL;
+
+DELETE it FROM `item_dbc` it
+    JOIN `mod_moba_item_copy` mine ON mine.`Entry` = it.`ID` AND mine.`Owner` = 'neutrals'
+    LEFT JOIN `mod_moba_item_copy` other ON other.`Entry` = it.`ID` AND other.`Owner` <> 'neutrals'
 WHERE other.`Entry` IS NULL;
 
 DELETE FROM `mod_moba_item_copy` WHERE `Owner` = 'neutrals';
@@ -271,6 +284,12 @@ UPDATE `_moba_item_copy` SET `entry` = `entry` + 900000;
 DELETE FROM `item_template` WHERE `entry` IN (925812);
 INSERT INTO `item_template` SELECT * FROM `_moba_item_copy`;
 DROP TEMPORARY TABLE `_moba_item_copy`;
+
+-- The server's own Item.dbc rows for these copies (apps/moba/README.md, Item copies).
+DELETE FROM `item_dbc` WHERE `ID` IN (925812);
+INSERT INTO `item_dbc` (`ID`, `ClassID`, `SubclassID`, `Sound_Override_Subclassid`, `Material`, `DisplayInfoID`, `InventoryType`, `SheatheType`)
+SELECT `entry`, `class`, `subclass`, `SoundOverrideSubclass`, `Material`, `displayid`, `InventoryType`, `sheath`
+  FROM `item_template` WHERE `entry` IN (925812);
 
 INSERT INTO `mod_moba_item_copy` (`Entry`, `Owner`) VALUES
 (925812, 'neutrals');

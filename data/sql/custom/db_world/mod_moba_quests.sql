@@ -799,11 +799,16 @@ CREATE TABLE IF NOT EXISTS `mod_moba_item_copy` (
     PRIMARY KEY (`Entry`, `Owner`)
 );
 
--- Reclaim this generator's previous copies, sparing any a second owner
--- still claims.
+-- Reclaim this generator's previous copies and their item_dbc rows, sparing any a
+-- second owner still claims.
 DELETE it FROM `item_template` it
     JOIN `mod_moba_item_copy` mine ON mine.`Entry` = it.`entry` AND mine.`Owner` = 'quests'
     LEFT JOIN `mod_moba_item_copy` other ON other.`Entry` = it.`entry` AND other.`Owner` <> 'quests'
+WHERE other.`Entry` IS NULL;
+
+DELETE it FROM `item_dbc` it
+    JOIN `mod_moba_item_copy` mine ON mine.`Entry` = it.`ID` AND mine.`Owner` = 'quests'
+    LEFT JOIN `mod_moba_item_copy` other ON other.`Entry` = it.`ID` AND other.`Owner` <> 'quests'
 WHERE other.`Entry` IS NULL;
 
 DELETE FROM `mod_moba_item_copy` WHERE `Owner` = 'quests';
@@ -1027,6 +1032,12 @@ UPDATE `_moba_item_bake`
 DELETE FROM `item_template` WHERE `entry` IN (956900, 956901, 956902, 956903, 956906, 956907, 956908, 956909, 956912, 956913, 956914, 956915, 956916, 956917, 956918, 956919, 956920, 956921, 956922, 956923, 956904, 956905, 956910, 956911, 956924, 956925, 956926, 956927, 956928, 956929);
 INSERT INTO `item_template` SELECT * FROM `_moba_item_bake`;
 DROP TEMPORARY TABLE `_moba_item_bake`;
+
+-- The server's own Item.dbc rows for these copies (apps/moba/README.md, Item copies).
+DELETE FROM `item_dbc` WHERE `ID` IN (956900, 956901, 956902, 956903, 956906, 956907, 956908, 956909, 956912, 956913, 956914, 956915, 956916, 956917, 956918, 956919, 956920, 956921, 956922, 956923, 956904, 956905, 956910, 956911, 956924, 956925, 956926, 956927, 956928, 956929);
+INSERT INTO `item_dbc` (`ID`, `ClassID`, `SubclassID`, `Sound_Override_Subclassid`, `Material`, `DisplayInfoID`, `InventoryType`, `SheatheType`)
+SELECT `entry`, `class`, `subclass`, `SoundOverrideSubclass`, `Material`, `displayid`, `InventoryType`, `sheath`
+  FROM `item_template` WHERE `entry` IN (956900, 956901, 956902, 956903, 956906, 956907, 956908, 956909, 956912, 956913, 956914, 956915, 956916, 956917, 956918, 956919, 956920, 956921, 956922, 956923, 956904, 956905, 956910, 956911, 956924, 956925, 956926, 956927, 956928, 956929);
 
 INSERT INTO `mod_moba_item_copy` (`Entry`, `Owner`) VALUES
 (956900, 'quests'),

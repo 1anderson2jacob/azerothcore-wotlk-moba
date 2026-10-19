@@ -46,11 +46,16 @@ CREATE TABLE IF NOT EXISTS `mod_moba_item_copy` (
     PRIMARY KEY (`Entry`, `Owner`)
 );
 
--- Reclaim this generator's previous copies, sparing any a second owner
--- still claims.
+-- Reclaim this generator's previous copies and their item_dbc rows, sparing any a
+-- second owner still claims.
 DELETE it FROM `item_template` it
     JOIN `mod_moba_item_copy` mine ON mine.`Entry` = it.`entry` AND mine.`Owner` = 'player_drops'
     LEFT JOIN `mod_moba_item_copy` other ON other.`Entry` = it.`entry` AND other.`Owner` <> 'player_drops'
+WHERE other.`Entry` IS NULL;
+
+DELETE it FROM `item_dbc` it
+    JOIN `mod_moba_item_copy` mine ON mine.`Entry` = it.`ID` AND mine.`Owner` = 'player_drops'
+    LEFT JOIN `mod_moba_item_copy` other ON other.`Entry` = it.`ID` AND other.`Owner` <> 'player_drops'
 WHERE other.`Entry` IS NULL;
 
 DELETE FROM `mod_moba_item_copy` WHERE `Owner` = 'player_drops';
