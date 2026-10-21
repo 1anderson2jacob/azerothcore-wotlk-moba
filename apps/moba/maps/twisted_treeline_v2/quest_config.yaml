@@ -1,8 +1,8 @@
 # Quest givers and the gear chains they offer, for Twisted Treeline.
 # gen_quests.py turns this into data/sql/custom/db_world/mod_moba_quests.sql: the
 # givers and their spawns, every quest and its text, the one-quest-per-animal
-# conditions, the invisible credit entries, the battleground's quest block and
-# kill-credit tables, and the baked reward items. Ids are allocated into
+# conditions, the invisible credit entries, the battleground's quest block,
+# kill-credit and volume tables, and the baked reward items. Ids are allocated into
 # quest_config.lock.json -- never hand-edit it. A quest id must not change once a
 # client has seen it: the client caches quest text by id.
 #
@@ -23,8 +23,8 @@
 #   quests
 #     suffix        ItemRandomSuffix id; its stats come from suffix_points.json
 #     title         shown as "<title> (<tier>)"
-#     objective     `type`, last_hit or collect so far, and `text`, the quest log's
-#                   counter label. Collect takes no `text`: the log names the item.
+#     objective     `type`, last_hit, collect or volume so far, and `text`, the quest
+#                   log's counter label. Collect takes no `text`: the log names the item.
 #       targets     last_hit, one list per config. `creeps` names units from
 #                   creep_config.yaml, and a last hit on any creep row using one
 #                   counts; `neutrals` names mob keys from neutral_config.yaml.
@@ -38,6 +38,14 @@
 #                   player holds the quest. gen_creep_roster.py and
 #                   gen_neutral_camps.py write these drops, so re-run them after
 #                   changing `item` or `from`.
+#       feeds       volume: what earns points, every feed on one counter.
+#                   damage_dealt: damage to enemy players and creatures, never
+#                   structures. healing_done: health restored, on a target in
+#                   combat. damage_taken: damage from anyone but yourself.
+#                   player_damage: damage to enemy players and what they control.
+#                   A damage feed counts the health a hit removed, not the hit.
+#       chunk       volume: points per tick of the counter. A finished tier drops
+#                   its leftover points.
 #     counts        one tier per entry -- a first guess until playtesting
 #     dialogue      summary is the "Quest Objectives" paragraph; offer, progress and
 #                   complete are the giver's text on each screen. {count} becomes
@@ -72,10 +80,10 @@ givers:
 
 reward_sets:
   plate:                                     # Embossed Plate
-    animals: [tiger, monkey, bear, boar, wolf]
+    animals: [tiger, monkey, bear, boar, wolf, owl, whale, falcon]
     bases: { wrist: 9972, hands: 9967, waist: 9968, feet: 9973 }
   jewelry:                                   # Tellurium Necklace, Marsh Ring
-    animals: [tiger, monkey, bear, boar, wolf]
+    animals: [tiger, monkey, bear, boar, wolf, owl, whale, falcon]
     bases: { neck: 12023, ring: 12012 }
 
 quests:
@@ -183,3 +191,67 @@ quests:
         yours to wear.
       progress: "The worgs will be back in their dens by now, $N. So should you."
       complete: "Thick pelts, cleanly taken. The wolf has marked you, $N.$B$BChoose what you will carry from this hunt."
+
+  - key: owl
+    suffix: 9
+    title: "Way of the Owl"
+    objective:
+      type: volume
+      feeds: [damage_dealt, healing_done]
+      chunk: 1000
+      text: "Power unleashed"
+    counts: [10, 15, 20, 25]
+    dialogue:
+      summary: "Damage enemy players, minions and jungle monsters, or heal your allies, until you have unleashed {count} measures of power. Damage to towers, inhibitors and the base does not count."
+      offer: >-
+        The owl sees the whole field before it moves, $N. It knows where its
+        strength is needed, and it spends none of it in the wrong place.$B$BPower
+        works the same way. Turn yours on the enemy's champions and minions, or
+        pour it into the allies fighting at your side; the owl counts both as
+        wisdom put to use. Unleash {count} measures of it, and the owl's wisdom
+        will be yours to wear.
+      progress: "Power held back is power wasted, $N. Spend more of it."
+      complete: "Nothing spent where it was not needed. The owl has marked you, $N.$B$BChoose what you will carry from this hunt."
+
+  - key: whale
+    suffix: 81
+    title: "Way of the Whale"
+    objective:
+      type: volume
+      feeds: [damage_taken]
+      chunk: 600
+      text: "Punishment endured"
+    counts: [10, 15, 20, 25]
+    dialogue:
+      summary: "Endure {count} measures of punishment from enemy players, minions, jungle monsters and towers. Harm you do to yourself does not count."
+      offer: >-
+        The whale is neither quick nor fierce, $N. It dives where nothing else
+        can follow, bears the weight of the deep, and always rises again.$B$BIn
+        the lanes, every minion, every champion and every tower will try to break
+        you. Let them try. Stand where the blows fall, take them, and live to take
+        more. Endure {count} measures of their punishment, and the whale's resolve
+        will be yours to wear.
+      progress: "You are still standing, $N. Then you can stand a little longer."
+      complete: "Battered, and still breathing. The whale has marked you, $N.$B$BChoose what you will carry from this hunt."
+
+  - key: falcon
+    suffix: 11
+    title: "Way of the Falcon"
+    objective:
+      type: volume
+      feeds: [player_damage]
+      chunk: 500
+      text: "Enemy players harried"
+    counts: [10, 15, 20, 25]
+    dialogue:
+      summary: "Land {count} measures of damage on enemy players and their pets."
+      offer: >-
+        The falcon is no scavenger, $N. It does not pick at what others have
+        killed. It chooses living prey, the swiftest in the sky, and takes it on
+        the wing.$B$BThe minions are fodder; let others squabble over them. The
+        champions the enemy sends against us are the prey worth hunting. Find
+        them in the lanes, strike them, and keep striking. Land {count} measures
+        of damage on the enemy's champions, and the falcon's precision will be
+        yours to wear.
+      progress: "Your prey is still out there, $N. Hunt it."
+      complete: "Swift prey, cleanly struck. The falcon has marked you, $N.$B$BChoose what you will carry from this hunt."

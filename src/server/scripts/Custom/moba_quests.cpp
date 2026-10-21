@@ -51,8 +51,23 @@ public:
     }
 };
 
+// Volume points are keyed by quest id, which a quest re-taken after abandoning keeps.
+class moba_quest_abandon_playerscript : public PlayerScript
+{
+public:
+    moba_quest_abandon_playerscript() : PlayerScript("moba_quest_abandon_playerscript",
+        { PLAYERHOOK_ON_QUEST_ABANDON }) { }
+
+    void OnPlayerQuestAbandon(Player* player, uint32 questId) override
+    {
+        if (BattlegroundMOBA* moba = dynamic_cast<BattlegroundMOBA*>(player->GetBattleground()))
+            moba->DropQuestVolume(player, questId);
+    }
+};
+
 void AddSC_moba_quests()
 {
     new moba_quests_playerscript();
     new moba_quest_credit_playerscript();
+    new moba_quest_abandon_playerscript();
 }

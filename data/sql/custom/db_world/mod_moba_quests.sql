@@ -2,8 +2,8 @@
 -- GENERATED FILE -- do not hand-edit.
 -- Produced by apps/moba/gen_quests.py from apps/moba/maps/*/quest_config.yaml.
 -- Owns the quest givers and their spawns, the invisible credit entries, every
--- quest row and its text, the one-quest-per-animal conditions, the quest block
--- and kill-credit tables, and the baked reward items. Every DELETE clears this
+-- quest row and its text, the one-quest-per-animal conditions, the quest block,
+-- kill-credit and volume tables, and the baked reward items. Every DELETE clears this
 -- generator's whole block (apps/moba/id_blocks.json), so anything dropped from
 -- config goes too.
 -- ============================================================
@@ -25,7 +25,13 @@ VALUES
 -- tiger credit
 (900504, 'tiger quest credit', '', 1, 1, 35, 0, 1.0, 1.14286, 0, 1, 0, 10, 0, 0, 1, 1, 1, 128, '', 0),
 -- monkey credit
-(900505, 'monkey quest credit', '', 1, 1, 35, 0, 1.0, 1.14286, 0, 1, 0, 10, 0, 0, 1, 1, 1, 128, '', 0);
+(900505, 'monkey quest credit', '', 1, 1, 35, 0, 1.0, 1.14286, 0, 1, 0, 10, 0, 0, 1, 1, 1, 128, '', 0),
+-- owl credit
+(900506, 'owl quest credit', '', 1, 1, 35, 0, 1.0, 1.14286, 0, 1, 0, 10, 0, 0, 1, 1, 1, 128, '', 0),
+-- whale credit
+(900507, 'whale quest credit', '', 1, 1, 35, 0, 1.0, 1.14286, 0, 1, 0, 10, 0, 0, 1, 1, 1, 128, '', 0),
+-- falcon credit
+(900508, 'falcon quest credit', '', 1, 1, 35, 0, 1.0, 1.14286, 0, 1, 0, 10, 0, 0, 1, 1, 1, 128, '', 0);
 
 DELETE FROM `creature_template_model` WHERE `CreatureID` BETWEEN 900500 AND 900599;
 INSERT INTO `creature_template_model`
@@ -36,7 +42,10 @@ VALUES
 (900502, 0, 12669, 1, 1, 0),
 (900503, 0, 12681, 1, 1, 0),
 (900504, 0, 11686, 1, 1, 0),
-(900505, 0, 11686, 1, 1, 0);
+(900505, 0, 11686, 1, 1, 0),
+(900506, 0, 11686, 1, 1, 0),
+(900507, 0, 11686, 1, 1, 0),
+(900508, 0, 11686, 1, 1, 0);
 
 DELETE FROM `creature` WHERE `guid` BETWEEN 900500 AND 900599 OR `id` BETWEEN 900500 AND 900599;
 INSERT INTO `creature`
@@ -91,6 +100,30 @@ VALUES
 (900026, 2, 40, 0, 5000, 62, 0, 0, 956920, 1, 956921, 1, 956922, 1, 956923, 1, 0, 0, 0, 0, 0, 0, 925812, 12, 'Way of the Wolf (3)', 'Land the killing blow on worgs in the jungle camps and take 12 Timber Worg Pelts from them.', 'A lone wolf is a meal for something larger, $N. A wolf that knows its ground is what everything else learns to fear.$B$BWorgs den in the jungle between the lanes, and they return to their dens as fast as they are cleared. Learn where they lie, hunt them each time they come back, and bring me 12 of their pelts. Do that, and the wolf''s cunning will be yours to wear.', '', 0),
 -- plate/wolf/4
 (900027, 2, 40, 0, 5000, 62, 0, 0, 956920, 1, 956921, 1, 956922, 1, 956923, 1, 0, 0, 0, 0, 0, 0, 925812, 18, 'Way of the Wolf (4)', 'Land the killing blow on worgs in the jungle camps and take 18 Timber Worg Pelts from them.', 'A lone wolf is a meal for something larger, $N. A wolf that knows its ground is what everything else learns to fear.$B$BWorgs den in the jungle between the lanes, and they return to their dens as fast as they are cleared. Learn where they lie, hunt them each time they come back, and bring me 18 of their pelts. Do that, and the wolf''s cunning will be yours to wear.', '', 0),
+-- plate/owl/1
+(900040, 2, 40, 0, 5000, 62, 0, 0, 956930, 1, 956931, 1, 956932, 1, 956933, 1, 0, 0, 0, 0, 900506, 10, 0, 0, 'Way of the Owl (1)', 'Damage enemy players, minions and jungle monsters, or heal your allies, until you have unleashed 10 measures of power. Damage to towers, inhibitors and the base does not count.', 'The owl sees the whole field before it moves, $N. It knows where its strength is needed, and it spends none of it in the wrong place.$B$BPower works the same way. Turn yours on the enemy''s champions and minions, or pour it into the allies fighting at your side; the owl counts both as wisdom put to use. Unleash 10 measures of it, and the owl''s wisdom will be yours to wear.', 'Power unleashed', 0),
+-- plate/owl/2
+(900041, 2, 40, 0, 5000, 62, 0, 0, 956930, 1, 956931, 1, 956932, 1, 956933, 1, 0, 0, 0, 0, 900506, 15, 0, 0, 'Way of the Owl (2)', 'Damage enemy players, minions and jungle monsters, or heal your allies, until you have unleashed 15 measures of power. Damage to towers, inhibitors and the base does not count.', 'The owl sees the whole field before it moves, $N. It knows where its strength is needed, and it spends none of it in the wrong place.$B$BPower works the same way. Turn yours on the enemy''s champions and minions, or pour it into the allies fighting at your side; the owl counts both as wisdom put to use. Unleash 15 measures of it, and the owl''s wisdom will be yours to wear.', 'Power unleashed', 0),
+-- plate/owl/3
+(900042, 2, 40, 0, 5000, 62, 0, 0, 956930, 1, 956931, 1, 956932, 1, 956933, 1, 0, 0, 0, 0, 900506, 20, 0, 0, 'Way of the Owl (3)', 'Damage enemy players, minions and jungle monsters, or heal your allies, until you have unleashed 20 measures of power. Damage to towers, inhibitors and the base does not count.', 'The owl sees the whole field before it moves, $N. It knows where its strength is needed, and it spends none of it in the wrong place.$B$BPower works the same way. Turn yours on the enemy''s champions and minions, or pour it into the allies fighting at your side; the owl counts both as wisdom put to use. Unleash 20 measures of it, and the owl''s wisdom will be yours to wear.', 'Power unleashed', 0),
+-- plate/owl/4
+(900043, 2, 40, 0, 5000, 62, 0, 0, 956930, 1, 956931, 1, 956932, 1, 956933, 1, 0, 0, 0, 0, 900506, 25, 0, 0, 'Way of the Owl (4)', 'Damage enemy players, minions and jungle monsters, or heal your allies, until you have unleashed 25 measures of power. Damage to towers, inhibitors and the base does not count.', 'The owl sees the whole field before it moves, $N. It knows where its strength is needed, and it spends none of it in the wrong place.$B$BPower works the same way. Turn yours on the enemy''s champions and minions, or pour it into the allies fighting at your side; the owl counts both as wisdom put to use. Unleash 25 measures of it, and the owl''s wisdom will be yours to wear.', 'Power unleashed', 0),
+-- plate/whale/1
+(900044, 2, 40, 0, 5000, 62, 0, 0, 956934, 1, 956935, 1, 956936, 1, 956937, 1, 0, 0, 0, 0, 900507, 10, 0, 0, 'Way of the Whale (1)', 'Endure 10 measures of punishment from enemy players, minions, jungle monsters and towers. Harm you do to yourself does not count.', 'The whale is neither quick nor fierce, $N. It dives where nothing else can follow, bears the weight of the deep, and always rises again.$B$BIn the lanes, every minion, every champion and every tower will try to break you. Let them try. Stand where the blows fall, take them, and live to take more. Endure 10 measures of their punishment, and the whale''s resolve will be yours to wear.', 'Punishment endured', 0),
+-- plate/whale/2
+(900045, 2, 40, 0, 5000, 62, 0, 0, 956934, 1, 956935, 1, 956936, 1, 956937, 1, 0, 0, 0, 0, 900507, 15, 0, 0, 'Way of the Whale (2)', 'Endure 15 measures of punishment from enemy players, minions, jungle monsters and towers. Harm you do to yourself does not count.', 'The whale is neither quick nor fierce, $N. It dives where nothing else can follow, bears the weight of the deep, and always rises again.$B$BIn the lanes, every minion, every champion and every tower will try to break you. Let them try. Stand where the blows fall, take them, and live to take more. Endure 15 measures of their punishment, and the whale''s resolve will be yours to wear.', 'Punishment endured', 0),
+-- plate/whale/3
+(900046, 2, 40, 0, 5000, 62, 0, 0, 956934, 1, 956935, 1, 956936, 1, 956937, 1, 0, 0, 0, 0, 900507, 20, 0, 0, 'Way of the Whale (3)', 'Endure 20 measures of punishment from enemy players, minions, jungle monsters and towers. Harm you do to yourself does not count.', 'The whale is neither quick nor fierce, $N. It dives where nothing else can follow, bears the weight of the deep, and always rises again.$B$BIn the lanes, every minion, every champion and every tower will try to break you. Let them try. Stand where the blows fall, take them, and live to take more. Endure 20 measures of their punishment, and the whale''s resolve will be yours to wear.', 'Punishment endured', 0),
+-- plate/whale/4
+(900047, 2, 40, 0, 5000, 62, 0, 0, 956934, 1, 956935, 1, 956936, 1, 956937, 1, 0, 0, 0, 0, 900507, 25, 0, 0, 'Way of the Whale (4)', 'Endure 25 measures of punishment from enemy players, minions, jungle monsters and towers. Harm you do to yourself does not count.', 'The whale is neither quick nor fierce, $N. It dives where nothing else can follow, bears the weight of the deep, and always rises again.$B$BIn the lanes, every minion, every champion and every tower will try to break you. Let them try. Stand where the blows fall, take them, and live to take more. Endure 25 measures of their punishment, and the whale''s resolve will be yours to wear.', 'Punishment endured', 0),
+-- plate/falcon/1
+(900048, 2, 40, 0, 5000, 62, 0, 0, 956938, 1, 956939, 1, 956940, 1, 956941, 1, 0, 0, 0, 0, 900508, 10, 0, 0, 'Way of the Falcon (1)', 'Land 10 measures of damage on enemy players and their pets.', 'The falcon is no scavenger, $N. It does not pick at what others have killed. It chooses living prey, the swiftest in the sky, and takes it on the wing.$B$BThe minions are fodder; let others squabble over them. The champions the enemy sends against us are the prey worth hunting. Find them in the lanes, strike them, and keep striking. Land 10 measures of damage on the enemy''s champions, and the falcon''s precision will be yours to wear.', 'Enemy players harried', 0),
+-- plate/falcon/2
+(900049, 2, 40, 0, 5000, 62, 0, 0, 956938, 1, 956939, 1, 956940, 1, 956941, 1, 0, 0, 0, 0, 900508, 15, 0, 0, 'Way of the Falcon (2)', 'Land 15 measures of damage on enemy players and their pets.', 'The falcon is no scavenger, $N. It does not pick at what others have killed. It chooses living prey, the swiftest in the sky, and takes it on the wing.$B$BThe minions are fodder; let others squabble over them. The champions the enemy sends against us are the prey worth hunting. Find them in the lanes, strike them, and keep striking. Land 15 measures of damage on the enemy''s champions, and the falcon''s precision will be yours to wear.', 'Enemy players harried', 0),
+-- plate/falcon/3
+(900050, 2, 40, 0, 5000, 62, 0, 0, 956938, 1, 956939, 1, 956940, 1, 956941, 1, 0, 0, 0, 0, 900508, 20, 0, 0, 'Way of the Falcon (3)', 'Land 20 measures of damage on enemy players and their pets.', 'The falcon is no scavenger, $N. It does not pick at what others have killed. It chooses living prey, the swiftest in the sky, and takes it on the wing.$B$BThe minions are fodder; let others squabble over them. The champions the enemy sends against us are the prey worth hunting. Find them in the lanes, strike them, and keep striking. Land 20 measures of damage on the enemy''s champions, and the falcon''s precision will be yours to wear.', 'Enemy players harried', 0),
+-- plate/falcon/4
+(900051, 2, 40, 0, 5000, 62, 0, 0, 956938, 1, 956939, 1, 956940, 1, 956941, 1, 0, 0, 0, 0, 900508, 25, 0, 0, 'Way of the Falcon (4)', 'Land 25 measures of damage on enemy players and their pets.', 'The falcon is no scavenger, $N. It does not pick at what others have killed. It chooses living prey, the swiftest in the sky, and takes it on the wing.$B$BThe minions are fodder; let others squabble over them. The champions the enemy sends against us are the prey worth hunting. Find them in the lanes, strike them, and keep striking. Land 25 measures of damage on the enemy''s champions, and the falcon''s precision will be yours to wear.', 'Enemy players harried', 0),
 -- jewelry/tiger/1
 (900004, 2, 40, 0, 5000, 62, 0, 0, 956904, 1, 956905, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900504, 10, 0, 0, 'Way of the Tiger (1)', 'Land the killing blow on 10 enemy melee or caster minions.', 'The tiger does not waste its strength on the strong, $N. It takes the stragglers: the slow, the wounded, the ones already falling.$B$BThe enemy''s minions march down these lanes by the dozen. Let others wear them down; you strike the final blow. Claim 10 of them, and the tiger''s strength will be yours to wear.', 'Minions slain', 0),
 -- jewelry/tiger/2
@@ -130,7 +163,31 @@ VALUES
 -- jewelry/wolf/3
 (900038, 2, 40, 0, 5000, 62, 0, 0, 956928, 1, 956929, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 925812, 12, 'Way of the Wolf (3)', 'Land the killing blow on worgs in the jungle camps and take 12 Timber Worg Pelts from them.', 'A lone wolf is a meal for something larger, $N. A wolf that knows its ground is what everything else learns to fear.$B$BWorgs den in the jungle between the lanes, and they return to their dens as fast as they are cleared. Learn where they lie, hunt them each time they come back, and bring me 12 of their pelts. Do that, and the wolf''s cunning will be yours to wear.', '', 0),
 -- jewelry/wolf/4
-(900039, 2, 40, 0, 5000, 62, 0, 0, 956928, 1, 956929, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 925812, 18, 'Way of the Wolf (4)', 'Land the killing blow on worgs in the jungle camps and take 18 Timber Worg Pelts from them.', 'A lone wolf is a meal for something larger, $N. A wolf that knows its ground is what everything else learns to fear.$B$BWorgs den in the jungle between the lanes, and they return to their dens as fast as they are cleared. Learn where they lie, hunt them each time they come back, and bring me 18 of their pelts. Do that, and the wolf''s cunning will be yours to wear.', '', 0);
+(900039, 2, 40, 0, 5000, 62, 0, 0, 956928, 1, 956929, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 925812, 18, 'Way of the Wolf (4)', 'Land the killing blow on worgs in the jungle camps and take 18 Timber Worg Pelts from them.', 'A lone wolf is a meal for something larger, $N. A wolf that knows its ground is what everything else learns to fear.$B$BWorgs den in the jungle between the lanes, and they return to their dens as fast as they are cleared. Learn where they lie, hunt them each time they come back, and bring me 18 of their pelts. Do that, and the wolf''s cunning will be yours to wear.', '', 0),
+-- jewelry/owl/1
+(900052, 2, 40, 0, 5000, 62, 0, 0, 956942, 1, 956943, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900506, 10, 0, 0, 'Way of the Owl (1)', 'Damage enemy players, minions and jungle monsters, or heal your allies, until you have unleashed 10 measures of power. Damage to towers, inhibitors and the base does not count.', 'The owl sees the whole field before it moves, $N. It knows where its strength is needed, and it spends none of it in the wrong place.$B$BPower works the same way. Turn yours on the enemy''s champions and minions, or pour it into the allies fighting at your side; the owl counts both as wisdom put to use. Unleash 10 measures of it, and the owl''s wisdom will be yours to wear.', 'Power unleashed', 0),
+-- jewelry/owl/2
+(900053, 2, 40, 0, 5000, 62, 0, 0, 956942, 1, 956943, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900506, 15, 0, 0, 'Way of the Owl (2)', 'Damage enemy players, minions and jungle monsters, or heal your allies, until you have unleashed 15 measures of power. Damage to towers, inhibitors and the base does not count.', 'The owl sees the whole field before it moves, $N. It knows where its strength is needed, and it spends none of it in the wrong place.$B$BPower works the same way. Turn yours on the enemy''s champions and minions, or pour it into the allies fighting at your side; the owl counts both as wisdom put to use. Unleash 15 measures of it, and the owl''s wisdom will be yours to wear.', 'Power unleashed', 0),
+-- jewelry/owl/3
+(900054, 2, 40, 0, 5000, 62, 0, 0, 956942, 1, 956943, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900506, 20, 0, 0, 'Way of the Owl (3)', 'Damage enemy players, minions and jungle monsters, or heal your allies, until you have unleashed 20 measures of power. Damage to towers, inhibitors and the base does not count.', 'The owl sees the whole field before it moves, $N. It knows where its strength is needed, and it spends none of it in the wrong place.$B$BPower works the same way. Turn yours on the enemy''s champions and minions, or pour it into the allies fighting at your side; the owl counts both as wisdom put to use. Unleash 20 measures of it, and the owl''s wisdom will be yours to wear.', 'Power unleashed', 0),
+-- jewelry/owl/4
+(900055, 2, 40, 0, 5000, 62, 0, 0, 956942, 1, 956943, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900506, 25, 0, 0, 'Way of the Owl (4)', 'Damage enemy players, minions and jungle monsters, or heal your allies, until you have unleashed 25 measures of power. Damage to towers, inhibitors and the base does not count.', 'The owl sees the whole field before it moves, $N. It knows where its strength is needed, and it spends none of it in the wrong place.$B$BPower works the same way. Turn yours on the enemy''s champions and minions, or pour it into the allies fighting at your side; the owl counts both as wisdom put to use. Unleash 25 measures of it, and the owl''s wisdom will be yours to wear.', 'Power unleashed', 0),
+-- jewelry/whale/1
+(900056, 2, 40, 0, 5000, 62, 0, 0, 956944, 1, 956945, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900507, 10, 0, 0, 'Way of the Whale (1)', 'Endure 10 measures of punishment from enemy players, minions, jungle monsters and towers. Harm you do to yourself does not count.', 'The whale is neither quick nor fierce, $N. It dives where nothing else can follow, bears the weight of the deep, and always rises again.$B$BIn the lanes, every minion, every champion and every tower will try to break you. Let them try. Stand where the blows fall, take them, and live to take more. Endure 10 measures of their punishment, and the whale''s resolve will be yours to wear.', 'Punishment endured', 0),
+-- jewelry/whale/2
+(900057, 2, 40, 0, 5000, 62, 0, 0, 956944, 1, 956945, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900507, 15, 0, 0, 'Way of the Whale (2)', 'Endure 15 measures of punishment from enemy players, minions, jungle monsters and towers. Harm you do to yourself does not count.', 'The whale is neither quick nor fierce, $N. It dives where nothing else can follow, bears the weight of the deep, and always rises again.$B$BIn the lanes, every minion, every champion and every tower will try to break you. Let them try. Stand where the blows fall, take them, and live to take more. Endure 15 measures of their punishment, and the whale''s resolve will be yours to wear.', 'Punishment endured', 0),
+-- jewelry/whale/3
+(900058, 2, 40, 0, 5000, 62, 0, 0, 956944, 1, 956945, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900507, 20, 0, 0, 'Way of the Whale (3)', 'Endure 20 measures of punishment from enemy players, minions, jungle monsters and towers. Harm you do to yourself does not count.', 'The whale is neither quick nor fierce, $N. It dives where nothing else can follow, bears the weight of the deep, and always rises again.$B$BIn the lanes, every minion, every champion and every tower will try to break you. Let them try. Stand where the blows fall, take them, and live to take more. Endure 20 measures of their punishment, and the whale''s resolve will be yours to wear.', 'Punishment endured', 0),
+-- jewelry/whale/4
+(900059, 2, 40, 0, 5000, 62, 0, 0, 956944, 1, 956945, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900507, 25, 0, 0, 'Way of the Whale (4)', 'Endure 25 measures of punishment from enemy players, minions, jungle monsters and towers. Harm you do to yourself does not count.', 'The whale is neither quick nor fierce, $N. It dives where nothing else can follow, bears the weight of the deep, and always rises again.$B$BIn the lanes, every minion, every champion and every tower will try to break you. Let them try. Stand where the blows fall, take them, and live to take more. Endure 25 measures of their punishment, and the whale''s resolve will be yours to wear.', 'Punishment endured', 0),
+-- jewelry/falcon/1
+(900060, 2, 40, 0, 5000, 62, 0, 0, 956946, 1, 956947, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900508, 10, 0, 0, 'Way of the Falcon (1)', 'Land 10 measures of damage on enemy players and their pets.', 'The falcon is no scavenger, $N. It does not pick at what others have killed. It chooses living prey, the swiftest in the sky, and takes it on the wing.$B$BThe minions are fodder; let others squabble over them. The champions the enemy sends against us are the prey worth hunting. Find them in the lanes, strike them, and keep striking. Land 10 measures of damage on the enemy''s champions, and the falcon''s precision will be yours to wear.', 'Enemy players harried', 0),
+-- jewelry/falcon/2
+(900061, 2, 40, 0, 5000, 62, 0, 0, 956946, 1, 956947, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900508, 15, 0, 0, 'Way of the Falcon (2)', 'Land 15 measures of damage on enemy players and their pets.', 'The falcon is no scavenger, $N. It does not pick at what others have killed. It chooses living prey, the swiftest in the sky, and takes it on the wing.$B$BThe minions are fodder; let others squabble over them. The champions the enemy sends against us are the prey worth hunting. Find them in the lanes, strike them, and keep striking. Land 15 measures of damage on the enemy''s champions, and the falcon''s precision will be yours to wear.', 'Enemy players harried', 0),
+-- jewelry/falcon/3
+(900062, 2, 40, 0, 5000, 62, 0, 0, 956946, 1, 956947, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900508, 20, 0, 0, 'Way of the Falcon (3)', 'Land 20 measures of damage on enemy players and their pets.', 'The falcon is no scavenger, $N. It does not pick at what others have killed. It chooses living prey, the swiftest in the sky, and takes it on the wing.$B$BThe minions are fodder; let others squabble over them. The champions the enemy sends against us are the prey worth hunting. Find them in the lanes, strike them, and keep striking. Land 20 measures of damage on the enemy''s champions, and the falcon''s precision will be yours to wear.', 'Enemy players harried', 0),
+-- jewelry/falcon/4
+(900063, 2, 40, 0, 5000, 62, 0, 0, 956946, 1, 956947, 1, 0, 0, 0, 0, 0, 0, 0, 0, 900508, 25, 0, 0, 'Way of the Falcon (4)', 'Land 25 measures of damage on enemy players and their pets.', 'The falcon is no scavenger, $N. It does not pick at what others have killed. It chooses living prey, the swiftest in the sky, and takes it on the wing.$B$BThe minions are fodder; let others squabble over them. The champions the enemy sends against us are the prey worth hunting. Find them in the lanes, strike them, and keep striking. Land 25 measures of damage on the enemy''s champions, and the falcon''s precision will be yours to wear.', 'Enemy players harried', 0);
 
 DELETE FROM `quest_template_addon` WHERE `ID` BETWEEN 900000 AND 900099;
 INSERT INTO `quest_template_addon`
@@ -156,6 +213,18 @@ VALUES
 (900025, 900024, 900026),
 (900026, 900025, 900027),
 (900027, 900026, 0),
+(900040, 0, 900041),
+(900041, 900040, 900042),
+(900042, 900041, 900043),
+(900043, 900042, 0),
+(900044, 0, 900045),
+(900045, 900044, 900046),
+(900046, 900045, 900047),
+(900047, 900046, 0),
+(900048, 0, 900049),
+(900049, 900048, 900050),
+(900050, 900049, 900051),
+(900051, 900050, 0),
 (900004, 0, 900005),
 (900005, 900004, 900006),
 (900006, 900005, 900007),
@@ -175,7 +244,19 @@ VALUES
 (900036, 0, 900037),
 (900037, 900036, 900038),
 (900038, 900037, 900039),
-(900039, 900038, 0);
+(900039, 900038, 0),
+(900052, 0, 900053),
+(900053, 900052, 900054),
+(900054, 900053, 900055),
+(900055, 900054, 0),
+(900056, 0, 900057),
+(900057, 900056, 900058),
+(900058, 900057, 900059),
+(900059, 900058, 0),
+(900060, 0, 900061),
+(900061, 900060, 900062),
+(900062, 900061, 900063),
+(900063, 900062, 0);
 
 DELETE FROM `quest_details` WHERE `ID` BETWEEN 900000 AND 900099;
 INSERT INTO `quest_details`
@@ -201,6 +282,18 @@ VALUES
 (900025, 1),
 (900026, 1),
 (900027, 1),
+(900040, 1),
+(900041, 1),
+(900042, 1),
+(900043, 1),
+(900044, 1),
+(900045, 1),
+(900046, 1),
+(900047, 1),
+(900048, 1),
+(900049, 1),
+(900050, 1),
+(900051, 1),
 (900004, 1),
 (900005, 1),
 (900006, 1),
@@ -220,7 +313,19 @@ VALUES
 (900036, 1),
 (900037, 1),
 (900038, 1),
-(900039, 1);
+(900039, 1),
+(900052, 1),
+(900053, 1),
+(900054, 1),
+(900055, 1),
+(900056, 1),
+(900057, 1),
+(900058, 1),
+(900059, 1),
+(900060, 1),
+(900061, 1),
+(900062, 1),
+(900063, 1);
 
 DELETE FROM `quest_request_items` WHERE `ID` BETWEEN 900000 AND 900099;
 INSERT INTO `quest_request_items`
@@ -246,6 +351,18 @@ VALUES
 (900025, 274, 'The worgs will be back in their dens by now, $N. So should you.'),
 (900026, 274, 'The worgs will be back in their dens by now, $N. So should you.'),
 (900027, 274, 'The worgs will be back in their dens by now, $N. So should you.'),
+(900040, 274, 'Power held back is power wasted, $N. Spend more of it.'),
+(900041, 274, 'Power held back is power wasted, $N. Spend more of it.'),
+(900042, 274, 'Power held back is power wasted, $N. Spend more of it.'),
+(900043, 274, 'Power held back is power wasted, $N. Spend more of it.'),
+(900044, 274, 'You are still standing, $N. Then you can stand a little longer.'),
+(900045, 274, 'You are still standing, $N. Then you can stand a little longer.'),
+(900046, 274, 'You are still standing, $N. Then you can stand a little longer.'),
+(900047, 274, 'You are still standing, $N. Then you can stand a little longer.'),
+(900048, 274, 'Your prey is still out there, $N. Hunt it.'),
+(900049, 274, 'Your prey is still out there, $N. Hunt it.'),
+(900050, 274, 'Your prey is still out there, $N. Hunt it.'),
+(900051, 274, 'Your prey is still out there, $N. Hunt it.'),
 (900004, 274, 'The tiger is patient, but it is never idle. Your hunt is not finished.'),
 (900005, 274, 'The tiger is patient, but it is never idle. Your hunt is not finished.'),
 (900006, 274, 'The tiger is patient, but it is never idle. Your hunt is not finished.'),
@@ -265,7 +382,19 @@ VALUES
 (900036, 274, 'The worgs will be back in their dens by now, $N. So should you.'),
 (900037, 274, 'The worgs will be back in their dens by now, $N. So should you.'),
 (900038, 274, 'The worgs will be back in their dens by now, $N. So should you.'),
-(900039, 274, 'The worgs will be back in their dens by now, $N. So should you.');
+(900039, 274, 'The worgs will be back in their dens by now, $N. So should you.'),
+(900052, 274, 'Power held back is power wasted, $N. Spend more of it.'),
+(900053, 274, 'Power held back is power wasted, $N. Spend more of it.'),
+(900054, 274, 'Power held back is power wasted, $N. Spend more of it.'),
+(900055, 274, 'Power held back is power wasted, $N. Spend more of it.'),
+(900056, 274, 'You are still standing, $N. Then you can stand a little longer.'),
+(900057, 274, 'You are still standing, $N. Then you can stand a little longer.'),
+(900058, 274, 'You are still standing, $N. Then you can stand a little longer.'),
+(900059, 274, 'You are still standing, $N. Then you can stand a little longer.'),
+(900060, 274, 'Your prey is still out there, $N. Hunt it.'),
+(900061, 274, 'Your prey is still out there, $N. Hunt it.'),
+(900062, 274, 'Your prey is still out there, $N. Hunt it.'),
+(900063, 274, 'Your prey is still out there, $N. Hunt it.');
 
 DELETE FROM `quest_offer_reward` WHERE `ID` BETWEEN 900000 AND 900099;
 INSERT INTO `quest_offer_reward`
@@ -291,6 +420,18 @@ VALUES
 (900025, 66, 'Thick pelts, cleanly taken. The wolf has marked you, $N.$B$BChoose what you will carry from this hunt.'),
 (900026, 66, 'Thick pelts, cleanly taken. The wolf has marked you, $N.$B$BChoose what you will carry from this hunt.'),
 (900027, 66, 'Thick pelts, cleanly taken. The wolf has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900040, 66, 'Nothing spent where it was not needed. The owl has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900041, 66, 'Nothing spent where it was not needed. The owl has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900042, 66, 'Nothing spent where it was not needed. The owl has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900043, 66, 'Nothing spent where it was not needed. The owl has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900044, 66, 'Battered, and still breathing. The whale has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900045, 66, 'Battered, and still breathing. The whale has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900046, 66, 'Battered, and still breathing. The whale has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900047, 66, 'Battered, and still breathing. The whale has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900048, 66, 'Swift prey, cleanly struck. The falcon has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900049, 66, 'Swift prey, cleanly struck. The falcon has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900050, 66, 'Swift prey, cleanly struck. The falcon has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900051, 66, 'Swift prey, cleanly struck. The falcon has marked you, $N.$B$BChoose what you will carry from this hunt.'),
 (900004, 2, 'Clean kills, every one. The tiger has marked you, $N.$B$BChoose what you will carry from this hunt.'),
 (900005, 2, 'Clean kills, every one. The tiger has marked you, $N.$B$BChoose what you will carry from this hunt.'),
 (900006, 2, 'Clean kills, every one. The tiger has marked you, $N.$B$BChoose what you will carry from this hunt.'),
@@ -310,7 +451,19 @@ VALUES
 (900036, 2, 'Thick pelts, cleanly taken. The wolf has marked you, $N.$B$BChoose what you will carry from this hunt.'),
 (900037, 2, 'Thick pelts, cleanly taken. The wolf has marked you, $N.$B$BChoose what you will carry from this hunt.'),
 (900038, 2, 'Thick pelts, cleanly taken. The wolf has marked you, $N.$B$BChoose what you will carry from this hunt.'),
-(900039, 2, 'Thick pelts, cleanly taken. The wolf has marked you, $N.$B$BChoose what you will carry from this hunt.');
+(900039, 2, 'Thick pelts, cleanly taken. The wolf has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900052, 2, 'Nothing spent where it was not needed. The owl has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900053, 2, 'Nothing spent where it was not needed. The owl has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900054, 2, 'Nothing spent where it was not needed. The owl has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900055, 2, 'Nothing spent where it was not needed. The owl has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900056, 2, 'Battered, and still breathing. The whale has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900057, 2, 'Battered, and still breathing. The whale has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900058, 2, 'Battered, and still breathing. The whale has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900059, 2, 'Battered, and still breathing. The whale has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900060, 2, 'Swift prey, cleanly struck. The falcon has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900061, 2, 'Swift prey, cleanly struck. The falcon has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900062, 2, 'Swift prey, cleanly struck. The falcon has marked you, $N.$B$BChoose what you will carry from this hunt.'),
+(900063, 2, 'Swift prey, cleanly struck. The falcon has marked you, $N.$B$BChoose what you will carry from this hunt.');
 
 DELETE FROM `creature_queststarter` WHERE `quest` BETWEEN 900000 AND 900099 OR `id` BETWEEN 900500 AND 900599;
 INSERT INTO `creature_queststarter`
@@ -356,6 +509,30 @@ VALUES
 (900501, 900025),
 (900501, 900026),
 (900501, 900027),
+(900500, 900040),
+(900500, 900041),
+(900500, 900042),
+(900500, 900043),
+(900501, 900040),
+(900501, 900041),
+(900501, 900042),
+(900501, 900043),
+(900500, 900044),
+(900500, 900045),
+(900500, 900046),
+(900500, 900047),
+(900501, 900044),
+(900501, 900045),
+(900501, 900046),
+(900501, 900047),
+(900500, 900048),
+(900500, 900049),
+(900500, 900050),
+(900500, 900051),
+(900501, 900048),
+(900501, 900049),
+(900501, 900050),
+(900501, 900051),
 (900502, 900004),
 (900502, 900005),
 (900502, 900006),
@@ -395,7 +572,31 @@ VALUES
 (900503, 900036),
 (900503, 900037),
 (900503, 900038),
-(900503, 900039);
+(900503, 900039),
+(900502, 900052),
+(900502, 900053),
+(900502, 900054),
+(900502, 900055),
+(900503, 900052),
+(900503, 900053),
+(900503, 900054),
+(900503, 900055),
+(900502, 900056),
+(900502, 900057),
+(900502, 900058),
+(900502, 900059),
+(900503, 900056),
+(900503, 900057),
+(900503, 900058),
+(900503, 900059),
+(900502, 900060),
+(900502, 900061),
+(900502, 900062),
+(900502, 900063),
+(900503, 900060),
+(900503, 900061),
+(900503, 900062),
+(900503, 900063);
 
 DELETE FROM `creature_questender` WHERE `quest` BETWEEN 900000 AND 900099 OR `id` BETWEEN 900500 AND 900599;
 INSERT INTO `creature_questender`
@@ -441,6 +642,30 @@ VALUES
 (900501, 900025),
 (900501, 900026),
 (900501, 900027),
+(900500, 900040),
+(900500, 900041),
+(900500, 900042),
+(900500, 900043),
+(900501, 900040),
+(900501, 900041),
+(900501, 900042),
+(900501, 900043),
+(900500, 900044),
+(900500, 900045),
+(900500, 900046),
+(900500, 900047),
+(900501, 900044),
+(900501, 900045),
+(900501, 900046),
+(900501, 900047),
+(900500, 900048),
+(900500, 900049),
+(900500, 900050),
+(900500, 900051),
+(900501, 900048),
+(900501, 900049),
+(900501, 900050),
+(900501, 900051),
 (900502, 900004),
 (900502, 900005),
 (900502, 900006),
@@ -480,7 +705,31 @@ VALUES
 (900503, 900036),
 (900503, 900037),
 (900503, 900038),
-(900503, 900039);
+(900503, 900039),
+(900502, 900052),
+(900502, 900053),
+(900502, 900054),
+(900502, 900055),
+(900503, 900052),
+(900503, 900053),
+(900503, 900054),
+(900503, 900055),
+(900502, 900056),
+(900502, 900057),
+(900502, 900058),
+(900502, 900059),
+(900503, 900056),
+(900503, 900057),
+(900503, 900058),
+(900503, 900059),
+(900502, 900060),
+(900502, 900061),
+(900502, 900062),
+(900502, 900063),
+(900503, 900060),
+(900503, 900061),
+(900503, 900062),
+(900503, 900063);
 
 DELETE FROM `conditions` WHERE `SourceTypeOrReferenceId` = 19 AND `SourceEntry` BETWEEN 900000 AND 900099;
 INSERT INTO `conditions`
@@ -566,6 +815,54 @@ VALUES
 (19, 0, 900027, 0, 0, 47, 0, 900037, 10, 0, 1, 'plate/wolf: not while jewelry/wolf is held'),
 (19, 0, 900027, 0, 0, 47, 0, 900038, 10, 0, 1, 'plate/wolf: not while jewelry/wolf is held'),
 (19, 0, 900027, 0, 0, 47, 0, 900039, 10, 0, 1, 'plate/wolf: not while jewelry/wolf is held'),
+(19, 0, 900040, 0, 0, 47, 0, 900052, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900040, 0, 0, 47, 0, 900053, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900040, 0, 0, 47, 0, 900054, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900040, 0, 0, 47, 0, 900055, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900041, 0, 0, 47, 0, 900052, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900041, 0, 0, 47, 0, 900053, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900041, 0, 0, 47, 0, 900054, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900041, 0, 0, 47, 0, 900055, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900042, 0, 0, 47, 0, 900052, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900042, 0, 0, 47, 0, 900053, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900042, 0, 0, 47, 0, 900054, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900042, 0, 0, 47, 0, 900055, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900043, 0, 0, 47, 0, 900052, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900043, 0, 0, 47, 0, 900053, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900043, 0, 0, 47, 0, 900054, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900043, 0, 0, 47, 0, 900055, 10, 0, 1, 'plate/owl: not while jewelry/owl is held'),
+(19, 0, 900044, 0, 0, 47, 0, 900056, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900044, 0, 0, 47, 0, 900057, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900044, 0, 0, 47, 0, 900058, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900044, 0, 0, 47, 0, 900059, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900045, 0, 0, 47, 0, 900056, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900045, 0, 0, 47, 0, 900057, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900045, 0, 0, 47, 0, 900058, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900045, 0, 0, 47, 0, 900059, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900046, 0, 0, 47, 0, 900056, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900046, 0, 0, 47, 0, 900057, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900046, 0, 0, 47, 0, 900058, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900046, 0, 0, 47, 0, 900059, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900047, 0, 0, 47, 0, 900056, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900047, 0, 0, 47, 0, 900057, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900047, 0, 0, 47, 0, 900058, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900047, 0, 0, 47, 0, 900059, 10, 0, 1, 'plate/whale: not while jewelry/whale is held'),
+(19, 0, 900048, 0, 0, 47, 0, 900060, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900048, 0, 0, 47, 0, 900061, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900048, 0, 0, 47, 0, 900062, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900048, 0, 0, 47, 0, 900063, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900049, 0, 0, 47, 0, 900060, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900049, 0, 0, 47, 0, 900061, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900049, 0, 0, 47, 0, 900062, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900049, 0, 0, 47, 0, 900063, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900050, 0, 0, 47, 0, 900060, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900050, 0, 0, 47, 0, 900061, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900050, 0, 0, 47, 0, 900062, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900050, 0, 0, 47, 0, 900063, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900051, 0, 0, 47, 0, 900060, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900051, 0, 0, 47, 0, 900061, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900051, 0, 0, 47, 0, 900062, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
+(19, 0, 900051, 0, 0, 47, 0, 900063, 10, 0, 1, 'plate/falcon: not while jewelry/falcon is held'),
 (19, 0, 900004, 0, 0, 47, 0, 900000, 10, 0, 1, 'jewelry/tiger: not while plate/tiger is held'),
 (19, 0, 900004, 0, 0, 47, 0, 900001, 10, 0, 1, 'jewelry/tiger: not while plate/tiger is held'),
 (19, 0, 900004, 0, 0, 47, 0, 900002, 10, 0, 1, 'jewelry/tiger: not while plate/tiger is held'),
@@ -645,7 +942,55 @@ VALUES
 (19, 0, 900039, 0, 0, 47, 0, 900024, 10, 0, 1, 'jewelry/wolf: not while plate/wolf is held'),
 (19, 0, 900039, 0, 0, 47, 0, 900025, 10, 0, 1, 'jewelry/wolf: not while plate/wolf is held'),
 (19, 0, 900039, 0, 0, 47, 0, 900026, 10, 0, 1, 'jewelry/wolf: not while plate/wolf is held'),
-(19, 0, 900039, 0, 0, 47, 0, 900027, 10, 0, 1, 'jewelry/wolf: not while plate/wolf is held');
+(19, 0, 900039, 0, 0, 47, 0, 900027, 10, 0, 1, 'jewelry/wolf: not while plate/wolf is held'),
+(19, 0, 900052, 0, 0, 47, 0, 900040, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900052, 0, 0, 47, 0, 900041, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900052, 0, 0, 47, 0, 900042, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900052, 0, 0, 47, 0, 900043, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900053, 0, 0, 47, 0, 900040, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900053, 0, 0, 47, 0, 900041, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900053, 0, 0, 47, 0, 900042, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900053, 0, 0, 47, 0, 900043, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900054, 0, 0, 47, 0, 900040, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900054, 0, 0, 47, 0, 900041, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900054, 0, 0, 47, 0, 900042, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900054, 0, 0, 47, 0, 900043, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900055, 0, 0, 47, 0, 900040, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900055, 0, 0, 47, 0, 900041, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900055, 0, 0, 47, 0, 900042, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900055, 0, 0, 47, 0, 900043, 10, 0, 1, 'jewelry/owl: not while plate/owl is held'),
+(19, 0, 900056, 0, 0, 47, 0, 900044, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900056, 0, 0, 47, 0, 900045, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900056, 0, 0, 47, 0, 900046, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900056, 0, 0, 47, 0, 900047, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900057, 0, 0, 47, 0, 900044, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900057, 0, 0, 47, 0, 900045, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900057, 0, 0, 47, 0, 900046, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900057, 0, 0, 47, 0, 900047, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900058, 0, 0, 47, 0, 900044, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900058, 0, 0, 47, 0, 900045, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900058, 0, 0, 47, 0, 900046, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900058, 0, 0, 47, 0, 900047, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900059, 0, 0, 47, 0, 900044, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900059, 0, 0, 47, 0, 900045, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900059, 0, 0, 47, 0, 900046, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900059, 0, 0, 47, 0, 900047, 10, 0, 1, 'jewelry/whale: not while plate/whale is held'),
+(19, 0, 900060, 0, 0, 47, 0, 900048, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900060, 0, 0, 47, 0, 900049, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900060, 0, 0, 47, 0, 900050, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900060, 0, 0, 47, 0, 900051, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900061, 0, 0, 47, 0, 900048, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900061, 0, 0, 47, 0, 900049, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900061, 0, 0, 47, 0, 900050, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900061, 0, 0, 47, 0, 900051, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900062, 0, 0, 47, 0, 900048, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900062, 0, 0, 47, 0, 900049, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900062, 0, 0, 47, 0, 900050, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900062, 0, 0, 47, 0, 900051, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900063, 0, 0, 47, 0, 900048, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900063, 0, 0, 47, 0, 900049, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900063, 0, 0, 47, 0, 900050, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held'),
+(19, 0, 900063, 0, 0, 47, 0, 900051, 10, 0, 1, 'jewelry/falcon: not while plate/falcon is held');
 
 DROP TABLE IF EXISTS `mod_moba_quest_block`;
 CREATE TABLE `mod_moba_quest_block` (
@@ -698,6 +1043,30 @@ VALUES
 (900026, 900, 0),
 -- plate/wolf/4
 (900027, 900, 0),
+-- plate/owl/1
+(900040, 900, 0),
+-- plate/owl/2
+(900041, 900, 0),
+-- plate/owl/3
+(900042, 900, 0),
+-- plate/owl/4
+(900043, 900, 0),
+-- plate/whale/1
+(900044, 900, 0),
+-- plate/whale/2
+(900045, 900, 0),
+-- plate/whale/3
+(900046, 900, 0),
+-- plate/whale/4
+(900047, 900, 0),
+-- plate/falcon/1
+(900048, 900, 0),
+-- plate/falcon/2
+(900049, 900, 0),
+-- plate/falcon/3
+(900050, 900, 0),
+-- plate/falcon/4
+(900051, 900, 0),
 -- jewelry/tiger/1
 (900004, 900, 0),
 -- jewelry/tiger/2
@@ -737,7 +1106,31 @@ VALUES
 -- jewelry/wolf/3
 (900038, 900, 0),
 -- jewelry/wolf/4
-(900039, 900, 0);
+(900039, 900, 0),
+-- jewelry/owl/1
+(900052, 900, 0),
+-- jewelry/owl/2
+(900053, 900, 0),
+-- jewelry/owl/3
+(900054, 900, 0),
+-- jewelry/owl/4
+(900055, 900, 0),
+-- jewelry/whale/1
+(900056, 900, 0),
+-- jewelry/whale/2
+(900057, 900, 0),
+-- jewelry/whale/3
+(900058, 900, 0),
+-- jewelry/whale/4
+(900059, 900, 0),
+-- jewelry/falcon/1
+(900060, 900, 0),
+-- jewelry/falcon/2
+(900061, 900, 0),
+-- jewelry/falcon/3
+(900062, 900, 0),
+-- jewelry/falcon/4
+(900063, 900, 0);
 
 DROP TABLE IF EXISTS `mod_moba_quest_credit`;
 CREATE TABLE `mod_moba_quest_credit` (
@@ -786,6 +1179,25 @@ VALUES
 (900213, 900, 900505),
 -- golem_small
 (900214, 900, 900505);
+
+DROP TABLE IF EXISTS `mod_moba_quest_volume`;
+CREATE TABLE `mod_moba_quest_volume` (
+    `CreditEntry` INT UNSIGNED NOT NULL,
+    `Map`         INT UNSIGNED NOT NULL,
+    `Feeds`       TINYINT UNSIGNED NOT NULL,   -- 1 = damage_dealt, 2 = healing_done, 4 = damage_taken, 8 = player_damage
+    `Chunk`       INT UNSIGNED NOT NULL,       -- points per credit
+    PRIMARY KEY (`CreditEntry`)
+);
+
+INSERT INTO `mod_moba_quest_volume`
+(`CreditEntry`, `Map`, `Feeds`, `Chunk`)
+VALUES
+-- owl
+(900506, 900, 3, 1000),
+-- whale
+(900507, 900, 4, 600),
+-- falcon
+(900508, 900, 8, 500);
 
 -- ============================================================
 -- Baked item copies: a source cloned once per suffix, each under an entry
@@ -958,6 +1370,90 @@ UPDATE `_moba_item_bake`
        `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
  WHERE `entry` = 9973;
 
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9972;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956930, `name` = 'Embossed Plate Bracers of the Owl', `ItemLevel` = 45,
+       `stat_type1` = 5, `stat_value1` = 6, `stat_type2` = 6, `stat_value2` = 6,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9972;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9967;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956931, `name` = 'Embossed Plate Gauntlets of the Owl', `ItemLevel` = 45,
+       `stat_type1` = 5, `stat_value1` = 9, `stat_type2` = 6, `stat_value2` = 9,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9967;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9968;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956932, `name` = 'Embossed Plate Girdle of the Owl', `ItemLevel` = 45,
+       `stat_type1` = 5, `stat_value1` = 9, `stat_type2` = 6, `stat_value2` = 9,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9968;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9973;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956933, `name` = 'Embossed Plate Boots of the Owl', `ItemLevel` = 45,
+       `stat_type1` = 5, `stat_value1` = 9, `stat_type2` = 6, `stat_value2` = 9,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9973;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9972;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956934, `name` = 'Embossed Plate Bracers of the Whale', `ItemLevel` = 45,
+       `stat_type1` = 7, `stat_value1` = 6, `stat_type2` = 6, `stat_value2` = 6,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9972;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9967;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956935, `name` = 'Embossed Plate Gauntlets of the Whale', `ItemLevel` = 45,
+       `stat_type1` = 7, `stat_value1` = 9, `stat_type2` = 6, `stat_value2` = 9,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9967;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9968;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956936, `name` = 'Embossed Plate Girdle of the Whale', `ItemLevel` = 45,
+       `stat_type1` = 7, `stat_value1` = 9, `stat_type2` = 6, `stat_value2` = 9,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9968;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9973;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956937, `name` = 'Embossed Plate Boots of the Whale', `ItemLevel` = 45,
+       `stat_type1` = 7, `stat_value1` = 9, `stat_type2` = 6, `stat_value2` = 9,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9973;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9972;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956938, `name` = 'Embossed Plate Bracers of the Falcon', `ItemLevel` = 45,
+       `stat_type1` = 3, `stat_value1` = 6, `stat_type2` = 5, `stat_value2` = 6,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9972;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9967;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956939, `name` = 'Embossed Plate Gauntlets of the Falcon', `ItemLevel` = 45,
+       `stat_type1` = 3, `stat_value1` = 9, `stat_type2` = 5, `stat_value2` = 9,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9967;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9968;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956940, `name` = 'Embossed Plate Girdle of the Falcon', `ItemLevel` = 45,
+       `stat_type1` = 3, `stat_value1` = 9, `stat_type2` = 5, `stat_value2` = 9,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9968;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 9973;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956941, `name` = 'Embossed Plate Boots of the Falcon', `ItemLevel` = 45,
+       `stat_type1` = 3, `stat_value1` = 9, `stat_type2` = 5, `stat_value2` = 9,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 9973;
+
 INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 12023;
 UPDATE `_moba_item_bake`
    SET `entry` = 956904, `name` = 'Tellurium Necklace of the Tiger', `ItemLevel` = 45,
@@ -1028,16 +1524,58 @@ UPDATE `_moba_item_bake`
        `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
  WHERE `entry` = 12012;
 
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 12023;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956942, `name` = 'Tellurium Necklace of the Owl', `ItemLevel` = 45,
+       `stat_type1` = 5, `stat_value1` = 6, `stat_type2` = 6, `stat_value2` = 6,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 12023;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 12012;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956943, `name` = 'Marsh Ring of the Owl', `ItemLevel` = 45,
+       `stat_type1` = 5, `stat_value1` = 6, `stat_type2` = 6, `stat_value2` = 6,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 12012;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 12023;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956944, `name` = 'Tellurium Necklace of the Whale', `ItemLevel` = 45,
+       `stat_type1` = 7, `stat_value1` = 6, `stat_type2` = 6, `stat_value2` = 6,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 12023;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 12012;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956945, `name` = 'Marsh Ring of the Whale', `ItemLevel` = 45,
+       `stat_type1` = 7, `stat_value1` = 6, `stat_type2` = 6, `stat_value2` = 6,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 12012;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 12023;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956946, `name` = 'Tellurium Necklace of the Falcon', `ItemLevel` = 45,
+       `stat_type1` = 3, `stat_value1` = 6, `stat_type2` = 5, `stat_value2` = 6,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 12023;
+
+INSERT INTO `_moba_item_bake` SELECT * FROM `item_template` WHERE `entry` = 12012;
+UPDATE `_moba_item_bake`
+   SET `entry` = 956947, `name` = 'Marsh Ring of the Falcon', `ItemLevel` = 45,
+       `stat_type1` = 3, `stat_value1` = 6, `stat_type2` = 5, `stat_value2` = 6,
+       `RandomProperty` = 0, `RandomSuffix` = 0, `itemset` = 0, `SellPrice` = 0
+ WHERE `entry` = 12012;
+
 -- A copy the tracker lost would otherwise fail the INSERT on its key.
-DELETE FROM `item_template` WHERE `entry` IN (956900, 956901, 956902, 956903, 956906, 956907, 956908, 956909, 956912, 956913, 956914, 956915, 956916, 956917, 956918, 956919, 956920, 956921, 956922, 956923, 956904, 956905, 956910, 956911, 956924, 956925, 956926, 956927, 956928, 956929);
+DELETE FROM `item_template` WHERE `entry` IN (956900, 956901, 956902, 956903, 956906, 956907, 956908, 956909, 956912, 956913, 956914, 956915, 956916, 956917, 956918, 956919, 956920, 956921, 956922, 956923, 956930, 956931, 956932, 956933, 956934, 956935, 956936, 956937, 956938, 956939, 956940, 956941, 956904, 956905, 956910, 956911, 956924, 956925, 956926, 956927, 956928, 956929, 956942, 956943, 956944, 956945, 956946, 956947);
 INSERT INTO `item_template` SELECT * FROM `_moba_item_bake`;
 DROP TEMPORARY TABLE `_moba_item_bake`;
 
 -- The server's own Item.dbc rows for these copies (apps/moba/README.md, Item copies).
-DELETE FROM `item_dbc` WHERE `ID` IN (956900, 956901, 956902, 956903, 956906, 956907, 956908, 956909, 956912, 956913, 956914, 956915, 956916, 956917, 956918, 956919, 956920, 956921, 956922, 956923, 956904, 956905, 956910, 956911, 956924, 956925, 956926, 956927, 956928, 956929);
+DELETE FROM `item_dbc` WHERE `ID` IN (956900, 956901, 956902, 956903, 956906, 956907, 956908, 956909, 956912, 956913, 956914, 956915, 956916, 956917, 956918, 956919, 956920, 956921, 956922, 956923, 956930, 956931, 956932, 956933, 956934, 956935, 956936, 956937, 956938, 956939, 956940, 956941, 956904, 956905, 956910, 956911, 956924, 956925, 956926, 956927, 956928, 956929, 956942, 956943, 956944, 956945, 956946, 956947);
 INSERT INTO `item_dbc` (`ID`, `ClassID`, `SubclassID`, `Sound_Override_Subclassid`, `Material`, `DisplayInfoID`, `InventoryType`, `SheatheType`)
 SELECT `entry`, `class`, `subclass`, `SoundOverrideSubclass`, `Material`, `displayid`, `InventoryType`, `sheath`
-  FROM `item_template` WHERE `entry` IN (956900, 956901, 956902, 956903, 956906, 956907, 956908, 956909, 956912, 956913, 956914, 956915, 956916, 956917, 956918, 956919, 956920, 956921, 956922, 956923, 956904, 956905, 956910, 956911, 956924, 956925, 956926, 956927, 956928, 956929);
+  FROM `item_template` WHERE `entry` IN (956900, 956901, 956902, 956903, 956906, 956907, 956908, 956909, 956912, 956913, 956914, 956915, 956916, 956917, 956918, 956919, 956920, 956921, 956922, 956923, 956930, 956931, 956932, 956933, 956934, 956935, 956936, 956937, 956938, 956939, 956940, 956941, 956904, 956905, 956910, 956911, 956924, 956925, 956926, 956927, 956928, 956929, 956942, 956943, 956944, 956945, 956946, 956947);
 
 INSERT INTO `mod_moba_item_copy` (`Entry`, `Owner`) VALUES
 (956900, 'quests'),
@@ -1060,6 +1598,18 @@ INSERT INTO `mod_moba_item_copy` (`Entry`, `Owner`) VALUES
 (956921, 'quests'),
 (956922, 'quests'),
 (956923, 'quests'),
+(956930, 'quests'),
+(956931, 'quests'),
+(956932, 'quests'),
+(956933, 'quests'),
+(956934, 'quests'),
+(956935, 'quests'),
+(956936, 'quests'),
+(956937, 'quests'),
+(956938, 'quests'),
+(956939, 'quests'),
+(956940, 'quests'),
+(956941, 'quests'),
 (956904, 'quests'),
 (956905, 'quests'),
 (956910, 'quests'),
@@ -1069,4 +1619,10 @@ INSERT INTO `mod_moba_item_copy` (`Entry`, `Owner`) VALUES
 (956926, 'quests'),
 (956927, 'quests'),
 (956928, 'quests'),
-(956929, 'quests');
+(956929, 'quests'),
+(956942, 'quests'),
+(956943, 'quests'),
+(956944, 'quests'),
+(956945, 'quests'),
+(956946, 'quests'),
+(956947, 'quests');

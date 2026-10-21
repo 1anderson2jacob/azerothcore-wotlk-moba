@@ -15,6 +15,7 @@ data/sql/custom/db_world/mod_moba_quests.sql in full:
   * conditions          -- at most one quest per animal in the log
   * mod_moba_quest_block  -- every quest by map, and which ones restart their chain
   * mod_moba_quest_credit -- the creatures whose last hit feeds a credit entry
+  * mod_moba_quest_volume -- each volume quest's credit entry, its feeds and its chunk
   * item_template       -- the baked rewards, through item_copy.emit_baked_sql
 plus apps/moba/item_copies/quests.json, the Item.dbc manifest for the client patch.
 
@@ -75,10 +76,14 @@ MAX_ITEM_STATS = 10
 MAX_ITEM_SPELLS = 5
 MAX_REWARD_CHOICES = 6                   # QUEST_REWARD_CHOICES_COUNT
 
-BUILT_OBJECTIVES = {"last_hit", "collect"}  # each other type arrives with its feed
-CREDIT_OBJECTIVES = {"last_hit", "volume"}  # the types counted against a credit entry
+BUILT_OBJECTIVES = {"last_hit", "collect", "volume"}  # each other type arrives with its feed
+CREDIT_OBJECTIVES = {"last_hit", "volume"}            # the types counted against a credit entry
 EMOTE_SCREENS = ("offer", "incomplete", "turn_in")
 DIALOGUE_FIELDS = ("summary", "offer", "progress", "complete")
+
+# A volume objective's feeds, and the bit each sets in mod_moba_quest_volume.Feeds.
+# MobaQuestFeed in MobaQuestData.h numbers them too; the two must agree.
+VOLUME_FEEDS = {"damage_dealt": 0, "healing_done": 1, "damage_taken": 2, "player_damage": 3}
 
 # A last_hit quest's targets.<kind> names rows of <config>.yaml by `field`.
 TARGET_SOURCES = {
@@ -161,6 +166,8 @@ def validate(cfg, path, suffixes, unsupported, points):
                  f'quest "{key}": objective needs "text"')
         if obj["type"] == "last_hit":
             check_sources(obj, "targets", f'{path}: quest "{key}"')
+        if obj["type"] == "volume":
+            check_volume(obj, f'{path}: quest "{key}"')
         counts = q.get("counts")
         need(isinstance(counts, list) and counts
              and all(isinstance(c, int) and c > 0 for c in counts),
@@ -322,6 +329,17 @@ def check_collect(obj, where):
     check_sources(obj, "from", where)
 
 
+def check_volume(obj, where):
+    feeds = obj.get("feeds")
+    if not (isinstance(feeds, list) and feeds
+            and all(isinstance(f, str) and f in VOLUME_FEEDS for f in feeds)):
+        fail(f'{where}: "feeds" must be a non-empty list drawn from {sorted(VOLUME_FEEDS)}')
+    if len(set(feeds)) != len(feeds):
+        fail(f'{where}: "feeds" names a feed twice')
+    if not isinstance(obj.get("chunk"), int) or obj["chunk"] <= 0:
+        fail(f'{where}: "chunk" must be a positive integer, the points per credit')
+
+
 def collect_drops(bundle, kind, names):
     """{name: [drop, ...]}: the item drop every collect quest in `bundle`'s quest config
     asks of the creatures its from.<kind> names, for gen_creep_roster.py and
@@ -462,10 +480,14 @@ def build_map(path, cfg, lock, allocs, log, suffixes, points, bases):
 
     kill_credits = [(entry, cfg["map"], credit, key)
                     for entry, credit, key in resolve_kill_credits(path, cfg, credits)]
+    volumes = [(credits[key], cfg["map"],
+                sum(1 << VOLUME_FEEDS[feed] for feed in q["objective"]["feeds"]),
+                q["objective"]["chunk"], key)
+               for key, q in quests.items() if q["objective"]["type"] == "volume"]
 
     return {"givers": givers, "credits": list(credits.items()), "quests": quest_rows,
             "conditions": conditions, "relations": relations, "bakes": bakes,
-            "kill_credits": kill_credits}
+            "kill_credits": kill_credits, "volumes": volumes}
 
 
 def emit(rows, blocks):
@@ -482,8 +504,8 @@ def emit(rows, blocks):
         "-- GENERATED FILE -- do not hand-edit.",
         "-- Produced by apps/moba/gen_quests.py from apps/moba/maps/*/quest_config.yaml.",
         "-- Owns the quest givers and their spawns, the invisible credit entries, every",
-        "-- quest row and its text, the one-quest-per-animal conditions, the quest block",
-        "-- and kill-credit tables, and the baked reward items. Every DELETE clears this",
+        "-- quest row and its text, the one-quest-per-animal conditions, the quest block,",
+        "-- kill-credit and volume tables, and the baked reward items. Every DELETE clears this",
         "-- generator's whole block (apps/moba/id_blocks.json), so anything dropped from",
         "-- config goes too.",
         "-- ============================================================",
@@ -622,6 +644,20 @@ def emit(rows, blocks):
                                [f"-- {key}\n({entry}, {map_id}, {credit})"
                                 for entry, map_id, credit, key in rows["kill_credits"]])
 
+    feed_bits = ", ".join(f"{1 << bit} = {feed}" for feed, bit in VOLUME_FEEDS.items())
+    lines += ["", "DROP TABLE IF EXISTS `mod_moba_quest_volume`;",
+              "CREATE TABLE `mod_moba_quest_volume` (",
+              "    `CreditEntry` INT UNSIGNED NOT NULL,",
+              "    `Map`         INT UNSIGNED NOT NULL,",
+              f"    `Feeds`       TINYINT UNSIGNED NOT NULL,   -- {feed_bits}",
+              "    `Chunk`       INT UNSIGNED NOT NULL,       -- points per credit",
+              "    PRIMARY KEY (`CreditEntry`)",
+              ");"]
+    if rows["volumes"]:
+        lines += [""] + values("mod_moba_quest_volume", ["CreditEntry", "Map", "Feeds", "Chunk"],
+                               [f"-- {key}\n({credit}, {map_id}, {feeds}, {chunk})"
+                                for credit, map_id, feeds, chunk, key in rows["volumes"]])
+
     lines += emit_baked_sql(OWNER, rows["bakes"])
     return "\n".join(lines) + "\n"
 
@@ -642,7 +678,7 @@ def generate(loaded, reg):
     allocs = {ns: id_alloc.Allocator(reg, ns, OWNER) for ns in (
         id_alloc.CREATURE_TEMPLATE, id_alloc.ITEM_TEMPLATE, id_alloc.QUEST_TEMPLATE)}
     rows = {k: [] for k in ("givers", "credits", "quests", "conditions", "relations", "bakes",
-                            "kill_credits")}
+                            "kill_credits", "volumes")}
     locks, log = {}, []
     for path, cfg in loaded:
         lock_path = path.with_suffix(".lock.json")

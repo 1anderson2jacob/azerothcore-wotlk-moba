@@ -96,6 +96,24 @@ namespace
 
         return cleared;
     }
+
+    // The quest KilledMonsterCredit would advance (PlayerQuest.cpp:1977-2009), 0 = none.
+    uint32 FindQuestWantingCredit(Player* player, uint32 creditEntry)
+    {
+        for (uint8 slot = 0; slot < MAX_QUEST_LOG_SIZE; ++slot)
+        {
+            uint32 const questId = player->GetQuestSlotQuestId(slot);
+            if (!questId || player->GetQuestStatus(questId) != QUEST_STATUS_INCOMPLETE)
+                continue;
+
+            if (Quest const* quest = sObjectMgr->GetQuestTemplate(questId))
+                for (uint8 i = 0; i < QUEST_OBJECTIVES_COUNT; ++i)
+                    if (quest->RequiredNpcOrGo[i] == int32(creditEntry))
+                        return questId;
+        }
+
+        return 0;
+    }
 }
 
 void BattlegroundMOBAScore::BuildObjectivesBlock(WorldPacket& data)
@@ -580,6 +598,7 @@ void BattlegroundMOBA::RemovePlayer(Player* player)
         _streaks.erase(player->GetGUID());
         _shopAddonPlayers.erase(player->GetGUID());
         _shopInRange.erase(player->GetGUID());
+        _questVolume.erase(player->GetGUID());
 
         // No ledger to consult: everything the match handed over carries a fork-owned
         // entry, so the range itself is the claim.
@@ -802,13 +821,81 @@ void BattlegroundMOBA::CreditCreepKill(Player* killer, Creature* victim)
         SendScoreboard(killer); // CS is shown only to its owner -> refresh just them
     }
 
-    // No guid: given one, KilledMonsterCredit counts the corpse's own entry instead.
     if (uint32 credit = sMobaQuestDataStore->GetKillCredit(victim->GetEntry()))
+        GiveQuestCredit(killer, credit);
+}
+
+void BattlegroundMOBA::GiveQuestCredit(Player* player, uint32 creditEntry)
+{
+    // No guid: given one, KilledMonsterCredit counts the corpse's own entry instead.
+    _creditingQuests = true;
+    player->KilledMonsterCredit(creditEntry);
+    _creditingQuests = false;
+}
+
+void BattlegroundMOBA::AddQuestVolume(Player* player, MobaQuestFeed feed, uint32 points)
+{
+    if (GetStatus() != STATUS_IN_PROGRESS || !points)
+        return;
+
+    for (MobaVolumeCredit const& credit : sMobaQuestDataStore->GetVolumeCredits(GetMapId(), feed))
     {
-        _creditingQuests = true;
-        killer->KilledMonsterCredit(credit);
-        _creditingQuests = false;
+        uint32 const questId = FindQuestWantingCredit(player, credit.creditEntry);
+        if (!questId)
+            continue;
+
+        MobaQuestVolume& volume = _questVolume[player->GetGUID()][credit.creditEntry];
+        if (volume.questId != questId)
+            volume = { questId, 0 };
+
+        volume.points += points;
+        while (volume.points >= credit.chunk)
+        {
+            volume.points -= credit.chunk;
+            GiveQuestCredit(player, credit.creditEntry);
+
+            if (player->GetQuestStatus(questId) != QUEST_STATUS_INCOMPLETE)
+            {
+                volume.points = 0;   // a finished tier carries nothing into the next
+                break;
+            }
+        }
     }
+}
+
+void BattlegroundMOBA::RecordQuestDamageDealt(Player* attacker, Unit* victim, uint32 damage)
+{
+    if (victim->IsCreature() && sMobaTowerDataStore->GetConfig(victim->GetEntry()))
+        return;   // a tower, inhibitor or core
+
+    Player* owner = victim->GetCharmerOrOwnerPlayerOrPlayerItself();
+    if (owner && owner->GetBgTeamId() == attacker->GetBgTeamId())
+        return;
+
+    AddQuestVolume(attacker, MOBA_FEED_DAMAGE_DEALT, damage);
+    if (owner)
+        AddQuestVolume(attacker, MOBA_FEED_PLAYER_DAMAGE, damage);
+}
+
+void BattlegroundMOBA::RecordQuestDamageTaken(Player* victim, Unit* attacker, uint32 damage)
+{
+    if (attacker->GetCharmerOrOwnerPlayerOrPlayerItself() != victim)
+        AddQuestVolume(victim, MOBA_FEED_DAMAGE_TAKEN, damage);
+}
+
+void BattlegroundMOBA::RecordQuestHeal(Player* healer, Unit* target, uint32 gain)
+{
+    // Falls and health costs start no combat, so health a player took from themself and
+    // healed back out of a fight earns nothing.
+    if (target->IsInCombat())
+        AddQuestVolume(healer, MOBA_FEED_HEALING_DONE, gain);
+}
+
+void BattlegroundMOBA::DropQuestVolume(Player* player, uint32 questId)
+{
+    auto itr = _questVolume.find(player->GetGUID());
+    if (itr != _questVolume.end())
+        std::erase_if(itr->second, [questId](auto const& entry) { return entry.second.questId == questId; });
 }
 
 void BattlegroundMOBA::GrantDeathDrops(Creature* victim, Player* killer, Unit* killerUnit)

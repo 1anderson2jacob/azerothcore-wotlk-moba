@@ -9,6 +9,7 @@
 #include "MobaCreepData.h"
 #include "MobaTowerData.h"
 #include "MobaPlayerDropData.h"
+#include "MobaQuestData.h"
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
@@ -184,6 +185,12 @@ struct MobaStreakState
     uint32 lastKillMs = 0;
 };
 
+struct MobaQuestVolume
+{
+    uint32 questId = 0;   // the quest these points count toward
+    uint32 points = 0;
+};
+
 struct BattlegroundMOBAScore final : public BattlegroundScore
 {
     friend class BattlegroundMOBA;
@@ -232,6 +239,12 @@ public:
     // the victim's entry feeds.
     void CreditCreepKill(Player* killer, Creature* victim);
     bool IsCreditingQuests() const { return _creditingQuests; }
+
+    // Volume-quest feeds. `damage` and `gain` are health actually removed or restored.
+    void RecordQuestDamageDealt(Player* attacker, Unit* victim, uint32 damage);
+    void RecordQuestDamageTaken(Player* victim, Unit* attacker, uint32 damage);
+    void RecordQuestHeal(Player* healer, Unit* target, uint32 gain);
+    void DropQuestVolume(Player* player, uint32 questId);   // the quest was abandoned
 
     // On-death drops for any minion. `killer` is the killing-blow player the caller is
     // willing to REWARD; `killerUnit` only names a side for team-wide drops when no
@@ -317,6 +330,8 @@ private:
     void ExecuteSurrender(TeamId loser);
     void AnnounceToTeam(TeamId team, std::string const& text);
     void AnnounceSurrenderTally(TeamId team);
+    void GiveQuestCredit(Player* player, uint32 creditEntry);
+    void AddQuestVolume(Player* player, MobaQuestFeed feed, uint32 points);
 
     // Payload grammar: MobaHUD.lua dispatches on the leading letter, and the anchored
     // patterns in Feed.lua and Bar.lua are what each body must match.
@@ -372,6 +387,9 @@ private:
 
     std::unordered_map<ObjectGuid, MobaStreakState> _streaks;   // absent entry IS a zero streak
     bool _firstBlood = false;
+
+    // player -> volume credit entry -> points toward its next credit
+    std::unordered_map<ObjectGuid, std::unordered_map<uint32, MobaQuestVolume>> _questVolume;
 
     std::unordered_set<ObjectGuid> _shopAddonPlayers;   // sent HELLO; everyone else has no shop
     std::unordered_map<ObjectGuid, bool> _shopInRange;  // last known; only transitions reach the client
